@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.user.todoist-ai-agent</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/opt/homebrew/bin/node</string>
+    <string>/Users/viktor_svirskyi/Developer/todoist-ai-agent/server.js</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/Users/viktor_svirskyi/Developer/todoist-ai-agent</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/Users/viktor_svirskyi/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+    <key>HOME</key>
+    <string>/Users/viktor_svirskyi</string>
+    <key>TODOIST_API_TOKEN</key>
+    <string>171d2a69a4d4e33164a6fdd7844fee100bdfc9da</string>
+    <key>TODOIST_CLIENT_ID</key>
+    <string>98b4b30d96ed4d2d9f98fed8edc467ff</string>
+    <key>TODOIST_CLIENT_SECRET</key>
+    <string>136e3c2b4f684b098896834aef4ce718</string>
+    <key>TODOIST_WEBHOOK_SECRET</key>
+    <string>136e3c2b4f684b098896834aef4ce718</string>
+    <key>PORT</key>
+    <string>9000</string>
+  </dict>
+
+  <key>StandardOutPath</key>
+  <string>/Users/viktor_svirskyi/Library/Logs/todoist-ai-agent.log</string>
+
+  <key>StandardErrorPath</key>
+  <string>/Users/viktor_svirskyi/Library/Logs/todoist-ai-agent.log</string>
+
+  <key>RunAtLoad</key>
+  <true/>
+
+  <key>KeepAlive</key>
+  <true/>
+
+  <key>ThrottleInterval</key>
+  <integer>10</integer>
+</dict>
+</plist>
