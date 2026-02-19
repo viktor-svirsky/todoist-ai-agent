@@ -28,8 +28,15 @@ export async function runAgent({ task, messages }) {
       reject(new Error(`claude timed out after ${AGENT_TIMEOUT_MS / 1000}s`));
     }, AGENT_TIMEOUT_MS);
 
-    proc = spawn('claude', ['-p', prompt, '--dangerously-skip-permissions'], {
+    proc = spawn('claude', [
+      '--print',
+      '--dangerously-skip-permissions',
+      '--no-session-persistence',
+      '--permission-mode', 'bypassPermissions',
+      prompt
+    ], {
       env: { ...process.env, HOME: process.env.HOME },
+      stdio: ['ignore', 'pipe', 'pipe'] // stdin=ignore, stdout=pipe, stderr=pipe
     });
 
     let stdout = '';
