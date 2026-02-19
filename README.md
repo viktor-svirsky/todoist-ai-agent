@@ -95,16 +95,31 @@ The server will listen on port 9000 (or the PORT specified in .env).
 
 ```
 todoist-ai-agent/
-├── server.js              # Express app, webhook endpoint, async job queue
-├── poller.js              # Polling service for AI-labeled tasks (fallback)
-├── agent.js               # Claude CLI integration
-├── todoist.js             # Todoist REST API client
-├── store.js               # Conversation history storage
-├── register-webhook.js    # Webhook registration utility
+├── src/
+│   ├── index.ts                      # Main entry point
+│   ├── server.ts                     # Express app, webhook endpoint
+│   ├── handlers/
+│   │   ├── webhook.handler.ts        # Webhook event handler
+│   │   └── polling.handler.ts        # Polling service handler
+│   ├── services/
+│   │   ├── claude.service.ts         # Claude CLI integration
+│   │   ├── todoist.service.ts        # Todoist REST API client
+│   │   ├── task-processor.service.ts # Task processing logic
+│   │   └── notification.service.ts   # Notification service
+│   ├── repositories/
+│   │   └── conversation.repository.ts # Conversation storage
+│   ├── types/
+│   │   └── index.ts                  # TypeScript type definitions
+│   └── utils/
+│       ├── config.ts                 # Configuration management
+│       ├── logger.ts                 # Logging utility
+│       └── constants.ts              # App constants
+├── tests/                            # Test files
+├── dist/                             # Compiled JavaScript
 ├── data/
-│   └── conversations.json # Persisted conversation history
-├── .env                   # Environment configuration
-├── com.user.todoist-ai-agent.plist  # LaunchAgent configuration
+│   └── conversations.json            # Persisted conversation history
+├── .env                              # Environment configuration
+├── com.user.todoist-ai-agent.plist   # LaunchAgent configuration
 └── package.json
 ```
 
@@ -143,10 +158,27 @@ launchctl kickstart -k gui/$(id -u)/com.user.todoist-ai-agent
 
 ## Development
 
-### Run tests
-
 ```bash
+# Install dependencies
+npm install
+
+# Run tests
 npm test
+
+# Build TypeScript
+npm run build
+
+# Run in development mode
+npm run dev
+
+# Type check
+npm run typecheck
+
+# Lint
+npm run lint
+
+# Run tests with coverage
+npm run test:coverage
 ```
 
 ### Debug mode
