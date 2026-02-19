@@ -1,15 +1,15 @@
 import 'dotenv/config';
-import { createServer } from './server';
-import { startPoller } from './poller';
-import { WebhookHandler } from './handlers/webhook.handler';
-import { PollingHandler } from './handlers/polling.handler';
-import { TaskProcessorService } from './services/task-processor.service';
-import { ClaudeService } from './services/claude.service';
-import { TodoistService } from './services/todoist.service';
-import { NotificationService } from './services/notification.service';
-import { ConversationRepository } from './repositories/conversation.repository';
-import { getConfig } from './utils/config';
-import { logger } from './utils/logger';
+import { createServer } from './server.js';
+import { startPoller } from './poller.js';
+import { WebhookHandler } from './handlers/webhook.handler.js';
+import { PollingHandler } from './handlers/polling.handler.js';
+import { TaskProcessorService } from './services/task-processor.service.js';
+import { ClaudeService } from './services/claude.service.js';
+import { TodoistService } from './services/todoist.service.js';
+import { NotificationService } from './services/notification.service.js';
+import { ConversationRepository } from './repositories/conversation.repository.js';
+import { getConfig } from './utils/config.js';
+import { logger } from './utils/logger.js';
 
 async function main() {
   try {

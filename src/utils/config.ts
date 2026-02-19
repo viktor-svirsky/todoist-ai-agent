@@ -1,4 +1,4 @@
-import type { Config } from '../types';
+import type { Config } from '../types/index.js';
 
 function parseIntSafe(value: string | undefined, defaultValue: string, name: string, min?: number, max?: number): number {
   const parsed = parseInt(value || defaultValue, 10);

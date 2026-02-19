@@ -1,6 +1,6 @@
 import axios from 'axios';
-import type { NotificationPayload } from '../types';
-import { logger } from '../utils/logger';
+import type { NotificationPayload } from '../types/index.js';
+import { logger } from '../utils/logger.js';
 
 export class NotificationService {
   constructor(private webhookUrl: string) {}

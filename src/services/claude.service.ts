@@ -1,6 +1,6 @@
 import { spawn } from 'child_process';
-import type { TodoistTask, Message } from '../types';
-import { logger } from '../utils/logger';
+import type { TodoistTask, Message } from '../types/index.js';
+import { logger } from '../utils/logger.js';
 
 /**
  * Service for interacting with Claude CLI to process task requests.

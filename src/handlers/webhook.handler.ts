@@ -1,9 +1,9 @@
-import type { WebhookEvent } from '../types';
-import type { TaskProcessorService } from '../services/task-processor.service';
-import type { TodoistService } from '../services/todoist.service';
-import type { ConversationRepository } from '../repositories/conversation.repository';
-import { CONSTANTS } from '../utils/constants';
-import { logger } from '../utils/logger';
+import type { WebhookEvent } from '../types/index.js';
+import type { TaskProcessorService } from '../services/task-processor.service.js';
+import type { TodoistService } from '../services/todoist.service.js';
+import type { ConversationRepository } from '../repositories/conversation.repository.js';
+import { CONSTANTS } from '../utils/constants.js';
+import { logger } from '../utils/logger.js';
 
 export class WebhookHandler {
   constructor(

@@ -1,6 +1,6 @@
 import { readFile, writeFile, mkdir } from 'fs/promises';
 import { join, dirname } from 'path';
-import type { Conversation } from '../types';
+import type { Conversation } from '../types/index.js';
 
 export class ConversationRepository {
   private readonly dataFile: string;

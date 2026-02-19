@@ -1,7 +1,7 @@
 import axios from 'axios';
-import type { TodoistTask } from '../types';
-import { CONSTANTS } from '../utils/constants';
-import { logger } from '../utils/logger';
+import type { TodoistTask } from '../types/index.js';
+import { CONSTANTS } from '../utils/constants.js';
+import { logger } from '../utils/logger.js';
 
 /**
  * Service for interacting with Todoist API.

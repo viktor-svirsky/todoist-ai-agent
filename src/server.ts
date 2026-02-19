@@ -1,8 +1,8 @@
 import express from 'express';
 import crypto from 'crypto';
-import { WebhookHandler } from './handlers/webhook.handler';
-import { logger } from './utils/logger';
-import type { WebhookRequest, WebhookEvent } from './types';
+import { WebhookHandler } from './handlers/webhook.handler.js';
+import { logger } from './utils/logger.js';
+import type { WebhookRequest, WebhookEvent } from './types/index.js';
 
 export function createServer(
   handler: WebhookHandler,
