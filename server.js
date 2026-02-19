@@ -159,4 +159,9 @@ if (process.argv[1] === new URL(import.meta.url).pathname) {
   const app = await createApp();
   const port = process.env.PORT ?? 9000;
   app.listen(port, '0.0.0.0', () => console.log(`Todoist AI Agent listening on port ${port}`));
+
+  // Start polling for AI tasks (fallback if webhooks don't work)
+  console.log('[poller] Starting task polling (60s interval)...');
+  const { startPolling } = await import('./poller.js');
+  startPolling(60_000); // Poll every 60 seconds
 }
