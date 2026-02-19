@@ -16,7 +16,7 @@ async function main() {
     const config = getConfig();
 
     // Initialize services
-    const conversationRepo = new ConversationRepository('./data/conversations.json');
+    const conversationRepo = new ConversationRepository('./data');
     const claudeService = new ClaudeService(config.claudeTimeoutMs);
     const todoistService = new TodoistService(config.todoistApiToken, config.aiLabel);
     const notificationService = new NotificationService(config.ntfyWebhookUrl);
