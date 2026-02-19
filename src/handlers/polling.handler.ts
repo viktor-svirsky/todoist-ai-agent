@@ -49,12 +49,14 @@ export class PollingHandler {
     try {
       const { data } = await axios.get<{ results: TodoistTask[] }>(
         `${CONSTANTS.TODOIST_BASE_URL}/tasks`,
-        { headers: { Authorization: `Bearer ${this.apiToken}` } }
+        {
+          headers: { Authorization: `Bearer ${this.apiToken}` },
+          params: { label: CONSTANTS.AI_LABEL }
+        }
       );
 
       const tasks = data.results || [];
       return tasks.filter(t =>
-        t.labels?.includes(CONSTANTS.AI_LABEL) &&
         !t.is_deleted &&
         !t.checked
       );
