@@ -1,7 +1,7 @@
 import axios from 'axios';
 import 'dotenv/config';
 
-const BASE = 'https://api.todoist.com/rest/v2';
+const BASE = 'https://api.todoist.com/api/v1';
 const headers = () => ({ Authorization: `Bearer ${process.env.TODOIST_API_TOKEN}` });
 
 export async function getTask(taskId) {

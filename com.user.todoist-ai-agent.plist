@@ -8,11 +8,11 @@
   <key>ProgramArguments</key>
   <array>
     <string>/opt/homebrew/bin/node</string>
-    <string>/Users/viktor_svirskyi/Developer/todoist-ai-agent/server.js</string>
+    <string>/Users/viktor_svirskyi/Documents/Claude/todoist-ai-agent/server.js</string>
   </array>
 
   <key>WorkingDirectory</key>
-  <string>/Users/viktor_svirskyi/Developer/todoist-ai-agent</string>
+  <string>/Users/viktor_svirskyi/Documents/Claude/todoist-ai-agent</string>
 
   <key>EnvironmentVariables</key>
   <dict>
