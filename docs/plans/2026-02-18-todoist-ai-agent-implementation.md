@@ -648,11 +648,12 @@ export async function createApp() {
 
     enqueue(async () => {
       try {
-        if (event_name === 'comment:added') {
-          const { task_id, posted_by_uid, content } = event_data;
-          if (await isBotComment(posted_by_uid)) return; // Prevent loop
-          if (!await hasAiLabel(task_id)) return;
-          await handleComment(task_id, content);
+        if (event_name === 'note:added') {
+          // In Todoist API v1, task comments are called "notes"
+          const { item_id, posted_uid, content } = event_data;
+          if (await isBotComment(posted_uid)) return; // Prevent loop
+          if (!await hasAiLabel(item_id)) return;
+          await handleComment(item_id, content);
 
         } else if (event_name === 'item:added') {
           const { id, labels } = event_data;
@@ -763,7 +764,7 @@ async function registerWebhook() {
     headers,
     params: {
       url,
-      events: 'comment:added,item:added,item:updated,item:completed',
+      events: 'note:added,item:added,item:updated,item:completed',
       secret,
     }
   });
