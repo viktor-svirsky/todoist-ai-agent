@@ -88,4 +88,69 @@ describe('WebhookHandler', () => {
 
     expect(processor.handleTaskCompletion).toHaveBeenCalledWith('123');
   });
+
+  it('should process item:updated event for new tasks with AI label', async () => {
+    vi.mocked(conversations.exists).mockResolvedValue(false);
+    vi.mocked(todoist.getTask).mockResolvedValue({
+      id: '123',
+      content: 'Test',
+      labels: ['AI'],
+      added_at: '2026-02-19T10:00:00Z',
+      is_deleted: false,
+      checked: false
+    });
+
+    await handler.handleWebhook({
+      event_name: 'item:updated',
+      event_data: { id: '123', labels: ['AI'] }
+    });
+
+    expect(processor.processNewTask).toHaveBeenCalled();
+  });
+
+  it('should ignore item:updated if conversation exists', async () => {
+    vi.mocked(conversations.exists).mockResolvedValue(true);
+
+    await handler.handleWebhook({
+      event_name: 'item:updated',
+      event_data: { id: '123', labels: ['AI'] }
+    });
+
+    expect(processor.processNewTask).not.toHaveBeenCalled();
+  });
+
+  it('should rethrow errors after logging', async () => {
+    vi.mocked(todoist.getTask).mockRejectedValue(new Error('API Error'));
+
+    await expect(handler.handleWebhook({
+      event_name: 'item:added',
+      event_data: { id: '123', labels: ['AI'] }
+    })).rejects.toThrow('API Error');
+  });
+
+  it('should ignore note:added for tasks without AI label', async () => {
+    vi.mocked(todoist.hasAiLabel).mockResolvedValue(false);
+
+    await handler.handleWebhook({
+      event_name: 'note:added',
+      event_data: { item_id: '123', content: 'Comment', posted_uid: 'user-1' }
+    });
+
+    expect(processor.processComment).not.toHaveBeenCalled();
+  });
+
+  it('should ignore error prefix comments', async () => {
+    vi.mocked(todoist.hasAiLabel).mockResolvedValue(true);
+
+    await handler.handleWebhook({
+      event_name: 'note:added',
+      event_data: {
+        item_id: '123',
+        content: '⚠️ AI agent error: Something went wrong',
+        posted_uid: 'user-1'
+      }
+    });
+
+    expect(processor.processComment).not.toHaveBeenCalled();
+  });
 });
