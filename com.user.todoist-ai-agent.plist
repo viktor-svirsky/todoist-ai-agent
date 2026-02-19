@@ -8,7 +8,7 @@
   <key>ProgramArguments</key>
   <array>
     <string>/opt/homebrew/bin/node</string>
-    <string>/Users/viktor_svirskyi/Documents/Claude/todoist-ai-agent/server.js</string>
+    <string>/Users/viktor_svirskyi/Documents/Claude/todoist-ai-agent/dist/index.js</string>
   </array>
 
   <key>WorkingDirectory</key>
