@@ -15,7 +15,9 @@ export async function hasAiLabel(taskId) {
 }
 
 export async function postComment(taskId, content) {
-  await axios.post(`${BASE}/comments`, { task_id: taskId, content }, { headers: headers() });
+  // Add AI indicator to make it clear this is an automated response
+  const aiContent = `🤖 **AI Agent**\n\n${content}`;
+  await axios.post(`${BASE}/comments`, { task_id: taskId, content: aiContent }, { headers: headers() });
 }
 
 export async function getBotUid() {
