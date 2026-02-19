@@ -13,6 +13,7 @@ export function createServer(
 
   // Raw body needed for HMAC verification
   app.use(express.json({
+    limit: '100kb', // Todoist webhooks are typically small
     verify: (req: WebhookRequest, _res, buf) => {
       req.rawBody = buf.toString();
     }
@@ -26,19 +27,37 @@ export function createServer(
 
   // Webhook endpoint
   app.post('/webhook', async (req: WebhookRequest, res) => {
-    const signature = req.headers['x-todoist-hmac-sha256'] as string;
+    const signature = req.headers['x-todoist-hmac-sha256'];
+
+    // Type narrowing and validation
+    if (typeof signature !== 'string') {
+      logger.warn('Invalid or missing webhook signature header');
+      return res.status(403).json({ error: 'Missing signature' });
+    }
+
+    if (!req.rawBody) {
+      logger.warn('Missing webhook body');
+      return res.status(403).json({ error: 'Missing body' });
+    }
 
     // Verify HMAC signature
-    if (signature && req.rawBody) {
-      const expected = crypto
-        .createHmac('sha256', webhookSecret)
-        .update(req.rawBody)
-        .digest('base64');
+    const expected = crypto
+      .createHmac('sha256', webhookSecret)
+      .update(req.rawBody)
+      .digest('base64');
 
-      if (!crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(signature))) {
-        logger.warn('Invalid webhook signature');
-        return res.status(403).json({ error: 'Invalid signature' });
-      }
+    const expectedBuf = Buffer.from(expected);
+    const signatureBuf = Buffer.from(signature);
+
+    // Check length first to avoid timing attack via exception
+    if (expectedBuf.length !== signatureBuf.length) {
+      logger.warn('Invalid webhook signature length');
+      return res.status(403).json({ error: 'Invalid signature' });
+    }
+
+    if (!crypto.timingSafeEqual(expectedBuf, signatureBuf)) {
+      logger.warn('Invalid webhook signature');
+      return res.status(403).json({ error: 'Invalid signature' });
     }
 
     // Respond immediately
@@ -46,12 +65,14 @@ export function createServer(
 
     // Process asynchronously
     const event: WebhookEvent = req.body;
-    setImmediate(async () => {
-      try {
-        await handler.handleWebhook(event);
-      } catch (error) {
-        logger.error('Webhook processing failed', { error });
-      }
+    setImmediate(() => {
+      handler.handleWebhook(event).catch((error) => {
+        logger.error('Webhook processing failed', {
+          error: error instanceof Error ? error.message : String(error),
+          stack: error instanceof Error ? error.stack : undefined,
+          event_name: event.event_name
+        });
+      });
     });
   });
 
