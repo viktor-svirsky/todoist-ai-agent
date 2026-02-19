@@ -111,4 +111,55 @@ describe('PollingHandler', () => {
     await handler.poll();
     expect(processor.processComment).toHaveBeenCalledTimes(1); // Still 1
   });
+
+  it('should mark old tasks as seen without processing', async () => {
+    // First poll to establish lastPollTime
+    vi.mocked(axios.get).mockResolvedValueOnce({ data: { results: [] } });
+    await handler.poll();
+    vi.clearAllMocks();
+
+    // Second poll with an old task
+    const oldTask = mockTask({ added_at: '2020-01-01T00:00:00Z' });
+    vi.mocked(axios.get).mockResolvedValueOnce({ data: { results: [oldTask] } });
+    vi.mocked(conversations.exists).mockResolvedValue(false);
+
+    await handler.poll();
+
+    expect(conversations.save).toHaveBeenCalledWith(
+      oldTask.id,
+      expect.objectContaining({
+        title: oldTask.content,
+        messages: [],
+        createdAt: oldTask.added_at
+      })
+    );
+    expect(processor.processNewTask).not.toHaveBeenCalled();
+  });
+
+  it('should handle fetchAiTasks errors gracefully', async () => {
+    vi.mocked(axios.get).mockRejectedValueOnce(new Error('Network error'));
+
+    await handler.poll();
+
+    // Should not throw
+    expect(processor.processNewTask).not.toHaveBeenCalled();
+  });
+
+  it('should process multiple comments in chronological order', async () => {
+    const task = mockTask();
+    const comment1 = mockComment({ id: 'c1', posted_at: '2026-02-19T12:00:00Z', content: 'Second' });
+    const comment2 = mockComment({ id: 'c2', posted_at: '2026-02-19T11:00:00Z', content: 'First' });
+
+    vi.mocked(axios.get)
+      .mockResolvedValueOnce({ data: { results: [task] } })
+      .mockResolvedValueOnce({ data: { results: [comment1, comment2] } });
+
+    vi.mocked(conversations.exists).mockResolvedValue(true);
+
+    await handler.poll();
+
+    // Should process comment2 before comment1 (chronological order)
+    expect(processor.processComment).toHaveBeenNthCalledWith(1, '123', 'First');
+    expect(processor.processComment).toHaveBeenNthCalledWith(2, '123', 'Second');
+  });
 });

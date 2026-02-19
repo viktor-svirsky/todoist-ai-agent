@@ -9,6 +9,7 @@ import { logger } from '../utils/logger';
 export class PollingHandler {
   private lastPollTime = new Date(0); // Initialize to epoch to catch all tasks on first poll
   private processedComments = new Set<string>();
+  private readonly MAX_PROCESSED_COMMENTS = 10000;
 
   constructor(
     private processor: TaskProcessorService,
@@ -25,7 +26,15 @@ export class PollingHandler {
       const currentPollTime = new Date();
 
       for (const task of tasks) {
-        await this.processTask(task);
+        try {
+          await this.processTask(task);
+        } catch (error) {
+          logger.error('Failed to process task', {
+            taskId: task.id,
+            error: error instanceof Error ? error.message : 'Unknown'
+          });
+          // Continue processing other tasks
+        }
       }
 
       this.lastPollTime = currentPollTime;
@@ -37,17 +46,24 @@ export class PollingHandler {
   }
 
   private async fetchAiTasks(): Promise<TodoistTask[]> {
-    const { data } = await axios.get<{ results: TodoistTask[] }>(
-      `${CONSTANTS.TODOIST_BASE_URL}/tasks`,
-      { headers: { Authorization: `Bearer ${this.apiToken}` } }
-    );
+    try {
+      const { data } = await axios.get<{ results: TodoistTask[] }>(
+        `${CONSTANTS.TODOIST_BASE_URL}/tasks`,
+        { headers: { Authorization: `Bearer ${this.apiToken}` } }
+      );
 
-    const tasks = data.results || [];
-    return tasks.filter(t =>
-      t.labels?.includes(CONSTANTS.AI_LABEL) &&
-      !t.is_deleted &&
-      !t.checked
-    );
+      const tasks = data.results || [];
+      return tasks.filter(t =>
+        t.labels?.includes(CONSTANTS.AI_LABEL) &&
+        !t.is_deleted &&
+        !t.checked
+      );
+    } catch (error) {
+      logger.error('Failed to fetch AI tasks', {
+        error: error instanceof Error ? error.message : 'Unknown'
+      });
+      return [];
+    }
   }
 
   private async processTask(task: TodoistTask): Promise<void> {
@@ -93,8 +109,21 @@ export class PollingHandler {
     newComments.sort((a, b) => new Date(a.posted_at).getTime() - new Date(b.posted_at).getTime());
 
     for (const comment of newComments) {
-      this.processedComments.add(comment.id);
+      this.addProcessedComment(comment.id);
       await this.processor.processComment(task.id, comment.content);
+    }
+  }
+
+  private addProcessedComment(commentId: string): void {
+    this.processedComments.add(commentId);
+
+    // Simple FIFO cleanup when size exceeds limit
+    if (this.processedComments.size > this.MAX_PROCESSED_COMMENTS) {
+      const iterator = this.processedComments.values();
+      for (let i = 0; i < 1000; i++) {
+        const { value } = iterator.next();
+        if (value) this.processedComments.delete(value);
+      }
     }
   }
 
