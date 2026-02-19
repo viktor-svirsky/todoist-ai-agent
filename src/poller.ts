@@ -1,5 +1,5 @@
-import { PollingHandler } from './handlers/polling.handler';
-import { logger } from './utils/logger';
+import { PollingHandler } from './handlers/polling.handler.js';
+import { logger } from './utils/logger.js';
 
 export function startPoller(
   handler: PollingHandler,

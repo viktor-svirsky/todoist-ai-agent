@@ -1,10 +1,10 @@
-import type { TodoistTask } from '../types';
-import type { ClaudeService } from './claude.service';
-import type { TodoistService } from './todoist.service';
-import type { NotificationService } from './notification.service';
-import type { ConversationRepository } from '../repositories/conversation.repository';
-import { CONSTANTS } from '../utils/constants';
-import { logger } from '../utils/logger';
+import type { TodoistTask } from '../types/index.js';
+import type { ClaudeService } from './claude.service.js';
+import type { TodoistService } from './todoist.service.js';
+import type { NotificationService } from './notification.service.js';
+import type { ConversationRepository } from '../repositories/conversation.repository.js';
+import { CONSTANTS } from '../utils/constants.js';
+import { logger } from '../utils/logger.js';
 
 export class TaskProcessorService {
   constructor(
