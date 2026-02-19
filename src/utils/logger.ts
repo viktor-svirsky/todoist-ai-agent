@@ -17,7 +17,7 @@ function safeStringify(obj: unknown): string {
       }
       return value;
     });
-  } catch (error) {
+  } catch {
     return '[Unable to stringify]';
   }
 }
