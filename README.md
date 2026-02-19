@@ -4,20 +4,23 @@ An autonomous AI agent that monitors Todoist tasks labeled "AI" and responds to 
 
 ## Features
 
-- **Webhook-based**: Receives real-time notifications from Todoist via webhooks
+- **Dual-mode operation**: Webhook-based (real-time) + polling fallback (60s interval)
 - **AI-powered**: Uses Claude Sonnet 4.5 for intelligent task processing
 - **Automated responses**: Posts AI-generated responses as Todoist comments
 - **Conversation history**: Maintains context across multiple interactions per task
 - **LaunchAgent integration**: Runs as a background service on macOS
+- **Fault-tolerant**: Continues working even if webhooks fail to deliver
 
 ## Architecture
 
 ```
-Todoist → webhook POST → Express (port 9000) → async job queue → Agent Loop → Todoist comment
-                                                                       ↓
-                                                             Claude (via CLI)
-                                                                  ↓
-                                                            Todoist REST API
+Primary: Todoist → webhook POST → Express (port 9000) → async job queue → Agent Loop → Todoist comment
+                                                                              ↓
+                                                                    Claude (via CLI)
+                                                                              ↓
+                                                                       Todoist REST API
+
+Fallback: Polling (60s) → Fetch AI tasks → Check for new → Process → Post comment
 ```
 
 ## Setup
@@ -93,9 +96,11 @@ The server will listen on port 9000 (or the PORT specified in .env).
 ```
 todoist-ai-agent/
 ├── server.js              # Express app, webhook endpoint, async job queue
+├── poller.js              # Polling service for AI-labeled tasks (fallback)
 ├── agent.js               # Claude CLI integration
 ├── todoist.js             # Todoist REST API client
 ├── store.js               # Conversation history storage
+├── register-webhook.js    # Webhook registration utility
 ├── data/
 │   └── conversations.json # Persisted conversation history
 ├── .env                   # Environment configuration
