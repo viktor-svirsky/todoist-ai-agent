@@ -73,8 +73,8 @@ export class ClaudeService {
       let stdout = '';
       let stderr = '';
 
-      proc.stdout.on('data', chunk => { stdout += chunk; });
-      proc.stderr.on('data', chunk => { stderr += chunk; });
+      proc.stdout?.on('data', chunk => { stdout += chunk; });
+      proc.stderr?.on('data', chunk => { stderr += chunk; });
 
       proc.on('close', code => {
         if (timedOut) return; // Already handled by timeout
