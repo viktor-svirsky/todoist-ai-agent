@@ -53,7 +53,7 @@ export class TaskProcessorService {
       let conv = await this.conversations.load(taskId);
 
       if (conv.messages.length === 0) {
-        conv = { ...conv, title: task.content };
+        conv = { ...conv, title: task.content, createdAt: new Date().toISOString() };
         const taskContent = `Task: ${task.content}\n${task.description || ''}`.trim();
         conv = this.conversations.addMessage(conv, 'user', taskContent);
       }
@@ -74,19 +74,33 @@ export class TaskProcessorService {
 
       logger.info('Comment processed successfully', { taskId });
     } catch (error) {
-      const task = await this.todoist.getTask(taskId);
-      await this.handleError(taskId, task.content, error);
+      try {
+        const task = await this.todoist.getTask(taskId);
+        await this.handleError(taskId, task.content, error);
+      } catch (fetchError) {
+        await this.handleError(taskId, 'Unknown task', error);
+        logger.error('Failed to fetch task in error handler', { taskId, error: fetchError });
+      }
     }
   }
 
   async handleTaskCompletion(taskId: string): Promise<void> {
     logger.info('Handling task completion', { taskId });
 
-    const conv = await this.conversations.load(taskId);
-    if (conv.messages.length > 0) {
-      await this.todoist.postComment(taskId, 'Task completed. Conversation history cleared.');
+    try {
+      const conv = await this.conversations.load(taskId);
+      if (conv.messages.length > 0) {
+        await this.todoist.postComment(taskId, 'Task completed. Conversation history cleared.');
+      }
+    } catch (error) {
+      logger.error('Failed to post completion comment', { taskId, error });
     }
-    await this.conversations.cleanup(taskId);
+
+    try {
+      await this.conversations.cleanup(taskId);
+    } catch (error) {
+      logger.error('Failed to cleanup conversation', { taskId, error });
+    }
   }
 
   private async handleError(taskId: string, taskTitle: string, error: unknown): Promise<void> {
@@ -102,11 +116,15 @@ export class TaskProcessorService {
       logger.error('Failed to post error comment', { taskId, error: e });
     }
 
-    await this.notifications.sendNotification({
-      taskTitle,
-      status: 'error',
-      message,
-      timestamp: new Date().toISOString()
-    });
+    try {
+      await this.notifications.sendNotification({
+        taskTitle,
+        status: 'error',
+        message,
+        timestamp: new Date().toISOString()
+      });
+    } catch (notifyError) {
+      logger.error('Failed to send error notification', { taskId, error: notifyError });
+    }
   }
 }
