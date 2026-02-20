@@ -9,7 +9,6 @@ An autonomous AI agent that monitors Todoist tasks labeled "AI" and responds to 
 - **Automated responses**: Posts AI-generated responses as Todoist comments
 - **Conversation history**: Maintains context across multiple interactions per task
 - **LaunchAgent integration**: Runs as a background service on macOS
-- **Fault-tolerant**: Continues working even if webhooks fail to deliver
 
 ## Architecture
 
