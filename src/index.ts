@@ -8,8 +8,11 @@ import { ClaudeService } from './services/claude.service.js';
 import { TodoistService } from './services/todoist.service.js';
 import { NotificationService } from './services/notification.service.js';
 import { ConversationRepository } from './repositories/conversation.repository.js';
+import { GeminiService } from './services/gemini.service.js';
+import { AIOrchestrator } from './services/ai-orchestrator.service.js';
 import { getConfig } from './utils/config.js';
 import { logger } from './utils/logger.js';
+import type { PlaywrightMCPClient } from './types/playwright.types.js';
 
 async function main() {
   try {
@@ -21,11 +24,26 @@ async function main() {
     const todoistService = new TodoistService(config.todoistApiToken, config.aiLabel);
     const notificationService = new NotificationService(config.ntfyWebhookUrl);
 
+    // TODO: Replace with real Playwright MCP client
+    const playwrightClient: PlaywrightMCPClient = {
+      navigate: async () => { throw new Error('Playwright MCP not configured'); },
+      waitForPageLoad: async () => {},
+      click: async () => {},
+      type: async () => {},
+      pressKey: async () => {},
+      waitForElement: async () => {},
+      getTextContent: async () => { throw new Error('Playwright MCP not configured'); }
+    };
+
+    const geminiService = new GeminiService(playwrightClient);
+    const aiOrchestrator = new AIOrchestrator(claudeService, geminiService);
+
     const taskProcessor = new TaskProcessorService(
       claudeService,
       todoistService,
       notificationService,
-      conversationRepo
+      conversationRepo,
+      aiOrchestrator
     );
 
     // Initialize handlers
@@ -51,6 +69,16 @@ async function main() {
     // Start poller
     startPoller(pollingHandler, config.pollIntervalMs);
     logger.info('Poller started', { intervalMs: config.pollIntervalMs });
+
+    // Validate Gemini integration on startup
+    (async () => {
+      const isGeminiWorking = await geminiService.test();
+      if (isGeminiWorking) {
+        logger.info('✅ Gemini integration validated');
+      } else {
+        logger.warn('⚠️ Gemini integration unavailable, running Claude-only mode');
+      }
+    })();
 
     logger.info('Todoist AI Agent started successfully');
   } catch (error) {
