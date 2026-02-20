@@ -1,8 +1,6 @@
 import 'dotenv/config';
 import { createServer } from './server.js';
-import { startPoller } from './poller.js';
 import { WebhookHandler } from './handlers/webhook.handler.js';
-import { PollingHandler } from './handlers/polling.handler.js';
 import { TaskProcessorService } from './services/task-processor.service.js';
 import { ClaudeService } from './services/claude.service.js';
 import { TodoistService } from './services/todoist.service.js';
