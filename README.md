@@ -4,7 +4,7 @@ An autonomous AI agent that monitors Todoist tasks labeled "AI" and responds to 
 
 ## Features
 
-- **Dual-mode operation**: Webhook-based (real-time) + polling fallback (60s interval)
+- **Webhook-based operation**: Real-time event processing from Todoist
 - **AI-powered**: Uses Claude Sonnet 4.5 for intelligent task processing
 - **Automated responses**: Posts AI-generated responses as Todoist comments
 - **Conversation history**: Maintains context across multiple interactions per task
