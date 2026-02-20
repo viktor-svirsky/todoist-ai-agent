@@ -28,13 +28,6 @@ export interface Conversation {
   lastActivityAt: string;
 }
 
-export interface NotificationPayload {
-  taskTitle: string;
-  status: 'success' | 'error';
-  message?: string;
-  timestamp: string;
-}
-
 export interface WebhookEvent {
   event_name: 'item:added' | 'item:updated' | 'item:completed' | 'note:added';
   event_data: {
@@ -49,7 +42,6 @@ export interface WebhookEvent {
 export interface Config {
   todoistApiToken: string;
   todoistWebhookSecret: string;
-  ntfyWebhookUrl: string;
   port: number;
   pollIntervalMs: number;
   claudeTimeoutMs: number;

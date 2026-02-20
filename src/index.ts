@@ -6,7 +6,6 @@ import { PollingHandler } from './handlers/polling.handler.js';
 import { TaskProcessorService } from './services/task-processor.service.js';
 import { ClaudeService } from './services/claude.service.js';
 import { TodoistService } from './services/todoist.service.js';
-import { NotificationService } from './services/notification.service.js';
 import { ConversationRepository } from './repositories/conversation.repository.js';
 import { GeminiService } from './services/gemini.service.js';
 import { AIOrchestrator } from './services/ai-orchestrator.service.js';
@@ -22,7 +21,6 @@ async function main() {
     const conversationRepo = new ConversationRepository('./data');
     const claudeService = new ClaudeService(config.claudeTimeoutMs);
     const todoistService = new TodoistService(config.todoistApiToken, config.aiLabel);
-    const notificationService = new NotificationService(config.ntfyWebhookUrl);
 
     // TODO: Replace with real Playwright MCP client
     const playwrightClient: PlaywrightMCPClient = {
@@ -41,7 +39,6 @@ async function main() {
     const taskProcessor = new TaskProcessorService(
       claudeService,
       todoistService,
-      notificationService,
       conversationRepo,
       aiOrchestrator
     );
