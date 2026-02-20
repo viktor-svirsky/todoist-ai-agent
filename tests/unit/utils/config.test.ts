@@ -9,7 +9,6 @@ describe('Config', () => {
       ...originalEnv,
       TODOIST_API_TOKEN: 'test-token',
       TODOIST_WEBHOOK_SECRET: 'test-secret',
-      NTFY_WEBHOOK_URL: 'https://test.example.com',
       PORT: '9000'
     };
   });
@@ -23,7 +22,6 @@ describe('Config', () => {
 
     expect(config.todoistApiToken).toBe('test-token');
     expect(config.todoistWebhookSecret).toBe('test-secret');
-    expect(config.ntfyWebhookUrl).toBe('https://test.example.com');
     expect(config.port).toBe(9000);
   });
 

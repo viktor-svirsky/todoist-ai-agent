@@ -17,7 +17,6 @@ function parseIntSafe(value: string | undefined, defaultValue: string, name: str
 export function getConfig(): Config {
   const todoistApiToken = process.env.TODOIST_API_TOKEN;
   const todoistWebhookSecret = process.env.TODOIST_WEBHOOK_SECRET;
-  const ntfyWebhookUrl = process.env.NTFY_WEBHOOK_URL || 'https://ntfy.g-spot.workers.dev';
 
   if (!todoistApiToken) {
     throw new Error('TODOIST_API_TOKEN environment variable is required');
@@ -30,7 +29,6 @@ export function getConfig(): Config {
   return {
     todoistApiToken,
     todoistWebhookSecret,
-    ntfyWebhookUrl,
     port: parseIntSafe(process.env.PORT, '9000', 'PORT', 1, 65535),
     pollIntervalMs: parseIntSafe(process.env.POLL_INTERVAL_MS, '60000', 'POLL_INTERVAL_MS', 1000),
     claudeTimeoutMs: parseIntSafe(process.env.CLAUDE_TIMEOUT_MS, '120000', 'CLAUDE_TIMEOUT_MS', 1000),
