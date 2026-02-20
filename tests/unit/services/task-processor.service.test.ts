@@ -4,7 +4,8 @@ import {
   createMockClaudeService,
   createMockTodoistService,
   createMockNotificationService,
-  createMockConversationRepository
+  createMockConversationRepository,
+  createMockAIOrchestrator
 } from '../../helpers/mocks';
 import { mockTask, mockConversation } from '../../helpers/fixtures';
 
@@ -14,18 +15,21 @@ describe('TaskProcessorService', () => {
   let todoist: ReturnType<typeof createMockTodoistService>;
   let notifications: ReturnType<typeof createMockNotificationService>;
   let conversations: ReturnType<typeof createMockConversationRepository>;
+  let orchestrator: ReturnType<typeof createMockAIOrchestrator>;
 
   beforeEach(() => {
     claude = createMockClaudeService();
     todoist = createMockTodoistService();
     notifications = createMockNotificationService();
     conversations = createMockConversationRepository();
+    orchestrator = createMockAIOrchestrator();
 
     processor = new TaskProcessorService(
       claude,
       todoist,
       notifications,
-      conversations
+      conversations,
+      orchestrator
     );
   });
 
@@ -36,13 +40,12 @@ describe('TaskProcessorService', () => {
 
     vi.mocked(conversations.load).mockResolvedValue(conv);
     vi.mocked(conversations.addMessage).mockReturnValue(updatedConv);
-    vi.mocked(claude.buildPrompt).mockReturnValue('prompt');
-    vi.mocked(claude.executePrompt).mockResolvedValue('AI response');
+    vi.mocked(orchestrator.processTask).mockResolvedValue('AI response');
 
     await processor.processNewTask(task);
 
     expect(conversations.load).toHaveBeenCalledWith('123');
-    expect(claude.executePrompt).toHaveBeenCalledWith('prompt');
+    expect(orchestrator.processTask).toHaveBeenCalledWith(task, updatedConv.messages);
     expect(todoist.postComment).toHaveBeenCalledWith('123', 'AI response');
     expect(notifications.sendNotification).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -59,8 +62,7 @@ describe('TaskProcessorService', () => {
 
     vi.mocked(conversations.load).mockResolvedValue(conv);
     vi.mocked(conversations.addMessage).mockReturnValue(conv);
-    vi.mocked(claude.buildPrompt).mockReturnValue('prompt');
-    vi.mocked(claude.executePrompt).mockRejectedValue(new Error('Timeout'));
+    vi.mocked(orchestrator.processTask).mockRejectedValue(new Error('Timeout'));
 
     await processor.processNewTask(task);
 
@@ -83,13 +85,12 @@ describe('TaskProcessorService', () => {
     vi.mocked(todoist.getTask).mockResolvedValue(task);
     vi.mocked(conversations.load).mockResolvedValue(conv);
     vi.mocked(conversations.addMessage).mockReturnValue(conv);
-    vi.mocked(claude.buildPrompt).mockReturnValue('prompt');
-    vi.mocked(claude.executePrompt).mockResolvedValue('Response');
+    vi.mocked(orchestrator.processTask).mockResolvedValue('Response');
 
     await processor.processComment('123', 'User comment');
 
     expect(conversations.addMessage).toHaveBeenCalledWith(conv, 'user', 'User comment');
-    expect(claude.executePrompt).toHaveBeenCalled();
+    expect(orchestrator.processTask).toHaveBeenCalled();
     expect(todoist.postComment).toHaveBeenCalledWith('123', 'Response');
   });
 
