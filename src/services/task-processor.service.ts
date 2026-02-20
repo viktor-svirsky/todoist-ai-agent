@@ -2,7 +2,6 @@ import type { TodoistTask } from '../types/index.js';
 import type { ClaudeService } from './claude.service.js';
 import type { TodoistService } from './todoist.service.js';
 import type { ConversationRepository } from '../repositories/conversation.repository.js';
-import type { AIOrchestrator } from './ai-orchestrator.service.js';
 import { CONSTANTS } from '../utils/constants.js';
 import { logger } from '../utils/logger.js';
 
@@ -10,8 +9,7 @@ export class TaskProcessorService {
   constructor(
     private claude: ClaudeService,
     private todoist: TodoistService,
-    private conversations: ConversationRepository,
-    private orchestrator: AIOrchestrator
+    private conversations: ConversationRepository
   ) {}
 
   async processNewTask(task: TodoistTask): Promise<void> {
@@ -26,7 +24,8 @@ export class TaskProcessorService {
         conv = this.conversations.addMessage(conv, 'user', taskContent);
       }
 
-      const response = await this.orchestrator.processTask(task, conv.messages);
+      const prompt = this.claude.buildPrompt(task, conv.messages);
+      const response = await this.claude.executePrompt(prompt);
 
       conv = this.conversations.addMessage(conv, 'assistant', response);
       await this.conversations.save(task.id, conv);
@@ -52,7 +51,8 @@ export class TaskProcessorService {
       }
 
       conv = this.conversations.addMessage(conv, 'user', comment);
-      const response = await this.orchestrator.processTask(task, conv.messages);
+      const prompt = this.claude.buildPrompt(task, conv.messages);
+      const response = await this.claude.executePrompt(prompt);
 
       conv = this.conversations.addMessage(conv, 'assistant', response);
       await this.conversations.save(taskId, conv);
