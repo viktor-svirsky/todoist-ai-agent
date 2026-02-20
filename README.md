@@ -4,23 +4,20 @@ An autonomous AI agent that monitors Todoist tasks labeled "AI" and responds to 
 
 ## Features
 
-- **Dual-mode operation**: Webhook-based (real-time) + polling fallback (60s interval)
+- **Webhook-based operation**: Real-time event processing from Todoist
 - **AI-powered**: Uses Claude Sonnet 4.5 for intelligent task processing
 - **Automated responses**: Posts AI-generated responses as Todoist comments
 - **Conversation history**: Maintains context across multiple interactions per task
 - **LaunchAgent integration**: Runs as a background service on macOS
-- **Fault-tolerant**: Continues working even if webhooks fail to deliver
 
 ## Architecture
 
 ```
-Primary: Todoist → webhook POST → Express (port 9000) → async job queue → Agent Loop → Todoist comment
-                                                                              ↓
-                                                                    Claude (via CLI)
-                                                                              ↓
-                                                                       Todoist REST API
-
-Fallback: Polling (60s) → Fetch AI tasks → Check for new → Process → Post comment
+Todoist → webhook POST → Express (port 9000) → async job queue → Agent Loop → Todoist comment
+                                                                       ↓
+                                                             Claude (via CLI)
+                                                                       ↓
+                                                                Todoist REST API
 ```
 
 ## Setup
