@@ -14,13 +14,11 @@ An autonomous AI agent that monitors Todoist tasks labeled "AI" and responds to 
 ## Architecture
 
 ```
-Primary: Todoist → webhook POST → Express (port 9000) → async job queue → Agent Loop → Todoist comment
-                                                                              ↓
-                                                                    Claude (via CLI)
-                                                                              ↓
-                                                                       Todoist REST API
-
-Fallback: Polling (60s) → Fetch AI tasks → Check for new → Process → Post comment
+Todoist → webhook POST → Express (port 9000) → async job queue → Agent Loop → Todoist comment
+                                                                       ↓
+                                                             Claude (via CLI)
+                                                                       ↓
+                                                                Todoist REST API
 ```
 
 ## Setup
