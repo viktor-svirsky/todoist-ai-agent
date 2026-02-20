@@ -3,7 +3,6 @@ import type { ClaudeService } from '../../src/services/claude.service';
 import type { TodoistService } from '../../src/services/todoist.service';
 import type { NotificationService } from '../../src/services/notification.service';
 import type { ConversationRepository } from '../../src/repositories/conversation.repository';
-import type { AIOrchestrator } from '../../src/services/ai-orchestrator.service';
 
 export function createMockClaudeService(): ClaudeService {
   return {
@@ -34,10 +33,4 @@ export function createMockConversationRepository(): ConversationRepository {
     cleanup: vi.fn(),
     addMessage: vi.fn()
   } as unknown as ConversationRepository;
-}
-
-export function createMockAIOrchestrator(): AIOrchestrator {
-  return {
-    processTask: vi.fn()
-  } as unknown as AIOrchestrator;
 }
