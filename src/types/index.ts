@@ -62,3 +62,5 @@ import type { Request } from 'express';
 export interface WebhookRequest extends Request {
   rawBody?: string;
 }
+
+export * from './playwright.types.js';
