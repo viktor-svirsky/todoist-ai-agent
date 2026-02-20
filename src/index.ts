@@ -36,10 +36,6 @@ async function main() {
       logger.info('Server listening', { port: config.port });
     });
 
-    // Start poller
-    startPoller(pollingHandler, config.pollIntervalMs);
-    logger.info('Poller started', { intervalMs: config.pollIntervalMs });
-
     logger.info('Todoist AI Agent started successfully');
   } catch (error) {
     logger.error('Failed to start', { error });
