@@ -3,7 +3,6 @@ import { TaskProcessorService } from '../../../src/services/task-processor.servi
 import {
   createMockClaudeService,
   createMockTodoistService,
-  createMockNotificationService,
   createMockConversationRepository,
   createMockAIOrchestrator
 } from '../../helpers/mocks';
@@ -13,21 +12,18 @@ describe('TaskProcessorService', () => {
   let processor: TaskProcessorService;
   let claude: ReturnType<typeof createMockClaudeService>;
   let todoist: ReturnType<typeof createMockTodoistService>;
-  let notifications: ReturnType<typeof createMockNotificationService>;
   let conversations: ReturnType<typeof createMockConversationRepository>;
   let orchestrator: ReturnType<typeof createMockAIOrchestrator>;
 
   beforeEach(() => {
     claude = createMockClaudeService();
     todoist = createMockTodoistService();
-    notifications = createMockNotificationService();
     conversations = createMockConversationRepository();
     orchestrator = createMockAIOrchestrator();
 
     processor = new TaskProcessorService(
       claude,
       todoist,
-      notifications,
       conversations,
       orchestrator
     );
@@ -47,16 +43,10 @@ describe('TaskProcessorService', () => {
     expect(conversations.load).toHaveBeenCalledWith('123');
     expect(orchestrator.processTask).toHaveBeenCalledWith(task, updatedConv.messages);
     expect(todoist.postComment).toHaveBeenCalledWith('123', 'AI response');
-    expect(notifications.sendNotification).toHaveBeenCalledWith(
-      expect.objectContaining({
-        taskTitle: 'Test task',
-        status: 'success'
-      })
-    );
     expect(conversations.save).toHaveBeenCalled();
   });
 
-  it('should handle errors and send error notification', async () => {
+  it('should handle errors and post error comment', async () => {
     const task = mockTask();
     const conv = mockConversation();
 
@@ -69,12 +59,6 @@ describe('TaskProcessorService', () => {
     expect(todoist.postComment).toHaveBeenCalledWith(
       '123',
       expect.stringContaining('⚠️ AI agent error: Timeout')
-    );
-    expect(notifications.sendNotification).toHaveBeenCalledWith(
-      expect.objectContaining({
-        status: 'error',
-        message: 'Timeout'
-      })
     );
   });
 

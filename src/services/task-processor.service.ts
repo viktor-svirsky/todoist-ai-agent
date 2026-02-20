@@ -1,7 +1,6 @@
 import type { TodoistTask } from '../types/index.js';
 import type { ClaudeService } from './claude.service.js';
 import type { TodoistService } from './todoist.service.js';
-import type { NotificationService } from './notification.service.js';
 import type { ConversationRepository } from '../repositories/conversation.repository.js';
 import type { AIOrchestrator } from './ai-orchestrator.service.js';
 import { CONSTANTS } from '../utils/constants.js';
@@ -11,7 +10,6 @@ export class TaskProcessorService {
   constructor(
     private claude: ClaudeService,
     private todoist: TodoistService,
-    private notifications: NotificationService,
     private conversations: ConversationRepository,
     private orchestrator: AIOrchestrator
   ) {}
@@ -33,12 +31,6 @@ export class TaskProcessorService {
       conv = this.conversations.addMessage(conv, 'assistant', response);
       await this.conversations.save(task.id, conv);
       await this.todoist.postComment(task.id, response);
-
-      await this.notifications.sendNotification({
-        taskTitle: task.content,
-        status: 'success',
-        timestamp: new Date().toISOString()
-      });
 
       logger.info('Task processed successfully', { taskId: task.id });
     } catch (error) {
@@ -65,12 +57,6 @@ export class TaskProcessorService {
       conv = this.conversations.addMessage(conv, 'assistant', response);
       await this.conversations.save(taskId, conv);
       await this.todoist.postComment(taskId, response);
-
-      await this.notifications.sendNotification({
-        taskTitle: task.content,
-        status: 'success',
-        timestamp: new Date().toISOString()
-      });
 
       logger.info('Comment processed successfully', { taskId });
     } catch (error) {
@@ -114,17 +100,6 @@ export class TaskProcessorService {
       );
     } catch (e) {
       logger.error('Failed to post error comment', { taskId, error: e });
-    }
-
-    try {
-      await this.notifications.sendNotification({
-        taskTitle,
-        status: 'error',
-        message,
-        timestamp: new Date().toISOString()
-      });
-    } catch (notifyError) {
-      logger.error('Failed to send error notification', { taskId, error: notifyError });
     }
   }
 }
