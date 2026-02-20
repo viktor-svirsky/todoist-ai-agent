@@ -30,13 +30,6 @@ async function main() {
       conversationRepo
     );
 
-    const pollingHandler = new PollingHandler(
-      taskProcessor,
-      todoistService,
-      conversationRepo,
-      config.todoistApiToken
-    );
-
     // Start server
     const app = createServer(webhookHandler, config.todoistWebhookSecret, config.port);
     app.listen(config.port, '0.0.0.0', () => {
