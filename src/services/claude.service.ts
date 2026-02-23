@@ -64,9 +64,10 @@ export class ClaudeService {
         reject(new Error(`claude timed out after ${this.timeoutMs / 1000}s`));
       }, this.timeoutMs);
 
+      const baseArgs = ['--model', 'sonnet', '--dangerously-skip-permissions', '--no-session-persistence', '--permission-mode', 'bypassPermissions'];
       const args = options?.interactive
-        ? ['--dangerously-skip-permissions', '--no-session-persistence', '--permission-mode', 'bypassPermissions', '--output-format', 'text', '--max-turns', '5']
-        : ['--print', '--dangerously-skip-permissions', '--no-session-persistence', '--permission-mode', 'bypassPermissions'];
+        ? [...baseArgs, '--output-format', 'text', '--max-turns', '5']
+        : ['--print', ...baseArgs];
 
       proc = spawn('claude', args, {
         env: { ...process.env, HOME: process.env.HOME },
