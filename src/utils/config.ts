@@ -33,6 +33,5 @@ export function getConfig(): Config {
     pollIntervalMs: parseIntSafe(process.env.POLL_INTERVAL_MS, '60000', 'POLL_INTERVAL_MS', 1000),
     claudeTimeoutMs: parseIntSafe(process.env.CLAUDE_TIMEOUT_MS, '120000', 'CLAUDE_TIMEOUT_MS', 1000),
     maxMessages: parseIntSafe(process.env.MAX_MESSAGES, '20', 'MAX_MESSAGES', 1),
-    aiLabel: process.env.AI_LABEL || 'AI'
   };
 }
