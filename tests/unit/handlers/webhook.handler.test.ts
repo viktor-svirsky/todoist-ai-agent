@@ -21,117 +21,120 @@ describe('WebhookHandler', () => {
 
     todoist = createMockTodoistService();
     conversations = createMockConversationRepository();
-
     handler = new WebhookHandler(processor, todoist, conversations);
   });
 
-  it('should process item:added event with AI label', async () => {
-    vi.mocked(todoist.getTask).mockResolvedValue({
-      id: '123',
-      content: 'Test',
-      labels: ['AI'],
-      added_at: '2026-02-19T10:00:00Z',
-      is_deleted: false,
-      checked: false
+  describe('note:added', () => {
+    it('should process comment containing @ai', async () => {
+      await handler.handleWebhook({
+        event_name: 'note:added',
+        event_data: { item_id: '123', content: '@ai what is the weather?', posted_uid: 'user-1' }
+      });
+
+      expect(processor.processComment).toHaveBeenCalledWith('123', 'what is the weather?');
     });
 
-    await handler.handleWebhook({
-      event_name: 'item:added',
-      event_data: { id: '123', labels: ['AI'] }
+    it('should process comment with @ai in the middle', async () => {
+      await handler.handleWebhook({
+        event_name: 'note:added',
+        event_data: { item_id: '123', content: 'hey @ai can you help?', posted_uid: 'user-1' }
+      });
+
+      expect(processor.processComment).toHaveBeenCalledWith('123', 'hey  can you help?');
     });
 
-    expect(processor.processNewTask).toHaveBeenCalled();
+    it('should be case-insensitive for @AI', async () => {
+      await handler.handleWebhook({
+        event_name: 'note:added',
+        event_data: { item_id: '123', content: '@AI help me', posted_uid: 'user-1' }
+      });
+
+      expect(processor.processComment).toHaveBeenCalledWith('123', 'help me');
+    });
+
+    it('should ignore comment without @ai', async () => {
+      await handler.handleWebhook({
+        event_name: 'note:added',
+        event_data: { item_id: '123', content: 'just a regular comment', posted_uid: 'user-1' }
+      });
+
+      expect(processor.processComment).not.toHaveBeenCalled();
+    });
+
+    it('should ignore bot own comments', async () => {
+      await handler.handleWebhook({
+        event_name: 'note:added',
+        event_data: {
+          item_id: '123',
+          content: '🤖 **AI Agent**\n\nResponse',
+          posted_uid: 'user-1'
+        }
+      });
+
+      expect(processor.processComment).not.toHaveBeenCalled();
+    });
+
+    it('should ignore error prefix comments', async () => {
+      await handler.handleWebhook({
+        event_name: 'note:added',
+        event_data: {
+          item_id: '123',
+          content: '⚠️ AI agent error: Something went wrong',
+          posted_uid: 'user-1'
+        }
+      });
+
+      expect(processor.processComment).not.toHaveBeenCalled();
+    });
+
+    it('should ignore note:added with missing fields', async () => {
+      await handler.handleWebhook({
+        event_name: 'note:added',
+        event_data: {}
+      });
+
+      expect(processor.processComment).not.toHaveBeenCalled();
+    });
   });
 
-  it('should ignore item:added without AI label', async () => {
-    await handler.handleWebhook({
-      event_name: 'item:added',
-      event_data: { id: '123', labels: ['Other'] }
+  describe('item:completed', () => {
+    it('should handle item:completed for any task', async () => {
+      await handler.handleWebhook({
+        event_name: 'item:completed',
+        event_data: { id: '123' }
+      });
+
+      expect(processor.handleTaskCompletion).toHaveBeenCalledWith('123');
     });
 
-    expect(processor.processNewTask).not.toHaveBeenCalled();
+    it('should ignore item:completed with missing id', async () => {
+      await handler.handleWebhook({
+        event_name: 'item:completed',
+        event_data: {}
+      });
+
+      expect(processor.handleTaskCompletion).not.toHaveBeenCalled();
+    });
   });
 
-  it('should process note:added event', async () => {
-    await handler.handleWebhook({
-      event_name: 'note:added',
-      event_data: { item_id: '123', content: 'Comment', posted_uid: 'user-1' }
+  describe('unknown events', () => {
+    it('should silently ignore unknown event types', async () => {
+      await handler.handleWebhook({
+        event_name: 'item:added',
+        event_data: { id: '123', labels: ['AI'] }
+      });
+
+      expect(processor.processNewTask).not.toHaveBeenCalled();
+      expect(processor.processComment).not.toHaveBeenCalled();
     });
-
-    expect(processor.processComment).toHaveBeenCalledWith('123', 'Comment');
-  });
-
-  it('should ignore bot comments', async () => {
-    await handler.handleWebhook({
-      event_name: 'note:added',
-      event_data: {
-        item_id: '123',
-        content: '🤖 **AI Agent**\n\nResponse',
-        posted_uid: 'user-1'
-      }
-    });
-
-    expect(processor.processComment).not.toHaveBeenCalled();
-  });
-
-  it('should handle item:completed event', async () => {
-    await handler.handleWebhook({
-      event_name: 'item:completed',
-      event_data: { id: '123' }
-    });
-
-    expect(processor.handleTaskCompletion).toHaveBeenCalledWith('123');
-  });
-
-  it('should process item:updated event for new tasks with AI label', async () => {
-    vi.mocked(conversations.exists).mockResolvedValue(false);
-    vi.mocked(todoist.getTask).mockResolvedValue({
-      id: '123',
-      content: 'Test',
-      labels: ['AI'],
-      added_at: '2026-02-19T10:00:00Z',
-      is_deleted: false,
-      checked: false
-    });
-
-    await handler.handleWebhook({
-      event_name: 'item:updated',
-      event_data: { id: '123', labels: ['AI'] }
-    });
-
-    expect(processor.processNewTask).toHaveBeenCalled();
-  });
-
-  it('should ignore item:updated if conversation exists', async () => {
-    vi.mocked(conversations.exists).mockResolvedValue(true);
-
-    await handler.handleWebhook({
-      event_name: 'item:updated',
-      event_data: { id: '123', labels: ['AI'] }
-    });
-
-    expect(processor.processNewTask).not.toHaveBeenCalled();
   });
 
   it('should rethrow errors after logging', async () => {
-    vi.mocked(todoist.getTask).mockRejectedValue(new Error('API Error'));
+    vi.mocked(processor.handleTaskCompletion).mockRejectedValue(new Error('DB Error'));
 
     await expect(handler.handleWebhook({
-      event_name: 'item:added',
-      event_data: { id: '123', labels: ['AI'] }
-    })).rejects.toThrow('API Error');
-  });
-
-  it('should ignore error prefix comments', async () => {
-    await handler.handleWebhook({
-      event_name: 'note:added',
-      event_data: {
-        item_id: '123',
-        content: '⚠️ AI agent error: Something went wrong',
-        posted_uid: 'user-1'
-      }
-    });
-
-    expect(processor.processComment).not.toHaveBeenCalled();
+      event_name: 'item:completed',
+      event_data: { id: '123' }
+    })).rejects.toThrow('DB Error');
   });
 });
