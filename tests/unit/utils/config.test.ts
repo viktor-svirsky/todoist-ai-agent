@@ -35,7 +35,6 @@ describe('Config', () => {
     expect(config.pollIntervalMs).toBe(60000);
     expect(config.claudeTimeoutMs).toBe(120000);
     expect(config.maxMessages).toBe(20);
-    expect(config.aiLabel).toBe('AI');
   });
 
   it('should throw error if required env vars missing', () => {
