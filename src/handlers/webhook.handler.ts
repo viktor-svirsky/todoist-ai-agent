@@ -4,8 +4,6 @@ import type { ConversationRepository } from '../repositories/conversation.reposi
 import { CONSTANTS } from '../utils/constants.js';
 import { logger } from '../utils/logger.js';
 
-const AT_AI_PATTERN = /@ai/gi;
-
 export class WebhookHandler {
   constructor(
     private processor: TaskProcessorService,
@@ -28,12 +26,11 @@ export class WebhookHandler {
         if (content.startsWith(CONSTANTS.AI_INDICATOR)) return;
         if (content.startsWith(CONSTANTS.ERROR_PREFIX)) return;
 
-        // Only trigger on @ai mention
-        if (!AT_AI_PATTERN.test(content)) return;
+        // Only trigger on @ai mention (case-insensitive)
+        if (!/@ai/i.test(content)) return;
 
-        // Strip @ai from content before processing
-        AT_AI_PATTERN.lastIndex = 0;
-        const stripped = content.replace(AT_AI_PATTERN, '').trim();
+        // Strip @ai and normalise whitespace before processing
+        const stripped = content.replace(/@ai/gi, '').replace(/\s+/g, ' ').trim();
 
         await this.processor.processComment(event_data.item_id, stripped);
 
