@@ -16,6 +16,9 @@ export const CONSTANTS = {
   /** Prefix for error messages posted to Todoist */
   ERROR_PREFIX: '⚠️ AI agent error:',
 
+  /** Progress indicator posted immediately when a request is received */
+  PROGRESS_INDICATOR: '👀',
+
   /** Default polling interval in milliseconds (overridable via POLL_INTERVAL_MS env var) */
   POLL_INTERVAL_MS: 60_000,
 

@@ -32,9 +32,9 @@ export class TodoistService {
    * @param content - The comment content
    * @throws {Error} If the API request fails
    */
-  async postComment(taskId: string, content: string): Promise<void> {
+  async postComment(taskId: string, content: string): Promise<string> {
     logger.info('Posting comment to Todoist', { taskId });
-    await axios.post(
+    const response = await axios.post<{ id: string }>(
       `${this.baseUrl}/comments`,
       {
         task_id: taskId,
@@ -46,6 +46,24 @@ export class TodoistService {
           'Content-Type': 'application/json'
         }
       }
+    );
+    return response.data.id;
+  }
+
+  async postProgressComment(taskId: string): Promise<string> {
+    const response = await axios.post<{ id: string }>(
+      `${this.baseUrl}/comments`,
+      { task_id: taskId, content: CONSTANTS.PROGRESS_INDICATOR },
+      { headers: { ...this.headers(), 'Content-Type': 'application/json' } }
+    );
+    return response.data.id;
+  }
+
+  async updateComment(commentId: string, content: string): Promise<void> {
+    await axios.post(
+      `${this.baseUrl}/comments/${commentId}`,
+      { content: `${CONSTANTS.AI_INDICATOR}\n\n${content}` },
+      { headers: { ...this.headers(), 'Content-Type': 'application/json' } }
     );
   }
 

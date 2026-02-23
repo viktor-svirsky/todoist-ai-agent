@@ -40,6 +40,8 @@ export class TaskProcessorService {
   async processComment(taskId: string, comment: string): Promise<void> {
     logger.info('Processing comment', { taskId, commentLength: comment.length });
 
+    const progressCommentId = await this.todoist.postProgressComment(taskId);
+
     try {
       const task = await this.todoist.getTask(taskId);
       let conv = await this.conversations.load(taskId);
@@ -56,16 +58,19 @@ export class TaskProcessorService {
 
       conv = this.conversations.addMessage(conv, 'assistant', response);
       await this.conversations.save(taskId, conv);
-      await this.todoist.postComment(taskId, response);
+      await this.todoist.updateComment(progressCommentId, response);
 
       logger.info('Comment processed successfully', { taskId });
     } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      logger.error('Task processing failed', { taskId, error: message });
       try {
-        const task = await this.todoist.getTask(taskId);
-        await this.handleError(taskId, task.content, error);
-      } catch (fetchError) {
-        await this.handleError(taskId, 'Unknown task', error);
-        logger.error('Failed to fetch task in error handler', { taskId, error: fetchError });
+        await this.todoist.updateComment(
+          progressCommentId,
+          `${CONSTANTS.ERROR_PREFIX} ${message}. Retry by adding a comment.`
+        );
+      } catch (e) {
+        logger.error('Failed to update progress comment with error', { taskId, error: e });
       }
     }
   }
