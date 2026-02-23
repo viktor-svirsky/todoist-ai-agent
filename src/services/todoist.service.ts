@@ -26,12 +26,6 @@ export class TodoistService {
     return response.data;
   }
 
-  /**
-   * Posts a comment to a Todoist task with AI indicator prefix.
-   * @param taskId - The task ID to comment on
-   * @param content - The comment content
-   * @throws {Error} If the API request fails
-   */
   async getComments(taskId: string): Promise<TodoistComment[]> {
     logger.info('Fetching comments from Todoist', { taskId });
     const response = await axios.get<{ results: TodoistComment[] }>(
@@ -76,11 +70,13 @@ export class TodoistService {
     );
   }
 
-  /**
-   * Returns authorization headers for Todoist API requests.
-   */
-  getApiToken(): string {
-    return this.apiToken;
+  async downloadFile(url: string): Promise<Buffer> {
+    const response = await axios.get(url, {
+      responseType: 'arraybuffer',
+      maxRedirects: 5,
+      headers: this.headers()
+    });
+    return response.data;
   }
 
   private headers(): Record<string, string> {

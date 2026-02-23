@@ -43,7 +43,7 @@ export class ClaudeService {
    * @returns Claude's response text
    * @throws Error if Claude fails or times out
    */
-  async executePrompt(prompt: string): Promise<string> {
+  async executePrompt(prompt: string, options?: { interactive?: boolean }): Promise<string> {
     return new Promise((resolve, reject) => {
       let proc: ReturnType<typeof spawn>;
       let timedOut = false;
@@ -64,8 +64,7 @@ export class ClaudeService {
         reject(new Error(`claude timed out after ${this.timeoutMs / 1000}s`));
       }, this.timeoutMs);
 
-      const hasImages = prompt.includes('use your Read tool to view each file');
-      const args = hasImages
+      const args = options?.interactive
         ? ['--dangerously-skip-permissions', '--no-session-persistence', '--permission-mode', 'bypassPermissions', '--output-format', 'text', '--max-turns', '5']
         : ['--print', '--dangerously-skip-permissions', '--no-session-persistence', '--permission-mode', 'bypassPermissions'];
 

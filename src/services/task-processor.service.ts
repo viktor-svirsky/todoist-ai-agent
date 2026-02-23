@@ -1,7 +1,6 @@
-import { mkdtemp, rm, writeFile, mkdir } from 'fs/promises';
+import { rm, writeFile, mkdir } from 'fs/promises';
 import { join } from 'path';
 import { tmpdir } from 'os';
-import axios from 'axios';
 import type { TodoistTask, TodoistComment } from '../types/index.js';
 import type { ClaudeService } from './claude.service.js';
 import type { TodoistService } from './todoist.service.js';
@@ -60,11 +59,12 @@ export class TaskProcessorService {
       conv = this.conversations.addMessage(conv, 'user', comment);
 
       // Download image attachments from previous comments
-      const imagePaths = await this.downloadImageAttachments(taskId);
-      tempDir = imagePaths.length > 0 ? join(tmpdir(), `todoist-agent-${taskId}`) : undefined;
+      const imageResult = await this.downloadImageAttachments(taskId);
+      tempDir = imageResult.tempDir;
 
-      const prompt = this.claude.buildPrompt(task, conv.messages, imagePaths.length > 0 ? imagePaths : undefined);
-      const response = await this.claude.executePrompt(prompt);
+      const hasImages = imageResult.paths.length > 0;
+      const prompt = this.claude.buildPrompt(task, conv.messages, hasImages ? imageResult.paths : undefined);
+      const response = await this.claude.executePrompt(prompt, { interactive: hasImages });
 
       conv = this.conversations.addMessage(conv, 'assistant', response);
       await this.conversations.save(taskId, conv);
@@ -94,14 +94,14 @@ export class TaskProcessorService {
     }
   }
 
-  private async downloadImageAttachments(taskId: string): Promise<string[]> {
+  private async downloadImageAttachments(taskId: string): Promise<{ paths: string[]; tempDir?: string }> {
     try {
       const comments = await this.todoist.getComments(taskId);
       const imageComments = comments.filter(
         (c: TodoistComment) => c.file_attachment && c.file_attachment.resource_type === 'image'
       );
 
-      if (imageComments.length === 0) return [];
+      if (imageComments.length === 0) return { paths: [] };
 
       const tempDir = join(tmpdir(), `todoist-agent-${taskId}`);
       await mkdir(tempDir, { recursive: true });
@@ -111,12 +111,8 @@ export class TaskProcessorService {
         const att = comment.file_attachment!;
         const filePath = join(tempDir, att.file_name);
         try {
-          const response = await axios.get(att.file_url, {
-            responseType: 'arraybuffer',
-            maxRedirects: 5,
-            headers: { Authorization: `Bearer ${this.todoist.getApiToken()}` }
-          });
-          await writeFile(filePath, response.data);
+          const data = await this.todoist.downloadFile(att.file_url);
+          await writeFile(filePath, data);
           paths.push(filePath);
           logger.info('Downloaded image attachment', { taskId, fileName: att.file_name });
         } catch (e) {
@@ -124,10 +120,10 @@ export class TaskProcessorService {
         }
       }
 
-      return paths;
+      return { paths, tempDir: paths.length > 0 ? tempDir : undefined };
     } catch (error) {
       logger.error('Failed to fetch comments for images', { taskId, error });
-      return [];
+      return { paths: [] };
     }
   }
 
@@ -150,7 +146,7 @@ export class TaskProcessorService {
     }
   }
 
-  private async handleError(taskId: string, taskTitle: string, error: unknown): Promise<void> {
+  private async handleError(taskId: string, _taskTitle: string, error: unknown): Promise<void> {
     const message = error instanceof Error ? error.message : 'Unknown error';
     logger.error('Task processing failed', { taskId, error: message });
 
