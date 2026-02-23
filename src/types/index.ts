@@ -14,6 +14,12 @@ export interface TodoistComment {
   content: string;
   posted_at: string;
   posted_uid: string;
+  file_attachment?: {
+    file_url: string;
+    file_type: string;
+    file_name: string;
+    resource_type: string;
+  };
 }
 
 export interface Message {

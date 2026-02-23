@@ -14,9 +14,13 @@ export class ClaudeService {
    * @param messages - Previous conversation messages
    * @returns Formatted prompt string
    */
-  buildPrompt(task: TodoistTask, messages: Message[]): string {
+  buildPrompt(task: TodoistTask, messages: Message[], imagePaths?: string[]): string {
     const history = messages.length > 0
       ? messages.map(m => `${m.role.toUpperCase()}: ${m.content}`).join('\n\n')
+      : '';
+
+    const imageSection = imagePaths && imagePaths.length > 0
+      ? `\nImage attachments from task comments — IMPORTANT: use your Read tool to view each file:\n${imagePaths.map(p => `- ${p}`).join('\n')}`
       : '';
 
     return [
@@ -24,6 +28,7 @@ export class ClaudeService {
       `You help solve tasks by reasoning, browsing the web, and running shell commands on this Mac.`,
       `Current task: "${task.content}"`,
       task.description ? `Task description: "${task.description}"` : '',
+      imageSection,
       '',
       history ? `Conversation so far:\n${history}` : '',
       '',
@@ -59,16 +64,18 @@ export class ClaudeService {
         reject(new Error(`claude timed out after ${this.timeoutMs / 1000}s`));
       }, this.timeoutMs);
 
-      proc = spawn('claude', [
-        '--print',
-        '--dangerously-skip-permissions',
-        '--no-session-persistence',
-        '--permission-mode', 'bypassPermissions',
-        prompt
-      ], {
+      const hasImages = prompt.includes('use your Read tool to view each file');
+      const args = hasImages
+        ? ['--dangerously-skip-permissions', '--no-session-persistence', '--permission-mode', 'bypassPermissions', '--output-format', 'text', '--max-turns', '5']
+        : ['--print', '--dangerously-skip-permissions', '--no-session-persistence', '--permission-mode', 'bypassPermissions'];
+
+      proc = spawn('claude', args, {
         env: { ...process.env, HOME: process.env.HOME },
-        stdio: ['ignore', 'pipe', 'pipe']
+        stdio: ['pipe', 'pipe', 'pipe']
       });
+
+      proc.stdin?.write(prompt);
+      proc.stdin?.end();
 
       let stdout = '';
       let stderr = '';
