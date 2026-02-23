@@ -25,8 +25,6 @@ export const CONSTANTS = {
   /** Default maximum conversation messages (overridable via MAX_MESSAGES env var) */
   MAX_MESSAGES: 20,
 
-  /** @deprecated Temporary placeholder — will be removed in Task 4 when webhook.handler.ts is replaced */
-  AI_LABEL: 'AI',
 } as const;
 
 /** Type representing the constants object */
