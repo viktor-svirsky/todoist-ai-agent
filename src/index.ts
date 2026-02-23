@@ -6,7 +6,6 @@ import { ClaudeService } from './services/claude.service.js';
 import { TodoistService } from './services/todoist.service.js';
 import { ConversationRepository } from './repositories/conversation.repository.js';
 import { getConfig } from './utils/config.js';
-import { CONSTANTS } from './utils/constants.js';
 import { logger } from './utils/logger.js';
 
 async function main() {
@@ -25,11 +24,7 @@ async function main() {
     );
 
     // Initialize handlers
-    const webhookHandler = new WebhookHandler(
-      taskProcessor,
-      todoistService,
-      conversationRepo
-    );
+    const webhookHandler = new WebhookHandler(taskProcessor);
 
     // Start server
     const app = createServer(webhookHandler, config.todoistWebhookSecret, config.port);

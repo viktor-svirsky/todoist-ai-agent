@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import type { TodoistTask, Conversation, Message, NotificationPayload, WebhookEvent } from '../../../src/types';
+import type { TodoistTask, Conversation, Message, WebhookEvent } from '../../../src/types';
 
 describe('Types', () => {
   it('should have TodoistTask type', () => {
@@ -23,14 +23,5 @@ describe('Types', () => {
       lastActivityAt: '2026-02-19T10:00:00Z'
     };
     expect(conv.messages).toHaveLength(0);
-  });
-
-  it('should have NotificationPayload type', () => {
-    const payload: NotificationPayload = {
-      taskTitle: 'Test',
-      status: 'success',
-      timestamp: '2026-02-19T10:00:00Z'
-    };
-    expect(payload.status).toBe('success');
   });
 });

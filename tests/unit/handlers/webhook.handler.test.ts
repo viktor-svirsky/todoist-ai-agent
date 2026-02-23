@@ -1,16 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { WebhookHandler } from '../../../src/handlers/webhook.handler';
-import {
-  createMockTodoistService,
-  createMockConversationRepository
-} from '../../helpers/mocks';
 import type { TaskProcessorService } from '../../../src/services/task-processor.service';
 
 describe('WebhookHandler', () => {
   let handler: WebhookHandler;
   let processor: TaskProcessorService;
-  let todoist: ReturnType<typeof createMockTodoistService>;
-  let conversations: ReturnType<typeof createMockConversationRepository>;
 
   beforeEach(() => {
     processor = {
@@ -19,9 +13,7 @@ describe('WebhookHandler', () => {
       handleTaskCompletion: vi.fn()
     } as unknown as TaskProcessorService;
 
-    todoist = createMockTodoistService();
-    conversations = createMockConversationRepository();
-    handler = new WebhookHandler(processor, todoist, conversations);
+    handler = new WebhookHandler(processor);
   });
 
   describe('note:added', () => {
