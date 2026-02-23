@@ -66,4 +66,11 @@ describe('Config', () => {
 
     expect(() => getConfig()).toThrow('POLL_INTERVAL_MS must be at least 1000');
   });
+
+  it('should not include aiLabel', () => {
+    process.env.TODOIST_API_TOKEN = 'tok';
+    process.env.TODOIST_WEBHOOK_SECRET = 'sec';
+    const config = getConfig();
+    expect((config as any).aiLabel).toBeUndefined();
+  });
 });
