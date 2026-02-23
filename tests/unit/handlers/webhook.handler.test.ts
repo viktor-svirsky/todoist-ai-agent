@@ -40,7 +40,7 @@ describe('WebhookHandler', () => {
         event_data: { item_id: '123', content: 'hey @ai can you help?', posted_uid: 'user-1' }
       });
 
-      expect(processor.processComment).toHaveBeenCalledWith('123', 'hey  can you help?');
+      expect(processor.processComment).toHaveBeenCalledWith('123', 'hey can you help?');
     });
 
     it('should be case-insensitive for @AI', async () => {
@@ -94,6 +94,17 @@ describe('WebhookHandler', () => {
       });
 
       expect(processor.processComment).not.toHaveBeenCalled();
+    });
+
+    it('should correctly process two consecutive @ai comments', async () => {
+      const event = {
+        event_name: 'note:added' as const,
+        event_data: { item_id: '123', content: '@ai first question', posted_uid: 'user-1' }
+      };
+      await handler.handleWebhook(event);
+      await handler.handleWebhook(event);
+      expect(processor.processComment).toHaveBeenCalledTimes(2);
+      expect(processor.processComment).toHaveBeenNthCalledWith(2, '123', 'first question');
     });
   });
 
