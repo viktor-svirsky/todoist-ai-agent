@@ -29,7 +29,8 @@ export interface Conversation {
 }
 
 export interface WebhookEvent {
-  event_name: 'item:completed' | 'note:added' | string;
+  // Known values: 'item:completed', 'note:added', 'item:added', 'item:updated', etc.
+  event_name: string;
   event_data: {
     id?: string;
     item_id?: string;
