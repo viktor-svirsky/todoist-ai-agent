@@ -51,8 +51,6 @@ export class WebhookHandler {
         if (content.startsWith(CONSTANTS.AI_INDICATOR)) return;
         if (content.startsWith(CONSTANTS.ERROR_PREFIX)) return;
 
-        if (!await this.todoist.hasAiLabel(taskId)) return;
-
         await this.processor.processComment(taskId, content);
 
       } else if (event_name === 'item:completed') {
@@ -61,8 +59,6 @@ export class WebhookHandler {
           return;
         }
         const taskId = event_data.id;
-        if (!await this.todoist.hasAiLabel(taskId)) return;
-
         await this.processor.handleTaskCompletion(taskId);
       }
     } catch (error) {

@@ -53,8 +53,6 @@ describe('WebhookHandler', () => {
   });
 
   it('should process note:added event', async () => {
-    vi.mocked(todoist.hasAiLabel).mockResolvedValue(true);
-
     await handler.handleWebhook({
       event_name: 'note:added',
       event_data: { item_id: '123', content: 'Comment', posted_uid: 'user-1' }
@@ -64,8 +62,6 @@ describe('WebhookHandler', () => {
   });
 
   it('should ignore bot comments', async () => {
-    vi.mocked(todoist.hasAiLabel).mockResolvedValue(true);
-
     await handler.handleWebhook({
       event_name: 'note:added',
       event_data: {
@@ -79,8 +75,6 @@ describe('WebhookHandler', () => {
   });
 
   it('should handle item:completed event', async () => {
-    vi.mocked(todoist.hasAiLabel).mockResolvedValue(true);
-
     await handler.handleWebhook({
       event_name: 'item:completed',
       event_data: { id: '123' }
@@ -128,20 +122,7 @@ describe('WebhookHandler', () => {
     })).rejects.toThrow('API Error');
   });
 
-  it('should ignore note:added for tasks without AI label', async () => {
-    vi.mocked(todoist.hasAiLabel).mockResolvedValue(false);
-
-    await handler.handleWebhook({
-      event_name: 'note:added',
-      event_data: { item_id: '123', content: 'Comment', posted_uid: 'user-1' }
-    });
-
-    expect(processor.processComment).not.toHaveBeenCalled();
-  });
-
   it('should ignore error prefix comments', async () => {
-    vi.mocked(todoist.hasAiLabel).mockResolvedValue(true);
-
     await handler.handleWebhook({
       event_name: 'note:added',
       event_data: {

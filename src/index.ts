@@ -16,7 +16,7 @@ async function main() {
     // Initialize services
     const conversationRepo = new ConversationRepository('./data');
     const claudeService = new ClaudeService(config.claudeTimeoutMs);
-    const todoistService = new TodoistService(config.todoistApiToken, CONSTANTS.AI_LABEL);
+    const todoistService = new TodoistService(config.todoistApiToken);
 
     const taskProcessor = new TaskProcessorService(
       claudeService,
