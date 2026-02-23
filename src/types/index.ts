@@ -29,7 +29,7 @@ export interface Conversation {
 }
 
 export interface WebhookEvent {
-  event_name: 'item:added' | 'item:updated' | 'item:completed' | 'note:added';
+  event_name: 'item:completed' | 'note:added' | string;
   event_data: {
     id?: string;
     item_id?: string;
@@ -46,7 +46,6 @@ export interface Config {
   pollIntervalMs: number;
   claudeTimeoutMs: number;
   maxMessages: number;
-  aiLabel: string;
 }
 
 import type { Request } from 'express';
