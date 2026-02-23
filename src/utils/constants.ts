@@ -8,16 +8,16 @@
  */
 export const CONSTANTS = {
   /** Todoist REST API base URL */
-  TODOIST_BASE_URL: 'https://api.todoist.com/api/v1',
+  TODOIST_BASE_URL: "https://api.todoist.com/api/v1",
 
   /** Prefix added to all AI agent comments for identification */
-  AI_INDICATOR: '🤖 **AI Agent**',
+  AI_INDICATOR: "🤖 **AI Agent**",
 
   /** Prefix for error messages posted to Todoist */
-  ERROR_PREFIX: '⚠️ AI agent error:',
+  ERROR_PREFIX: "⚠️ AI agent error:",
 
   /** Progress indicator posted immediately when a request is received */
-  PROGRESS_INDICATOR: '🤖 **AI Agent**\n\n_Reviewing..._',
+  PROGRESS_INDICATOR: "🤖 **AI Agent** _Reviewing..._",
 
   /** Default polling interval in milliseconds (overridable via POLL_INTERVAL_MS env var) */
   POLL_INTERVAL_MS: 60_000,
@@ -27,7 +27,6 @@ export const CONSTANTS = {
 
   /** Default maximum conversation messages (overridable via MAX_MESSAGES env var) */
   MAX_MESSAGES: 20,
-
 } as const;
 
 /** Type representing the constants object */

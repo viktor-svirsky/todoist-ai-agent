@@ -1,4 +1,8 @@
-import type { TodoistTask } from '../types/index.js';
+import { mkdtemp, rm, writeFile, mkdir } from 'fs/promises';
+import { join } from 'path';
+import { tmpdir } from 'os';
+import axios from 'axios';
+import type { TodoistTask, TodoistComment } from '../types/index.js';
 import type { ClaudeService } from './claude.service.js';
 import type { TodoistService } from './todoist.service.js';
 import type { ConversationRepository } from '../repositories/conversation.repository.js';
@@ -41,6 +45,7 @@ export class TaskProcessorService {
     logger.info('Processing comment', { taskId, commentLength: comment.length });
 
     const progressCommentId = await this.todoist.postProgressComment(taskId);
+    let tempDir: string | undefined;
 
     try {
       const task = await this.todoist.getTask(taskId);
@@ -53,7 +58,12 @@ export class TaskProcessorService {
       }
 
       conv = this.conversations.addMessage(conv, 'user', comment);
-      const prompt = this.claude.buildPrompt(task, conv.messages);
+
+      // Download image attachments from previous comments
+      const imagePaths = await this.downloadImageAttachments(taskId);
+      tempDir = imagePaths.length > 0 ? join(tmpdir(), `todoist-agent-${taskId}`) : undefined;
+
+      const prompt = this.claude.buildPrompt(task, conv.messages, imagePaths.length > 0 ? imagePaths : undefined);
       const response = await this.claude.executePrompt(prompt);
 
       conv = this.conversations.addMessage(conv, 'assistant', response);
@@ -72,6 +82,52 @@ export class TaskProcessorService {
       } catch (e) {
         logger.error('Failed to update progress comment with error', { taskId, error: e });
       }
+    } finally {
+      if (tempDir) {
+        try {
+          await rm(tempDir, { recursive: true, force: true });
+          logger.info('Cleaned up temp image directory', { tempDir });
+        } catch (e) {
+          logger.error('Failed to cleanup temp directory', { tempDir, error: e });
+        }
+      }
+    }
+  }
+
+  private async downloadImageAttachments(taskId: string): Promise<string[]> {
+    try {
+      const comments = await this.todoist.getComments(taskId);
+      const imageComments = comments.filter(
+        (c: TodoistComment) => c.file_attachment && c.file_attachment.resource_type === 'image'
+      );
+
+      if (imageComments.length === 0) return [];
+
+      const tempDir = join(tmpdir(), `todoist-agent-${taskId}`);
+      await mkdir(tempDir, { recursive: true });
+
+      const paths: string[] = [];
+      for (const comment of imageComments) {
+        const att = comment.file_attachment!;
+        const filePath = join(tempDir, att.file_name);
+        try {
+          const response = await axios.get(att.file_url, {
+            responseType: 'arraybuffer',
+            maxRedirects: 5,
+            headers: { Authorization: `Bearer ${this.todoist.getApiToken()}` }
+          });
+          await writeFile(filePath, response.data);
+          paths.push(filePath);
+          logger.info('Downloaded image attachment', { taskId, fileName: att.file_name });
+        } catch (e) {
+          logger.error('Failed to download image', { taskId, fileName: att.file_name, error: e });
+        }
+      }
+
+      return paths;
+    } catch (error) {
+      logger.error('Failed to fetch comments for images', { taskId, error });
+      return [];
     }
   }
 

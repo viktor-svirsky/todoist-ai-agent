@@ -1,5 +1,5 @@
 import axios from 'axios';
-import type { TodoistTask } from '../types/index.js';
+import type { TodoistTask, TodoistComment } from '../types/index.js';
 import { CONSTANTS } from '../utils/constants.js';
 import { logger } from '../utils/logger.js';
 
@@ -32,6 +32,15 @@ export class TodoistService {
    * @param content - The comment content
    * @throws {Error} If the API request fails
    */
+  async getComments(taskId: string): Promise<TodoistComment[]> {
+    logger.info('Fetching comments from Todoist', { taskId });
+    const response = await axios.get<{ results: TodoistComment[] }>(
+      `${this.baseUrl}/comments`,
+      { params: { task_id: taskId }, headers: this.headers() }
+    );
+    return response.data.results;
+  }
+
   async postComment(taskId: string, content: string): Promise<string> {
     logger.info('Posting comment to Todoist', { taskId });
     const response = await axios.post<{ id: string }>(
@@ -70,6 +79,10 @@ export class TodoistService {
   /**
    * Returns authorization headers for Todoist API requests.
    */
+  getApiToken(): string {
+    return this.apiToken;
+  }
+
   private headers(): Record<string, string> {
     return {
       Authorization: `Bearer ${this.apiToken}`
