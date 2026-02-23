@@ -66,6 +66,8 @@ describe('TaskProcessorService', () => {
     const conv = mockConversation({ messages: [{ role: 'user', content: 'Previous' }] });
 
     vi.mocked(todoist.getTask).mockResolvedValue(task);
+    vi.mocked(todoist.postProgressComment).mockResolvedValue('progress-id');
+    vi.mocked(todoist.getComments).mockResolvedValue([]);
     vi.mocked(conversations.load).mockResolvedValue(conv);
     vi.mocked(conversations.addMessage).mockReturnValue(conv);
     vi.mocked(claude.buildPrompt).mockReturnValue('Built prompt');
@@ -75,8 +77,8 @@ describe('TaskProcessorService', () => {
 
     expect(conversations.addMessage).toHaveBeenCalledWith(conv, 'user', 'User comment');
     expect(claude.buildPrompt).toHaveBeenCalled();
-    expect(claude.executePrompt).toHaveBeenCalledWith('Built prompt');
-    expect(todoist.postComment).toHaveBeenCalledWith('123', 'Response');
+    expect(claude.executePrompt).toHaveBeenCalledWith('Built prompt', { interactive: false });
+    expect(todoist.updateComment).toHaveBeenCalledWith('progress-id', 'Response');
   });
 
   it('should handle task completion', async () => {
