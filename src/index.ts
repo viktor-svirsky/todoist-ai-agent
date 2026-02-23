@@ -6,6 +6,7 @@ import { ClaudeService } from './services/claude.service.js';
 import { TodoistService } from './services/todoist.service.js';
 import { ConversationRepository } from './repositories/conversation.repository.js';
 import { getConfig } from './utils/config.js';
+import { CONSTANTS } from './utils/constants.js';
 import { logger } from './utils/logger.js';
 
 async function main() {
@@ -15,7 +16,7 @@ async function main() {
     // Initialize services
     const conversationRepo = new ConversationRepository('./data');
     const claudeService = new ClaudeService(config.claudeTimeoutMs);
-    const todoistService = new TodoistService(config.todoistApiToken, process.env.AI_LABEL || 'AI');
+    const todoistService = new TodoistService(config.todoistApiToken, CONSTANTS.AI_LABEL);
 
     const taskProcessor = new TaskProcessorService(
       claudeService,
