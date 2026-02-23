@@ -34,7 +34,7 @@ describe('Server Integration', () => {
     );
 
     const handler = new WebhookHandler(processor);
-    app = createServer(handler, 'test-secret', 9000);
+    app = createServer(handler, 'test-secret');
   });
 
   afterEach(async () => {

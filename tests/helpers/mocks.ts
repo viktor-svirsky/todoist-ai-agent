@@ -13,7 +13,11 @@ export function createMockClaudeService(): ClaudeService {
 export function createMockTodoistService(): TodoistService {
   return {
     getTask: vi.fn(),
-    postComment: vi.fn()
+    getComments: vi.fn().mockResolvedValue([]),
+    postComment: vi.fn().mockResolvedValue('comment-id'),
+    postProgressComment: vi.fn().mockResolvedValue('progress-id'),
+    updateComment: vi.fn().mockResolvedValue(undefined),
+    downloadFile: vi.fn()
   } as unknown as TodoistService;
 }
 

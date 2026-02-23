@@ -6,8 +6,7 @@ import type { WebhookRequest, WebhookEvent } from './types/index.js';
 
 export function createServer(
   handler: WebhookHandler,
-  webhookSecret: string,
-  _port: number
+  webhookSecret: string
 ) {
   const app = express();
 

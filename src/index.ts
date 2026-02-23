@@ -27,7 +27,7 @@ async function main() {
     const webhookHandler = new WebhookHandler(taskProcessor);
 
     // Start server
-    const app = createServer(webhookHandler, config.todoistWebhookSecret, config.port);
+    const app = createServer(webhookHandler, config.todoistWebhookSecret);
     app.listen(config.port, '0.0.0.0', () => {
       logger.info('Server listening', { port: config.port });
     });
