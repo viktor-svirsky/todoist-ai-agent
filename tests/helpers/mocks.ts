@@ -1,7 +1,6 @@
 import { vi } from 'vitest';
 import type { ClaudeService } from '../../src/services/claude.service';
 import type { TodoistService } from '../../src/services/todoist.service';
-import type { NotificationService } from '../../src/services/notification.service';
 import type { ConversationRepository } from '../../src/repositories/conversation.repository';
 
 export function createMockClaudeService(): ClaudeService {
@@ -16,12 +15,6 @@ export function createMockTodoistService(): TodoistService {
     getTask: vi.fn(),
     postComment: vi.fn()
   } as unknown as TodoistService;
-}
-
-export function createMockNotificationService(): NotificationService {
-  return {
-    sendNotification: vi.fn()
-  } as unknown as NotificationService;
 }
 
 export function createMockConversationRepository(): ConversationRepository {

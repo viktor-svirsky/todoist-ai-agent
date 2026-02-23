@@ -1,15 +1,10 @@
 import type { WebhookEvent } from '../types/index.js';
 import type { TaskProcessorService } from '../services/task-processor.service.js';
-import type { ConversationRepository } from '../repositories/conversation.repository.js';
 import { CONSTANTS } from '../utils/constants.js';
 import { logger } from '../utils/logger.js';
 
 export class WebhookHandler {
-  constructor(
-    private processor: TaskProcessorService,
-    private _todoist: unknown,
-    private _conversations: ConversationRepository
-  ) {}
+  constructor(private processor: TaskProcessorService) {}
 
   async handleWebhook(event: WebhookEvent): Promise<void> {
     const { event_name, event_data } = event;

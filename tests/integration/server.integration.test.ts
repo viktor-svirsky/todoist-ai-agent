@@ -10,8 +10,7 @@ import { TaskProcessorService } from '../../src/services/task-processor.service'
 import { TodoistService } from '../../src/services/todoist.service';
 import { ConversationRepository } from '../../src/repositories/conversation.repository';
 import {
-  createMockClaudeService,
-  createMockNotificationService
+  createMockClaudeService
 } from '../helpers/mocks';
 
 describe('Server Integration', () => {
@@ -24,19 +23,17 @@ describe('Server Integration', () => {
 
     const conversationRepo = new ConversationRepository(dataFile);
     const claude = createMockClaudeService();
-    const notifications = createMockNotificationService();
-    const todoist = new TodoistService('test-token', 'AI');
+    const todoist = new TodoistService('test-token');
 
     vi.mocked(claude.executePrompt).mockResolvedValue('Test response');
 
     const processor = new TaskProcessorService(
       claude,
       todoist,
-      notifications,
       conversationRepo
     );
 
-    const handler = new WebhookHandler(processor, todoist, conversationRepo);
+    const handler = new WebhookHandler(processor);
     app = createServer(handler, 'test-secret', 9000);
   });
 
