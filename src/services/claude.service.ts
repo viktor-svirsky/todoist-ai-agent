@@ -70,7 +70,7 @@ export class ClaudeService {
         : ['--print', ...baseArgs];
 
       proc = spawn('claude', args, {
-        env: { ...process.env, HOME: process.env.HOME },
+        env: { ...process.env, HOME: process.env.HOME, CLAUDE_CALLER: 'todoist-ai-agent' },
         stdio: ['pipe', 'pipe', 'pipe']
       });
 
