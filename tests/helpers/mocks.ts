@@ -14,8 +14,7 @@ export function createMockClaudeService(): ClaudeService {
 export function createMockTodoistService(): TodoistService {
   return {
     getTask: vi.fn(),
-    postComment: vi.fn(),
-    hasAiLabel: vi.fn()
+    postComment: vi.fn()
   } as unknown as TodoistService;
 }
 

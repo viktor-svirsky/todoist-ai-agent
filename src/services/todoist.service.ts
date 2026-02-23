@@ -9,10 +9,7 @@ import { logger } from '../utils/logger.js';
 export class TodoistService {
   private readonly baseUrl = CONSTANTS.TODOIST_BASE_URL;
 
-  constructor(
-    private readonly apiToken: string,
-    private readonly aiLabel: string
-  ) {}
+  constructor(private readonly apiToken: string) {}
 
   /**
    * Fetches a task by ID from Todoist API.
@@ -50,22 +47,6 @@ export class TodoistService {
         }
       }
     );
-  }
-
-  /**
-   * Checks if a task has the AI label.
-   * Returns false if the task cannot be fetched (404, network errors, etc.).
-   * @param taskId - The task ID to check
-   * @returns True if task has AI label, false otherwise or on error
-   */
-  async hasAiLabel(taskId: string): Promise<boolean> {
-    try {
-      const task = await this.getTask(taskId);
-      return (task.labels ?? []).includes(this.aiLabel);
-    } catch (error) {
-      logger.error('Failed to check AI label', { taskId, error });
-      return false;
-    }
   }
 
   /**

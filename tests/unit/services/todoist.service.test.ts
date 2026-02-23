@@ -10,7 +10,7 @@ describe('TodoistService', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    service = new TodoistService('test-token', 'AI');
+    service = new TodoistService('test-token');
   });
 
   it('should fetch task by ID', async () => {
@@ -38,24 +38,6 @@ describe('TodoistService', () => {
     );
   });
 
-  it('should return true if task has AI label', async () => {
-    const task = mockTask({ labels: ['AI', 'urgent'] });
-    vi.mocked(axios.get).mockResolvedValue({ data: task });
-
-    const result = await service.hasAiLabel('123');
-
-    expect(result).toBe(true);
-  });
-
-  it('should return false if task does not have AI label', async () => {
-    const task = mockTask({ labels: ['urgent', 'work'] });
-    vi.mocked(axios.get).mockResolvedValue({ data: task });
-
-    const result = await service.hasAiLabel('123');
-
-    expect(result).toBe(false);
-  });
-
   it('should propagate errors from getTask', async () => {
     vi.mocked(axios.get).mockRejectedValueOnce(new Error('Network error'));
 
@@ -66,13 +48,5 @@ describe('TodoistService', () => {
     vi.mocked(axios.post).mockRejectedValueOnce(new Error('API error'));
 
     await expect(service.postComment('123', 'Test')).rejects.toThrow('API error');
-  });
-
-  it('should return false when hasAiLabel fails to fetch task', async () => {
-    vi.mocked(axios.get).mockRejectedValueOnce(new Error('Not found'));
-
-    const result = await service.hasAiLabel('123');
-
-    expect(result).toBe(false);
   });
 });
