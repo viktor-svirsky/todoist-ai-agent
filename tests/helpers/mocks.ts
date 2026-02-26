@@ -5,7 +5,7 @@ import type { ConversationRepository } from '../../src/repositories/conversation
 
 export function createMockClaudeService(): ClaudeService {
   return {
-    buildPrompt: vi.fn(),
+    buildMessages: vi.fn(),
     executePrompt: vi.fn()
   } as unknown as ClaudeService;
 }
