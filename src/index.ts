@@ -3,6 +3,7 @@ import { createServer } from './server.js';
 import { WebhookHandler } from './handlers/webhook.handler.js';
 import { TaskProcessorService } from './services/task-processor.service.js';
 import { ClaudeService } from './services/claude.service.js';
+import { SearchService } from './services/search.service.js';
 import { TodoistService } from './services/todoist.service.js';
 import { ConversationRepository } from './repositories/conversation.repository.js';
 import { getConfig } from './utils/config.js';
@@ -14,7 +15,14 @@ async function main() {
 
     // Initialize services
     const conversationRepo = new ConversationRepository('./data');
-    const claudeService = new ClaudeService(config.claudeTimeoutMs);
+    const searchService = config.braveApiKey ? new SearchService(config.braveApiKey) : undefined;
+    const claudeService = new ClaudeService(
+      config.claudeTimeoutMs,
+      config.claudeBaseUrl,
+      config.claudeApiKey,
+      config.claudeModel,
+      searchService
+    );
     const todoistService = new TodoistService(config.todoistApiToken);
 
     const taskProcessor = new TaskProcessorService(

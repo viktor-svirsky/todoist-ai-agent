@@ -1,7 +1,4 @@
-import { rm, writeFile, mkdir } from 'fs/promises';
-import { join } from 'path';
-import { tmpdir } from 'os';
-import type { TodoistTask, TodoistComment } from '../types/index.js';
+import type { TodoistTask, TodoistComment, ImageAttachment } from '../types/index.js';
 import type { ClaudeService } from './claude.service.js';
 import type { TodoistService } from './todoist.service.js';
 import type { ConversationRepository } from '../repositories/conversation.repository.js';
@@ -27,8 +24,8 @@ export class TaskProcessorService {
         conv = this.conversations.addMessage(conv, 'user', taskContent);
       }
 
-      const prompt = this.claude.buildPrompt(task, conv.messages);
-      const response = await this.claude.executePrompt(prompt);
+      const messages = this.claude.buildMessages(task, conv.messages);
+      const response = await this.claude.executePrompt(messages);
 
       conv = this.conversations.addMessage(conv, 'assistant', response);
       await this.conversations.save(task.id, conv);
@@ -44,7 +41,6 @@ export class TaskProcessorService {
     logger.info('Processing comment', { taskId, commentLength: comment.length });
 
     const progressCommentId = await this.todoist.postProgressComment(taskId);
-    let tempDir: string | undefined;
 
     try {
       const task = await this.todoist.getTask(taskId);
@@ -58,13 +54,9 @@ export class TaskProcessorService {
 
       conv = this.conversations.addMessage(conv, 'user', comment);
 
-      // Download image attachments from previous comments
-      const imageResult = await this.downloadImageAttachments(taskId);
-      tempDir = imageResult.tempDir;
-
-      const hasImages = imageResult.paths.length > 0;
-      const prompt = this.claude.buildPrompt(task, conv.messages, hasImages ? imageResult.paths : undefined);
-      const response = await this.claude.executePrompt(prompt, { interactive: hasImages });
+      const images = await this.getImageAttachments(taskId);
+      const apiMessages = this.claude.buildMessages(task, conv.messages, images.length > 0 ? images : undefined);
+      const response = await this.claude.executePrompt(apiMessages);
 
       conv = this.conversations.addMessage(conv, 'assistant', response);
       await this.conversations.save(taskId, conv);
@@ -82,48 +74,37 @@ export class TaskProcessorService {
       } catch (e) {
         logger.error('Failed to update progress comment with error', { taskId, error: e });
       }
-    } finally {
-      if (tempDir) {
-        try {
-          await rm(tempDir, { recursive: true, force: true });
-          logger.info('Cleaned up temp image directory', { tempDir });
-        } catch (e) {
-          logger.error('Failed to cleanup temp directory', { tempDir, error: e });
-        }
-      }
     }
   }
 
-  private async downloadImageAttachments(taskId: string): Promise<{ paths: string[]; tempDir?: string }> {
+  private async getImageAttachments(taskId: string): Promise<ImageAttachment[]> {
     try {
       const comments = await this.todoist.getComments(taskId);
       const imageComments = comments.filter(
         (c: TodoistComment) => c.file_attachment && c.file_attachment.resource_type === 'image'
       );
 
-      if (imageComments.length === 0) return { paths: [] };
+      if (imageComments.length === 0) return [];
 
-      const tempDir = join(tmpdir(), `todoist-agent-${taskId}`);
-      await mkdir(tempDir, { recursive: true });
-
-      const paths: string[] = [];
+      const images: ImageAttachment[] = [];
       for (const comment of imageComments) {
         const att = comment.file_attachment!;
-        const filePath = join(tempDir, att.file_name);
         try {
-          const data = await this.todoist.downloadFile(att.file_url);
-          await writeFile(filePath, data);
-          paths.push(filePath);
+          const buffer = await this.todoist.downloadFile(att.file_url);
+          images.push({
+            data: Buffer.from(buffer).toString('base64'),
+            mediaType: att.file_type || 'image/png',
+          });
           logger.info('Downloaded image attachment', { taskId, fileName: att.file_name });
         } catch (e) {
           logger.error('Failed to download image', { taskId, fileName: att.file_name, error: e });
         }
       }
 
-      return { paths, tempDir: paths.length > 0 ? tempDir : undefined };
+      return images;
     } catch (error) {
       logger.error('Failed to fetch comments for images', { taskId, error });
-      return { paths: [] };
+      return [];
     }
   }
 

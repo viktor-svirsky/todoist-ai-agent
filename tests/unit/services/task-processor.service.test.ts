@@ -32,14 +32,14 @@ describe('TaskProcessorService', () => {
 
     vi.mocked(conversations.load).mockResolvedValue(conv);
     vi.mocked(conversations.addMessage).mockReturnValue(updatedConv);
-    vi.mocked(claude.buildPrompt).mockReturnValue('Built prompt');
+    vi.mocked(claude.buildMessages).mockReturnValue([{ role: 'user', content: 'Built messages' }]);
     vi.mocked(claude.executePrompt).mockResolvedValue('AI response');
 
     await processor.processNewTask(task);
 
     expect(conversations.load).toHaveBeenCalledWith('123');
-    expect(claude.buildPrompt).toHaveBeenCalledWith(task, expect.any(Array));
-    expect(claude.executePrompt).toHaveBeenCalledWith('Built prompt');
+    expect(claude.buildMessages).toHaveBeenCalledWith(task, expect.any(Array));
+    expect(claude.executePrompt).toHaveBeenCalled();
     expect(todoist.postComment).toHaveBeenCalledWith('123', 'AI response');
     expect(conversations.save).toHaveBeenCalled();
   });
@@ -50,7 +50,7 @@ describe('TaskProcessorService', () => {
 
     vi.mocked(conversations.load).mockResolvedValue(conv);
     vi.mocked(conversations.addMessage).mockReturnValue(conv);
-    vi.mocked(claude.buildPrompt).mockReturnValue('Built prompt');
+    vi.mocked(claude.buildMessages).mockReturnValue([{ role: 'user', content: 'Built messages' }]);
     vi.mocked(claude.executePrompt).mockRejectedValue(new Error('Timeout'));
 
     await processor.processNewTask(task);
@@ -70,14 +70,14 @@ describe('TaskProcessorService', () => {
     vi.mocked(todoist.getComments).mockResolvedValue([]);
     vi.mocked(conversations.load).mockResolvedValue(conv);
     vi.mocked(conversations.addMessage).mockReturnValue(conv);
-    vi.mocked(claude.buildPrompt).mockReturnValue('Built prompt');
+    vi.mocked(claude.buildMessages).mockReturnValue([{ role: 'user', content: 'Built messages' }]);
     vi.mocked(claude.executePrompt).mockResolvedValue('Response');
 
     await processor.processComment('123', 'User comment');
 
     expect(conversations.addMessage).toHaveBeenCalledWith(conv, 'user', 'User comment');
-    expect(claude.buildPrompt).toHaveBeenCalled();
-    expect(claude.executePrompt).toHaveBeenCalledWith('Built prompt', { interactive: false });
+    expect(claude.buildMessages).toHaveBeenCalled();
+    expect(claude.executePrompt).toHaveBeenCalled();
     expect(todoist.updateComment).toHaveBeenCalledWith('progress-id', 'Response');
   });
 

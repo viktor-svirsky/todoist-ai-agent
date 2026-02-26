@@ -24,6 +24,14 @@
     <string>9fd8fadbf12ceaf65a7deca707ec3665875fe3cb</string>
     <key>TODOIST_WEBHOOK_SECRET</key>
     <string>136e3c2b4f684b098896834aef4ce718</string>
+    <key>BRAVE_API_KEY</key>
+    <string>BSAHfy-MM9amXWj5yon6ipbSSixcEIO</string>
+    <key>CLAUDE_BASE_URL</key>
+    <string>http://127.0.0.1:8317/v1</string>
+    <key>CLAUDE_API_KEY</key>
+    <string>sk-local-proxy</string>
+    <key>CLAUDE_MODEL</key>
+    <string>claude-opus-4-6</string>
     <key>PORT</key>
     <string>9000</string>
   </dict>
