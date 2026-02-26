@@ -46,12 +46,21 @@ export interface WebhookEvent {
   };
 }
 
+export interface ImageAttachment {
+  data: string;
+  mediaType: string;
+}
+
 export interface Config {
   todoistApiToken: string;
   todoistWebhookSecret: string;
   port: number;
   pollIntervalMs: number;
   claudeTimeoutMs: number;
+  claudeBaseUrl: string;
+  claudeApiKey: string;
+  claudeModel: string;
+  braveApiKey?: string;
   maxMessages: number;
 }
 

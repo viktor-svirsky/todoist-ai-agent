@@ -32,6 +32,10 @@ export function getConfig(): Config {
     port: parseIntSafe(process.env.PORT, '9000', 'PORT', 1, 65535),
     pollIntervalMs: parseIntSafe(process.env.POLL_INTERVAL_MS, '60000', 'POLL_INTERVAL_MS', 1000),
     claudeTimeoutMs: parseIntSafe(process.env.CLAUDE_TIMEOUT_MS, '120000', 'CLAUDE_TIMEOUT_MS', 1000),
+    claudeBaseUrl: process.env.CLAUDE_BASE_URL || 'http://127.0.0.1:8317/v1',
+    claudeApiKey: process.env.CLAUDE_API_KEY || 'sk-local-proxy',
+    claudeModel: process.env.CLAUDE_MODEL || 'claude-opus-4-6',
+    braveApiKey: process.env.BRAVE_API_KEY,
     maxMessages: parseIntSafe(process.env.MAX_MESSAGES, '20', 'MAX_MESSAGES', 1),
   };
 }
