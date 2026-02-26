@@ -1,0 +1,131 @@
+import { createServiceClient, createUserClient } from "../_shared/supabase.ts";
+
+const CORS_HEADERS = {
+  "Access-Control-Allow-Origin": Deno.env.get("FRONTEND_URL") || "*",
+  "Access-Control-Allow-Methods": "GET, PUT, DELETE, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization",
+};
+
+function jsonResponse(
+  body: Record<string, unknown>,
+  status = 200
+): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
+  });
+}
+
+Deno.serve(async (req) => {
+  if (req.method === "OPTIONS") {
+    return new Response(null, { headers: CORS_HEADERS });
+  }
+
+  const authHeader = req.headers.get("Authorization");
+  if (!authHeader) {
+    return new Response("Unauthorized", { status: 401, headers: CORS_HEADERS });
+  }
+
+  const supabase = createUserClient(authHeader);
+
+  // Verify session
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+  if (authError || !user) {
+    return new Response("Unauthorized", { status: 401, headers: CORS_HEADERS });
+  }
+
+  // ── GET: Return user settings ──────────────────────────────────────
+  if (req.method === "GET") {
+    // Fetch non-sensitive fields via user client (respects RLS)
+    const { data, error } = await supabase
+      .from("users_config")
+      .select("trigger_word, custom_ai_base_url, custom_ai_model, max_messages")
+      .eq("id", user.id)
+      .single();
+
+    if (error) {
+      return jsonResponse({ error: "Config not found" }, 404);
+    }
+
+    // Check key presence via service client (bypasses RLS, can see encrypted cols)
+    const serviceClient = createServiceClient();
+    const { data: fullConfig } = await serviceClient
+      .from("users_config")
+      .select("custom_ai_api_key, custom_brave_key")
+      .eq("id", user.id)
+      .single();
+
+    return jsonResponse({
+      trigger_word: data.trigger_word,
+      custom_ai_base_url: data.custom_ai_base_url,
+      custom_ai_model: data.custom_ai_model,
+      has_custom_ai_key: !!fullConfig?.custom_ai_api_key,
+      has_custom_brave_key: !!fullConfig?.custom_brave_key,
+      max_messages: data.max_messages,
+    });
+  }
+
+  // ── PUT: Update user settings ──────────────────────────────────────
+  if (req.method === "PUT") {
+    const body = await req.json();
+
+    const allowedFields = [
+      "trigger_word",
+      "custom_ai_base_url",
+      "custom_ai_api_key",
+      "custom_ai_model",
+      "custom_brave_key",
+      "max_messages",
+    ];
+
+    const updates: Record<string, unknown> = {};
+    for (const field of allowedFields) {
+      if (body[field] !== undefined) {
+        // Set empty strings to null for optional text fields
+        if (field !== "trigger_word" && field !== "max_messages") {
+          updates[field] = body[field] || null;
+        } else {
+          updates[field] = body[field];
+        }
+      }
+    }
+
+    if (Object.keys(updates).length === 0) {
+      return jsonResponse({ error: "No fields to update" }, 400);
+    }
+
+    // Use service client to update (handles encrypted fields)
+    const serviceClient = createServiceClient();
+    const { error } = await serviceClient
+      .from("users_config")
+      .update(updates)
+      .eq("id", user.id);
+
+    if (error) {
+      return jsonResponse({ error: error.message }, 500);
+    }
+
+    return jsonResponse({ ok: true });
+  }
+
+  // ── DELETE: Delete account ─────────────────────────────────────────
+  if (req.method === "DELETE") {
+    const serviceClient = createServiceClient();
+
+    // Delete the Supabase Auth user (cascades to users_config, conversations, messages)
+    const { error } = await serviceClient.auth.admin.deleteUser(user.id);
+    if (error) {
+      return jsonResponse({ error: error.message }, 500);
+    }
+
+    // Sign out the current session
+    await supabase.auth.signOut();
+
+    return jsonResponse({ ok: true });
+  }
+
+  return new Response("Method not allowed", { status: 405, headers: CORS_HEADERS });
+});
