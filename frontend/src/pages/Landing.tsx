@@ -4,15 +4,15 @@ import { useNavigate } from "react-router-dom";
 
 export default function Landing() {
   const navigate = useNavigate();
-  const [error, setError] = useState<string | null>(null);
+  const [error] = useState<string | null>(() => {
+    const params = new URLSearchParams(window.location.search);
+    return params.get("error") ? "Authentication failed. Please try again." : null;
+  });
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session) navigate("/settings");
     });
-
-    const params = new URLSearchParams(window.location.search);
-    if (params.get("error")) setError("Authentication failed. Please try again.");
   }, [navigate]);
 
   const handleConnect = () => {

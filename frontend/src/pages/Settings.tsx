@@ -23,16 +23,6 @@ export default function Settings() {
   const [aiModel, setAiModel] = useState("");
   const [braveKey, setBraveKey] = useState("");
 
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (!session) {
-        navigate("/");
-        return;
-      }
-      loadSettings(session.access_token);
-    });
-  }, [navigate]);
-
   async function loadSettings(token: string) {
     const res = await fetch(
       `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/settings`,
@@ -47,6 +37,16 @@ export default function Settings() {
     }
   }
 
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!session) {
+        navigate("/");
+        return;
+      }
+      loadSettings(session.access_token);
+    });
+  }, [navigate]);
+
   async function handleSave() {
     setSaving(true);
     setMessage(null);
@@ -54,7 +54,7 @@ export default function Settings() {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) return;
 
-    const updates: Record<string, any> = {
+    const updates: Record<string, string | null> = {
       trigger_word: triggerWord,
       custom_ai_base_url: aiBaseUrl || null,
       custom_ai_model: aiModel || null,

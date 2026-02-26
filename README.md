@@ -1,201 +1,141 @@
 # Todoist AI Agent
 
-An autonomous AI agent that monitors Todoist tasks labeled "AI" and responds to them using Claude (claude-sonnet-4-5) with access to browser automation and the Todoist REST API.
+A multi-tenant AI agent SaaS that connects to users' Todoist accounts via OAuth. Mention a trigger word (default `@ai`) in a task comment, and the agent responds with an AI-generated answer posted back as a Todoist comment.
 
 ## Features
 
-- **Webhook-based operation**: Real-time event processing from Todoist
-- **AI-powered**: Uses Claude Sonnet 4.5 for intelligent task processing
-- **Automated responses**: Posts AI-generated responses as Todoist comments
-- **Conversation history**: Maintains context across multiple interactions per task
-- **LaunchAgent integration**: Runs as a background service on macOS
+- **Self-service onboarding** via Todoist OAuth
+- **Per-user configuration**: custom trigger word, AI provider (BYOK), Brave search key
+- **Web search**: optionally uses Brave Search for current information
+- **Conversation context**: maintains message history per task (cleared on task completion)
+- **Row Level Security**: complete data isolation between users
 
 ## Architecture
 
 ```
-Todoist → webhook POST → Express (port 9000) → async job queue → Agent Loop → Todoist comment
-                                                                       ↓
-                                                             Claude (via CLI)
-                                                                       ↓
-                                                                Todoist REST API
+User → Todoist OAuth → Supabase Auth → users_config row
+Todoist → POST /webhook/:userId → Edge Function → AI (OpenAI-compatible) → Todoist comment
+User → Settings page → Edge Function → users_config update
+```
+
+**Stack**: Supabase (PostgreSQL + Edge Functions + Auth), React + Tailwind CSS, Deno runtime
+
+## Project Structure
+
+```
+todoist-ai-agent/
+├── supabase/
+│   ├── config.toml                      # Supabase project config
+│   ├── migrations/
+│   │   └── 00001_initial_schema.sql     # Schema, RLS policies, indexes
+│   └── functions/
+│       ├── _shared/
+│       │   ├── supabase.ts              # Supabase client helpers
+│       │   ├── constants.ts             # Shared constants
+│       │   ├── todoist.ts               # Todoist API client
+│       │   ├── search.ts               # Brave Search client
+│       │   └── ai.ts                    # AI chat completions + tool loop
+│       ├── auth-callback/index.ts       # OAuth code exchange + onboarding
+│       ├── webhook/index.ts             # Multi-tenant webhook handler
+│       └── settings/index.ts            # User settings CRUD
+├── frontend/
+│   ├── src/
+│   │   ├── main.tsx                     # Routes: /, /settings, /auth/callback
+│   │   ├── lib/supabase.ts             # Supabase JS client
+│   │   └── pages/
+│   │       ├── Landing.tsx              # Connect Todoist button
+│   │       ├── AuthCallback.tsx         # OAuth completion handler
+│   │       └── Settings.tsx             # User preferences form
+│   └── package.json
+└── package.json                         # Root scripts
 ```
 
 ## Setup
 
 ### Prerequisites
 
-- Node.js 18+
-- Todoist account with API access
-- Claude CLI installed and configured
-- macOS (for LaunchAgent setup)
+- [Supabase CLI](https://supabase.com/docs/guides/cli)
+- Node.js 22+
 
-### Installation
-
-1. **Clone the repository**
-   ```bash
-   git clone <repository-url>
-   cd todoist-ai-agent
-   ```
-
-2. **Install dependencies**
-   ```bash
-   npm install
-   ```
-
-3. **Configure environment**
-   ```bash
-   cp .env.example .env
-   ```
-
-   Edit `.env` and add your credentials:
-   - `TODOIST_API_TOKEN`: Your Todoist API token
-   - `TODOIST_CLIENT_ID`: Your Todoist app client ID
-   - `TODOIST_CLIENT_SECRET`: Your Todoist app client secret
-   - `TODOIST_WEBHOOK_SECRET`: Your webhook secret (same as client secret)
-   - `PORT`: Server port (default: 9000)
-
-4. **Set up Todoist App**
-   - Go to [Todoist App Management](https://app.todoist.com/app/settings/integrations/app-management)
-   - Create a new app or use existing
-   - Configure webhook:
-     - URL: `https://your-domain.com/webhook`
-     - Events: `item:added`, `item:updated`, `item:completed`, `note:added`
-   - Complete OAuth authorization flow
-
-5. **Install as LaunchAgent** (optional, for auto-start)
-   ```bash
-   cp com.user.todoist-ai-agent.plist ~/Library/LaunchAgents/
-   launchctl load ~/Library/LaunchAgents/com.user.todoist-ai-agent.plist
-   ```
-
-### Manual Run
+### 1. Start Supabase locally
 
 ```bash
-npm start
+npx supabase start
+npx supabase db reset   # applies migrations
 ```
 
-The server will listen on port 9000 (or the PORT specified in .env).
+### 2. Create a Todoist App
+
+1. Go to [Todoist App Management](https://developer.todoist.com/appconsole.html)
+2. Create a new app
+3. Set the **OAuth redirect URL** to: `https://<your-supabase-url>/functions/v1/auth-callback`
+4. Note the **Client ID** and **Client Secret**
+
+### 3. Configure environment
+
+Create `supabase/.env.local`:
+
+```env
+TODOIST_CLIENT_ID=your_client_id
+TODOIST_CLIENT_SECRET=your_client_secret
+DEFAULT_AI_BASE_URL=https://api.openai.com/v1
+DEFAULT_AI_API_KEY=your_openai_key
+DEFAULT_AI_MODEL=gpt-4o-mini
+DEFAULT_BRAVE_API_KEY=your_brave_key    # optional
+PUBLIC_SITE_URL=http://localhost:5173
+```
+
+Create `frontend/.env.local`:
+
+```env
+VITE_SUPABASE_URL=http://127.0.0.1:54321
+VITE_SUPABASE_ANON_KEY=<anon key from supabase start output>
+VITE_TODOIST_CLIENT_ID=your_client_id
+```
+
+### 4. Serve Edge Functions
+
+```bash
+npx supabase functions serve --env-file supabase/.env.local
+```
+
+### 5. Run the frontend
+
+```bash
+cd frontend && npm install && npm run dev
+```
+
+### 6. Connect your Todoist account
+
+Open `http://localhost:5173`, click **Connect Todoist**, and authorize the app.
 
 ## Usage
 
-1. Create a task in Todoist
-2. Add the **"AI"** label to the task
-3. The agent will automatically process the task and post a response as a comment
-4. Add comments to continue the conversation with the agent
-
-## API Endpoints
-
-- `POST /webhook` - Receives Todoist webhook events
-- `GET /health` - Health check endpoint
-
-## File Structure
-
-```
-todoist-ai-agent/
-├── src/
-│   ├── index.ts                      # Main entry point
-│   ├── server.ts                     # Express app, webhook endpoint
-│   ├── handlers/
-│   │   ├── webhook.handler.ts        # Webhook event handler
-│   │   └── polling.handler.ts        # Polling service handler
-│   ├── services/
-│   │   ├── claude.service.ts         # Claude CLI integration
-│   │   ├── todoist.service.ts        # Todoist REST API client
-│   │   ├── task-processor.service.ts # Task processing logic
-│   │   └── notification.service.ts   # Notification service
-│   ├── repositories/
-│   │   └── conversation.repository.ts # Conversation storage
-│   ├── types/
-│   │   └── index.ts                  # TypeScript type definitions
-│   └── utils/
-│       ├── config.ts                 # Configuration management
-│       ├── logger.ts                 # Logging utility
-│       └── constants.ts              # App constants
-├── tests/                            # Test files
-├── dist/                             # Compiled JavaScript
-├── data/
-│   └── conversations.json            # Persisted conversation history
-├── .env                              # Environment configuration
-├── com.user.todoist-ai-agent.plist   # LaunchAgent configuration
-└── package.json
-```
-
-## Configuration
-
-### LaunchAgent (macOS)
-
-The `com.user.todoist-ai-agent.plist` file configures the agent as a macOS LaunchAgent:
-- Auto-starts on login
-- Restarts on crash
-- Logs to `~/Library/Logs/todoist-ai-agent.log`
-
-Update the paths in the plist file to match your installation directory.
-
-## Troubleshooting
-
-### Webhooks not working
-
-1. **Verify OAuth authorization**: The Todoist app must be properly authorized via OAuth
-2. **Check webhook configuration**: Ensure webhook URL is correct and events are selected
-3. **Monitor logs**: `tail -f ~/Library/Logs/todoist-ai-agent.log`
-4. **Test endpoint**: `curl https://your-domain.com/health`
-
-### Service not starting
-
-```bash
-# Check LaunchAgent status
-launchctl list | grep todoist
-
-# View logs
-tail -50 ~/Library/Logs/todoist-ai-agent.log
-
-# Restart service
-launchctl kickstart -k gui/$(id -u)/com.user.todoist-ai-agent
-```
+1. Open any task in Todoist
+2. Add a comment containing your trigger word (default: `@ai`) followed by your question
+3. The agent posts a response as a new comment
+4. Continue the conversation by adding more comments with the trigger word
+5. When the task is completed, the conversation history is cleared
 
 ## Development
 
 ```bash
-# Install dependencies
-npm install
+# Start everything locally
+npm run supabase:start
+npm run functions:serve
+npm run frontend:dev
 
-# Run tests
-npm test
-
-# Build TypeScript
-npm run build
-
-# Run in development mode
-npm run dev
-
-# Type check
-npm run typecheck
-
-# Lint
-npm run lint
-
-# Run tests with coverage
-npm run test:coverage
+# Build frontend
+npm run frontend:build
 ```
-
-### Debug mode
-
-Set `DEBUG=*` environment variable for verbose logging.
 
 ## Security
 
-- **HMAC Verification**: All webhook requests are verified using HMAC-SHA256 signatures
-- **Environment Variables**: Sensitive credentials are stored in `.env` (not committed)
-- **HTTPS Required**: Webhook endpoint must use HTTPS in production
+- **HMAC verification**: each user gets a unique webhook secret; every incoming webhook is verified
+- **Row Level Security**: users can only access their own data
+- **Supabase Auth**: JWT-based authentication for the settings API
+- **No secrets in code**: all credentials stored in environment variables
 
 ## License
 
 ISC
-
-## Credits
-
-Built with:
-- [Express](https://expressjs.com/) - Web framework
-- [Axios](https://axios-http.com/) - HTTP client
-- [Claude CLI](https://claude.com/claude-code) - AI agent runtime
-- [Todoist API](https://developer.todoist.com/) - Task management
