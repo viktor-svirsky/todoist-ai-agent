@@ -6,8 +6,14 @@ export default defineConfig({
     environment: 'node',
     coverage: {
       provider: 'v8',
-      reporter: ['text', 'json', 'html'],
-      exclude: ['dist/**', 'tests/**', '**/*.test.ts', '**/*.config.ts']
+      reporter: ['text', 'json-summary', 'html'],
+      exclude: ['dist/**', 'tests/**', '**/*.test.ts', '**/*.config.ts'],
+      thresholds: {
+        statements: 70,
+        branches: 55,
+        functions: 80,
+        lines: 70,
+      },
     }
   }
 });
