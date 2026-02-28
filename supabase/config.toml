@@ -393,3 +393,6 @@ verify_jwt = false
 
 [functions.webhook]
 verify_jwt = false
+
+[functions.settings]
+verify_jwt = false
