@@ -6,18 +6,17 @@ export default function AuthCallback() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    supabase.auth.onAuthStateChange((event) => {
-      if (event === "SIGNED_IN") {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session) {
         navigate("/settings");
       }
     });
 
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) navigate("/settings");
-    });
-
     const timeout = setTimeout(() => navigate("/?error=timeout"), 10_000);
-    return () => clearTimeout(timeout);
+    return () => {
+      subscription.unsubscribe();
+      clearTimeout(timeout);
+    };
   }, [navigate]);
 
   return (

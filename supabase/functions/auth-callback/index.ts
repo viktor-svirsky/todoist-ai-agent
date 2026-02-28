@@ -1,5 +1,5 @@
 import { createServiceClient } from "../_shared/supabase.ts";
-import { TODOIST_TOKEN_URL, TODOIST_SYNC_URL } from "../_shared/constants.ts";
+import { TODOIST_TOKEN_URL, TODOIST_SYNC_URL, TODOIST_USER_URL } from "../_shared/constants.ts";
 
 const FRONTEND_URL = Deno.env.get("FRONTEND_URL")!;
 
@@ -51,27 +51,19 @@ Deno.serve(async (req) => {
 
     const { access_token } = await tokenRes.json();
 
-    // 2. Fetch Todoist user profile via Sync API
-    const syncRes = await fetch(TODOIST_SYNC_URL, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${access_token}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        sync_token: "*",
-        resource_types: '["user"]',
-      }),
+    // 2. Fetch Todoist user profile via REST API
+    const userRes = await fetch(TODOIST_USER_URL, {
+      headers: { Authorization: `Bearer ${access_token}` },
     });
 
-    if (!syncRes.ok) {
-      console.error("Sync API failed:", syncRes.status, await syncRes.text());
+    if (!userRes.ok) {
+      console.error("User API failed:", userRes.status, await userRes.text());
       return errorRedirect("profile_fetch_failed");
     }
 
-    const syncData = await syncRes.json();
-    const todoistUserId = String(syncData.user.id);
-    const email = syncData.user.email;
+    const userData = await userRes.json();
+    const todoistUserId = String(userData.id);
+    const email = userData.email;
 
     // 3. Check if user already exists
     const supabase = createServiceClient();
@@ -116,7 +108,7 @@ Deno.serve(async (req) => {
       const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
       const webhookUrl = `${supabaseUrl}/functions/v1/webhook/${todoistUserId}`;
 
-      const webhookRes = await fetch("https://api.todoist.com/sync/v9/sync", {
+      const webhookRes = await fetch(TODOIST_SYNC_URL, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${access_token}`,
@@ -156,7 +148,7 @@ Deno.serve(async (req) => {
       }
     }
 
-    // 8. Generate a magic link session for the user
+    // 8. Generate a magic link and verify it server-side to get real session tokens
     const { data: linkData, error: linkError } = await supabase.auth.admin.generateLink({
       type: "magiclink",
       email,
@@ -167,15 +159,43 @@ Deno.serve(async (req) => {
       return errorRedirect("session_failed");
     }
 
-    // Extract the token hash from the generated link properties
-    const token = linkData.properties.hashed_token;
+    const tokenHash = linkData.properties.hashed_token;
 
-    // 9. Redirect to frontend with token
+    // 9. Verify the OTP server-side to get real session tokens
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const anonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
+
+    const verifyRes = await fetch(`${supabaseUrl}/auth/v1/verify`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        apikey: anonKey,
+      },
+      body: JSON.stringify({ token_hash: tokenHash, type: "magiclink" }),
+    });
+
+    if (!verifyRes.ok) {
+      const errText = await verifyRes.text();
+      console.error("OTP verification failed:", verifyRes.status, errText);
+      return errorRedirect("session_failed");
+    }
+
+    const session = await verifyRes.json();
+
+    // 10. Redirect to frontend with real session tokens in URL fragment
+    const params = new URLSearchParams({
+      access_token: session.access_token,
+      refresh_token: session.refresh_token,
+      expires_in: String(session.expires_in),
+      token_type: session.token_type || "bearer",
+      type: "magiclink",
+    });
+
     return new Response(null, {
       status: 302,
       headers: {
         ...corsHeaders,
-        Location: `${FRONTEND_URL}/auth/callback#access_token=${token}&type=magiclink`,
+        Location: `${FRONTEND_URL}/auth/callback#${params.toString()}`,
       },
     });
   } catch (error) {
