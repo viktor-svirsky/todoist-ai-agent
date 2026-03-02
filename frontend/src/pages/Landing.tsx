@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 
 export default function Landing() {
   const navigate = useNavigate();
+  const [connecting, setConnecting] = useState(false);
   const [error] = useState<string | null>(() => {
     const params = new URLSearchParams(window.location.search);
     return params.get("error") ? "Authentication failed. Please try again." : null;
@@ -16,6 +17,7 @@ export default function Landing() {
   }, [navigate]);
 
   const handleConnect = () => {
+    setConnecting(true);
     const clientId = import.meta.env.VITE_TODOIST_CLIENT_ID;
     const state = crypto.randomUUID();
     sessionStorage.setItem("oauth_state", state);
@@ -33,7 +35,7 @@ export default function Landing() {
     <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center px-4">
       <div className="max-w-md w-full text-center space-y-8">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Todoist AI Agent</h1>
+          <h1 className="text-4xl font-extrabold tracking-tight bg-gradient-to-r from-red-500 to-violet-600 bg-clip-text text-transparent">Todoist AI Agent</h1>
           <p className="mt-3 text-gray-600">
             An AI assistant that lives in your Todoist. Mention your trigger word
             in any comment and get an instant AI response.
@@ -61,9 +63,10 @@ export default function Landing() {
 
         <button
           onClick={handleConnect}
-          className="w-full py-3 px-4 bg-red-500 hover:bg-red-600 text-white font-medium rounded-lg transition-colors"
+          disabled={connecting}
+          className="w-full py-3 px-4 bg-red-500 hover:bg-red-600 disabled:bg-red-300 text-white font-medium rounded-lg transition-colors"
         >
-          Connect Todoist
+          {connecting ? "Redirecting..." : "Connect Todoist"}
         </button>
       </div>
     </div>

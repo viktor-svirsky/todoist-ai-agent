@@ -9,5 +9,5 @@ export const ERROR_PREFIX = "⚠️ AI agent error:";
 export const PROGRESS_INDICATOR = "🤖 **AI Agent**\n\n_Reviewing..._";
 
 export const MAX_TOOL_ROUNDS = 5;
-export const DEFAULT_AI_MODEL = "claude-sonnet-4-5-20250514";
+export const DEFAULT_AI_MODEL = "claude-sonnet-4-6";
 export const DEFAULT_MAX_MESSAGES = 20;

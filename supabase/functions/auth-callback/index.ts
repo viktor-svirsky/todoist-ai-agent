@@ -90,19 +90,93 @@ Deno.serve(async (req) => {
         return errorRedirect("update_failed");
       }
     } else {
-      // 5. New user — create Supabase Auth user
+      // 5. New user — find or create Supabase Auth user
+      let authUserId: string;
+
       const { data: authData, error: authError } = await supabase.auth.admin.createUser({
         email,
         email_confirm: true,
         user_metadata: { todoist_user_id: todoistUserId },
       });
 
-      if (authError || !authData.user) {
-        console.error("Failed to create auth user:", authError);
-        return errorRedirect("user_creation_failed");
+      if (authError) {
+        // Race condition: another OAuth flow already created this user
+        const isEmailExists =
+          authError.message?.includes("already been registered") ||
+          (authError as any).status === 422;
+
+        if (!isEmailExists) {
+          console.error("Failed to create auth user:", authError);
+          return errorRedirect("user_creation_failed");
+        }
+
+        // Re-check users_config — the concurrent request may have already inserted it
+        const { data: racedUser } = await supabase
+          .from("users_config")
+          .select("id")
+          .eq("todoist_user_id", todoistUserId)
+          .maybeSingle();
+
+        if (racedUser) {
+          userId = racedUser.id;
+          await supabase
+            .from("users_config")
+            .update({ todoist_token: access_token })
+            .eq("id", userId);
+          // Skip webhook + insert — jump straight to magic link
+          const { data: linkData, error: linkError } = await supabase.auth.admin.generateLink({
+            type: "magiclink",
+            email,
+          });
+          if (linkError || !linkData) {
+            console.error("Failed to generate magic link (race path):", linkError);
+            return errorRedirect("session_failed");
+          }
+          const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+          const anonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
+          const verifyRes = await fetch(`${supabaseUrl}/auth/v1/verify`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", apikey: anonKey },
+            body: JSON.stringify({ token_hash: linkData.properties.hashed_token, type: "magiclink" }),
+          });
+          if (!verifyRes.ok) {
+            return errorRedirect("session_failed");
+          }
+          const session = await verifyRes.json();
+          const params = new URLSearchParams({
+            access_token: session.access_token,
+            refresh_token: session.refresh_token,
+            expires_in: String(session.expires_in),
+            token_type: session.token_type || "bearer",
+            type: "magiclink",
+          });
+          return new Response(null, {
+            status: 302,
+            headers: { ...corsHeaders, Location: `${FRONTEND_URL}/auth/callback#${params.toString()}` },
+          });
+        }
+
+        // Auth user exists but users_config doesn't — find auth user by email
+        const { data: { users }, error: listError } = await supabase.auth.admin.listUsers({
+          filter: email,
+        });
+        if (listError || !users?.length) {
+          console.error("Could not find existing auth user after email_exists error");
+          return errorRedirect("user_creation_failed");
+        }
+        const found = users.find((u: any) => u.email === email);
+        if (!found) {
+          return errorRedirect("user_creation_failed");
+        }
+        authUserId = found.id;
+      } else {
+        if (!authData.user) {
+          return errorRedirect("user_creation_failed");
+        }
+        authUserId = authData.user.id;
       }
 
-      userId = authData.user.id;
+      userId = authUserId;
 
       // 6. Register Todoist webhook
       const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
