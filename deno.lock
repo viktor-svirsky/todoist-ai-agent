@@ -2,7 +2,8 @@
   "version": "5",
   "specifiers": {
     "jsr:@std/assert@*": "1.0.19",
-    "jsr:@std/internal@^1.0.12": "1.0.12"
+    "jsr:@std/internal@^1.0.12": "1.0.12",
+    "npm:@sentry/deno@*": "10.41.0"
   },
   "jsr": {
     "@std/assert@1.0.19": {
@@ -13,6 +14,21 @@
     },
     "@std/internal@1.0.12": {
       "integrity": "972a634fd5bc34b242024402972cd5143eac68d8dffaca5eaa4dba30ce17b027"
+    }
+  },
+  "npm": {
+    "@opentelemetry/api@1.9.0": {
+      "integrity": "sha512-3giAOQvZiH5F9bMlMiv8+GSPMeqg0dbaeo58/0SlA9sxSqZhnUtxzX9/2FzyhS9sWQf5S0GJE0AKBrFqjpeYcg=="
+    },
+    "@sentry/core@10.41.0": {
+      "integrity": "sha512-TlYMUzyXdx2mICmEKFiCDPDw7fHB/3bIn5lJOOENPmF8SogLTTRiu+HhjIhWkZ9zM/fR3w7WT8qtE/ak7nr24Q=="
+    },
+    "@sentry/deno@10.41.0": {
+      "integrity": "sha512-qqSdBuQM/ncrZasHf7FIGSAMxC1YOr9WjGdLfNd0jseYMy19rYRoL0rfOX2mvsfvWSvkaXiOzo0n0IHpKSkocg==",
+      "dependencies": [
+        "@opentelemetry/api",
+        "@sentry/core"
+      ]
     }
   }
 }

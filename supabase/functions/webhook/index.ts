@@ -8,6 +8,7 @@ import {
   DEFAULT_MAX_MESSAGES,
 } from "../_shared/constants.ts";
 import { commentsToMessages, normalizeModel } from "../_shared/messages.ts";
+import { withSentry, captureException } from "../_shared/sentry.ts";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -151,7 +152,7 @@ async function handleNoteAdded(event: any, user: any): Promise<void> {
 // Main handler
 // ---------------------------------------------------------------------------
 
-Deno.serve(async (req: Request) => {
+Deno.serve(withSentry(async (req: Request) => {
   if (req.method !== "POST") {
     return new Response(JSON.stringify({ error: "Method not allowed" }), {
       status: 405,
@@ -222,6 +223,7 @@ Deno.serve(async (req: Request) => {
         event_name: event.event_name,
         error: error instanceof Error ? error.message : String(error),
       });
+      await captureException(error);
     }
   })();
 
@@ -236,4 +238,4 @@ Deno.serve(async (req: Request) => {
     status: 200,
     headers: { "Content-Type": "application/json" },
   });
-});
+}));
