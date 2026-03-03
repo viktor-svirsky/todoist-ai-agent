@@ -1,4 +1,5 @@
 import { createServiceClient, createUserClient } from "../_shared/supabase.ts";
+import { withSentry } from "../_shared/sentry.ts";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": Deno.env.get("FRONTEND_URL") || "*",
@@ -16,7 +17,7 @@ function jsonResponse(
   });
 }
 
-Deno.serve(async (req) => {
+Deno.serve(withSentry(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: CORS_HEADERS });
   }
@@ -128,4 +129,4 @@ Deno.serve(async (req) => {
   }
 
   return new Response("Method not allowed", { status: 405, headers: CORS_HEADERS });
-});
+}));
