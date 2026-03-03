@@ -1,5 +1,6 @@
 import { braveSearch } from "./search.ts";
 import { MAX_TOOL_ROUNDS } from "./constants.ts";
+import * as Sentry from "npm:@sentry/deno"; // startSpan is a no-op when Sentry is not initialized (no DSN set)
 
 interface Message {
   role: "user" | "assistant";
@@ -103,15 +104,23 @@ export async function executePrompt(
     const timeout = setTimeout(() => controller.abort(), config.timeoutMs);
 
     try {
-      const res = await fetch(`${config.baseUrl}/chat/completions`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${config.apiKey}`,
+      const res = await Sentry.startSpan(
+        {
+          name: "ai.chat_completion",
+          op: "ai.chat",
+          attributes: { "ai.model": config.model, "ai.round": round },
         },
-        body: JSON.stringify(body),
-        signal: controller.signal,
-      });
+        () =>
+          fetch(`${config.baseUrl}/chat/completions`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${config.apiKey}`,
+            },
+            body: JSON.stringify(body),
+            signal: controller.signal,
+          })
+      );
 
       if (!res.ok) {
         const text = await res.text();
@@ -147,14 +156,18 @@ export async function executePrompt(
   }
 
   // Exhausted tool rounds — get final response without tools
-  const res = await fetch(`${config.baseUrl}/chat/completions`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${config.apiKey}`,
-    },
-    body: JSON.stringify({ model: config.model, messages: runMessages }),
-  });
+  const res = await Sentry.startSpan(
+    { name: "ai.chat_completion", op: "ai.chat", attributes: { "ai.model": config.model, "ai.round": "final" } },
+    () =>
+      fetch(`${config.baseUrl}/chat/completions`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${config.apiKey}`,
+        },
+        body: JSON.stringify({ model: config.model, messages: runMessages }),
+      })
+  );
   const data = await res.json();
   return data.choices?.[0]?.message?.content?.trim() || "(no response)";
 }

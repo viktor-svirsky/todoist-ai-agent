@@ -1,5 +1,6 @@
 import { createServiceClient } from "../_shared/supabase.ts";
 import { TODOIST_TOKEN_URL, TODOIST_SYNC_URL, TODOIST_USER_URL } from "../_shared/constants.ts";
+import { withSentry, captureException } from "../_shared/sentry.ts";
 
 const FRONTEND_URL = Deno.env.get("FRONTEND_URL")!;
 
@@ -19,7 +20,7 @@ function errorRedirect(message = "auth_failed"): Response {
   });
 }
 
-Deno.serve(async (req) => {
+Deno.serve(withSentry(async (req) => {
   // Handle CORS preflight
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -274,6 +275,7 @@ Deno.serve(async (req) => {
     });
   } catch (error) {
     console.error("Auth callback error:", error);
+    await captureException(error);
     return errorRedirect("auth_failed");
   }
-});
+}));
