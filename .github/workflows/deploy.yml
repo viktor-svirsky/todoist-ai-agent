@@ -37,6 +37,10 @@ jobs:
 
       - name: Build
         run: cd frontend && npm run build
+        env:
+          VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ vars.VITE_SUPABASE_ANON_KEY }}
+          VITE_TODOIST_CLIENT_ID: ${{ vars.VITE_TODOIST_CLIENT_ID }}
 
       - name: Deploy to Cloudflare Pages
         uses: cloudflare/wrangler-action@v3
