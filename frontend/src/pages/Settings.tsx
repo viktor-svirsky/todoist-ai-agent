@@ -9,6 +9,7 @@ interface UserSettings {
   has_custom_ai_key: boolean;
   has_custom_brave_key: boolean;
   max_messages: number;
+  custom_prompt: string | null;
 }
 
 export default function Settings() {
@@ -23,6 +24,7 @@ export default function Settings() {
   const [aiApiKey, setAiApiKey] = useState("");
   const [aiModel, setAiModel] = useState("");
   const [braveKey, setBraveKey] = useState("");
+  const [customPrompt, setCustomPrompt] = useState("");
 
   async function loadSettings(token: string) {
     try {
@@ -36,6 +38,7 @@ export default function Settings() {
         setTriggerWord(data.trigger_word);
         setAiBaseUrl(data.custom_ai_base_url || "");
         setAiModel(data.custom_ai_model || "");
+        setCustomPrompt(data.custom_prompt || "");
       } else {
         setError("Failed to load settings.");
       }
@@ -69,6 +72,7 @@ export default function Settings() {
         trigger_word: triggerWord,
         custom_ai_base_url: aiBaseUrl || null,
         custom_ai_model: aiModel || null,
+        custom_prompt: customPrompt || null,
       };
       if (aiApiKey) updates.custom_ai_api_key = aiApiKey;
       if (braveKey) updates.custom_brave_key = braveKey;
@@ -164,6 +168,24 @@ export default function Settings() {
           <p className="mt-1.5 text-xs text-gray-500">
             The agent responds when this word appears in a comment.
           </p>
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700">Custom Instructions</label>
+          <textarea
+            value={customPrompt}
+            onChange={(e) => setCustomPrompt(e.target.value)}
+            className={`${inputClasses} resize-y min-h-[100px]`}
+            placeholder="e.g. I live in Berlin. Respond in German. Keep answers short and practical."
+            maxLength={2000}
+            rows={4}
+          />
+          <div className="mt-1.5 flex justify-between">
+            <p className="text-xs text-gray-500">
+              Personal context the AI will use when responding.
+            </p>
+            <p className="text-xs text-gray-400">{customPrompt.length}/2000</p>
+          </div>
         </div>
 
         <div className="rounded-xl bg-gray-50 p-5 space-y-4">

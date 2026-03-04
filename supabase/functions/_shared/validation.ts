@@ -59,5 +59,12 @@ export function validateSettings(
     }
   }
 
+  if ("custom_prompt" in updates && updates.custom_prompt != null) {
+    const v = updates.custom_prompt;
+    if (typeof v !== "string" || v.length > 2000) {
+      errors.push({ field: "custom_prompt", message: "Must be a string of at most 2000 characters" });
+    }
+  }
+
   return errors;
 }
