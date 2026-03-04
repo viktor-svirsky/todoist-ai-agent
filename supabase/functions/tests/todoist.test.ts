@@ -36,7 +36,7 @@ function capturingFetch(response: { status: number; body: unknown }): {
 function mockFetchBinary(data: Uint8Array): () => void {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = ((_input: unknown, _init?: unknown) => {
-    return Promise.resolve(new Response(data, {
+    return Promise.resolve(new Response(data as unknown as BodyInit, {
       status: 200,
       headers: { "Content-Type": "application/octet-stream" },
     }));
