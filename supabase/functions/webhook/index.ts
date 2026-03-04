@@ -9,39 +9,7 @@ import {
 } from "../_shared/constants.ts";
 import { commentsToMessages, normalizeModel } from "../_shared/messages.ts";
 import { withSentry, captureException } from "../_shared/sentry.ts";
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-function uint8ToBase64(bytes: Uint8Array): string {
-  let binary = "";
-  for (const b of bytes) binary += String.fromCharCode(b);
-  return btoa(binary);
-}
-
-async function verifyHmac(
-  secret: string,
-  rawBody: string,
-  signatureHeader: string
-): Promise<boolean> {
-  const encoder = new TextEncoder();
-  const key = await crypto.subtle.importKey(
-    "raw",
-    encoder.encode(secret),
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign"]
-  );
-  const sig = await crypto.subtle.sign("HMAC", key, encoder.encode(rawBody));
-  const computed = btoa(String.fromCharCode(...new Uint8Array(sig)));
-  if (computed.length !== signatureHeader.length) return false;
-  let mismatch = 0;
-  for (let i = 0; i < computed.length; i++) {
-    mismatch |= computed.charCodeAt(i) ^ signatureHeader.charCodeAt(i);
-  }
-  return mismatch === 0;
-}
+import { uint8ToBase64, verifyHmac } from "../_shared/crypto.ts";
 
 // ---------------------------------------------------------------------------
 // Event handler
@@ -170,7 +138,17 @@ Deno.serve(withSentry(async (req: Request) => {
     });
   }
 
-  // Identify user from the event payload
+  // Verify HMAC immediately — before parsing JSON or querying DB
+  const clientSecret = Deno.env.get("TODOIST_CLIENT_SECRET") ?? "";
+  const valid = await verifyHmac(clientSecret, rawBody, signature);
+  if (!valid) {
+    return new Response(JSON.stringify({ error: "Invalid signature" }), {
+      status: 403,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  // Parse payload after signature is verified
   let event: any;
   try {
     event = JSON.parse(rawBody);
@@ -189,25 +167,17 @@ Deno.serve(withSentry(async (req: Request) => {
     });
   }
 
+  // Fetch only the columns needed — avoid pulling encrypted fields unnecessarily
   const supabase = createServiceClient();
   const { data: user, error: userErr } = await supabase
     .from("users_config")
-    .select("*")
+    .select("id, todoist_token, todoist_user_id, webhook_secret, trigger_word, custom_ai_base_url, custom_ai_api_key, custom_ai_model, custom_brave_key, max_messages")
     .eq("todoist_user_id", userId)
     .maybeSingle();
 
   if (userErr || !user) {
     return new Response(JSON.stringify({ error: "User not found" }), {
       status: 404,
-      headers: { "Content-Type": "application/json" },
-    });
-  }
-
-  const clientSecret = Deno.env.get("TODOIST_CLIENT_SECRET") ?? "";
-  const valid = await verifyHmac(clientSecret, rawBody, signature);
-  if (!valid) {
-    return new Response(JSON.stringify({ error: "Invalid signature" }), {
-      status: 403,
       headers: { "Content-Type": "application/json" },
     });
   }
