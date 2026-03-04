@@ -112,6 +112,35 @@ Deno.test("multi-turn with error in history: error preserved as assistant turn",
   ]);
 });
 
+Deno.test("trigger word with regex special chars (e.g. $ai): stripped correctly", () => {
+  const comments = [{ id: "1", content: "$ai help me" }];
+  const result = commentsToMessages(comments, "$ai", "none");
+  assertEquals(result, [{ role: "user", content: "help me" }]);
+});
+
+Deno.test("trigger word with dot (e.g. .ai): stripped correctly", () => {
+  const comments = [{ id: "1", content: ".ai what is this?" }];
+  const result = commentsToMessages(comments, ".ai", "none");
+  assertEquals(result, [{ role: "user", content: "what is this?" }]);
+});
+
+Deno.test("multiple trigger words in one comment: all stripped", () => {
+  const comments = [{ id: "1", content: "@ai tell @ai me" }];
+  const result = commentsToMessages(comments, "@ai", "none");
+  assertEquals(result, [{ role: "user", content: "tell me" }]);
+});
+
+Deno.test("comment with undefined content: skipped", () => {
+  const comments = [{ id: "1", content: undefined }];
+  const result = commentsToMessages(comments, "@ai", "none");
+  assertEquals(result, []);
+});
+
+Deno.test("empty comments array: returns empty", () => {
+  const result = commentsToMessages([], "@ai", "none");
+  assertEquals(result, []);
+});
+
 // ---------------------------------------------------------------------------
 // normalizeBaseUrl — covers the trailing-space production bug
 // ---------------------------------------------------------------------------

@@ -49,15 +49,22 @@ export function buildMessages(
   taskContent: string,
   taskDescription: string | undefined,
   messages: Message[],
-  images?: ImageAttachment[]
+  images?: ImageAttachment[],
+  customPrompt?: string | null
 ): any[] {
   const taskContext = [
     `Current task: "${taskContent}"`,
     taskDescription ? `Task description: "${taskDescription}"` : "",
   ].filter(Boolean).join("\n");
 
+  const systemParts = [SYSTEM_PROMPT];
+  if (customPrompt) {
+    systemParts.push(`User's custom instructions:\n${customPrompt}`);
+  }
+  systemParts.push(taskContext);
+
   const result: any[] = [
-    { role: "system", content: `${SYSTEM_PROMPT}\n\n${taskContext}` },
+    { role: "system", content: systemParts.join("\n\n") },
   ];
 
   for (const msg of messages) {

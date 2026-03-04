@@ -50,7 +50,7 @@ Deno.serve(withSentry(async (req) => {
     // Fetch non-sensitive fields via user client (respects RLS)
     const { data, error } = await supabase
       .from("users_config")
-      .select("trigger_word, custom_ai_base_url, custom_ai_model, max_messages")
+      .select("trigger_word, custom_ai_base_url, custom_ai_model, max_messages, custom_prompt")
       .eq("id", user.id)
       .single();
 
@@ -73,6 +73,7 @@ Deno.serve(withSentry(async (req) => {
       has_custom_ai_key: !!fullConfig?.custom_ai_api_key,
       has_custom_brave_key: !!fullConfig?.custom_brave_key,
       max_messages: data.max_messages,
+      custom_prompt: data.custom_prompt,
     });
   }
 
@@ -92,6 +93,7 @@ Deno.serve(withSentry(async (req) => {
       "custom_ai_model",
       "custom_brave_key",
       "max_messages",
+      "custom_prompt",
     ];
 
     const updates: Record<string, unknown> = {};

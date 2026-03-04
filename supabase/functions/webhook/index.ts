@@ -100,7 +100,8 @@ async function handleNoteAdded(event: any, user: any): Promise<void> {
       task.content,
       task.description,
       messages,
-      images.length > 0 ? images : undefined
+      images.length > 0 ? images : undefined,
+      user.custom_prompt
     );
     const response = await executePrompt(apiMessages, aiConfig);
 
@@ -181,7 +182,7 @@ Deno.serve(withSentry(async (req: Request) => {
   const supabase = createServiceClient();
   const { data: user, error: userErr } = await supabase
     .from("users_config")
-    .select("id, todoist_token, todoist_user_id, trigger_word, custom_ai_base_url, custom_ai_api_key, custom_ai_model, custom_brave_key, max_messages")
+    .select("id, todoist_token, todoist_user_id, trigger_word, custom_ai_base_url, custom_ai_api_key, custom_ai_model, custom_brave_key, max_messages, custom_prompt")
     .eq("todoist_user_id", userId)
     .maybeSingle();
 
