@@ -8,9 +8,10 @@ export const AI_INDICATOR = "🤖 **AI Agent**";
 export const ERROR_PREFIX = "⚠️ AI agent error:";
 export const PROGRESS_INDICATOR = "🤖 **AI Agent**\n\n_Reviewing..._";
 
-export const MAX_TOOL_ROUNDS = 5;
+export const MAX_TOOL_ROUNDS = 3;
 export const DEFAULT_AI_MODEL = "claude-sonnet-4-6";
-export const DEFAULT_MAX_MESSAGES = 20;
+export const DEFAULT_MAX_MESSAGES = 10;
+export const DEFAULT_MAX_TOKENS = 2048;
 
-export const MAX_IMAGE_SIZE_BYTES = 10 * 1024 * 1024; // 10 MB
+export const MAX_IMAGE_SIZE_BYTES = 4 * 1024 * 1024; // 4 MB
 export const TODOIST_API_TIMEOUT_MS = 30_000; // 30 seconds

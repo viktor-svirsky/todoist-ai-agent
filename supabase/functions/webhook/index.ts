@@ -55,19 +55,20 @@ async function handleNoteAdded(event: any, user: any): Promise<void> {
       messages = messages.slice(-maxMessages);
     }
 
-    // Get image attachments from comments
-    const images: { data: string; mediaType: string }[] = [];
-    for (const comment of comments) {
-      const att = comment.file_attachment;
-      if (att?.resource_type === "image") {
-        try {
-          const bytes = await todoist.downloadFile(att.file_url);
-          images.push({ data: uint8ToBase64(bytes), mediaType: att.file_type || "image/png" });
-        } catch (e) {
-          console.error("Failed to download image", att.file_name, e);
-        }
-      }
-    }
+    // Get image attachments from comments (parallel downloads)
+    const imageComments = comments.filter(
+      (c: any) => c.file_attachment?.resource_type === "image"
+    );
+    const imageResults = await Promise.allSettled(
+      imageComments.map(async (c: any) => {
+        const att = c.file_attachment;
+        const bytes = await todoist.downloadFile(att.file_url);
+        return { data: uint8ToBase64(bytes), mediaType: att.file_type || "image/png" };
+      })
+    );
+    const images = imageResults
+      .filter((r): r is PromiseFulfilledResult<{ data: string; mediaType: string }> => r.status === "fulfilled")
+      .map((r) => r.value);
 
     // Build AI config
     const aiConfig = {
