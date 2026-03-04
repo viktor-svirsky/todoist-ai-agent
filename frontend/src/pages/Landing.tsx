@@ -32,45 +32,49 @@ export default function Landing() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center px-4">
-      <div className="max-w-md w-full text-center space-y-8">
-        <div>
-          <h1 className="text-4xl font-extrabold tracking-tight bg-gradient-to-r from-red-500 to-violet-600 bg-clip-text text-transparent">Todoist AI Agent</h1>
-          <p className="mt-3 text-gray-600">
+    <div className="min-h-screen bg-gray-100 flex flex-col items-center justify-center px-4 sm:px-6">
+      <div className="max-w-lg w-full bg-white rounded-2xl shadow-xl p-8 sm:p-10 space-y-8">
+        <div className="text-center">
+          <h1 className="text-4xl sm:text-5xl font-extrabold tracking-tight bg-gradient-to-r from-red-500 to-violet-600 bg-clip-text text-transparent">
+            Todoist AI Agent
+          </h1>
+          <p className="mt-4 text-gray-500 text-base leading-relaxed">
             An AI assistant that lives in your Todoist. Mention your trigger word
             in any comment and get an instant AI response.
           </p>
         </div>
 
-        <div className="space-y-4 text-left text-sm text-gray-600">
-          <div className="flex gap-3">
-            <span className="text-lg">💬</span>
-            <p>Comment <code className="bg-gray-200 px-1 rounded">@ai</code> on any task to get help</p>
+        <div className="space-y-3">
+          <div className="flex items-center gap-4 p-3 rounded-xl bg-gray-50">
+            <span className="text-xl shrink-0">💬</span>
+            <p className="text-sm text-gray-600">Comment <code className="bg-gray-200 px-1.5 py-0.5 rounded text-gray-800 font-mono text-xs">@ai</code> on any task to get help</p>
           </div>
-          <div className="flex gap-3">
-            <span className="text-lg">🔍</span>
-            <p>Web search included for current information</p>
+          <div className="flex items-center gap-4 p-3 rounded-xl bg-gray-50">
+            <span className="text-xl shrink-0">🔍</span>
+            <p className="text-sm text-gray-600">Web search included for current information</p>
           </div>
-          <div className="flex gap-3">
-            <span className="text-lg">🔑</span>
-            <p>Bring your own AI key or use the shared default</p>
+          <div className="flex items-center gap-4 p-3 rounded-xl bg-gray-50">
+            <span className="text-xl shrink-0">🔑</span>
+            <p className="text-sm text-gray-600">Bring your own AI key or use the shared default</p>
           </div>
         </div>
 
         {error && (
-          <p className="text-red-600 text-sm">{error}</p>
+          <div className="p-3 rounded-xl bg-red-50 text-red-600 text-sm text-center">
+            {error}
+          </div>
         )}
 
         <button
           onClick={handleConnect}
           disabled={connecting}
-          className="w-full py-3 px-4 bg-red-500 hover:bg-red-600 disabled:bg-red-300 text-white font-medium rounded-lg transition-colors"
+          className="w-full py-3.5 px-4 bg-red-500 hover:bg-red-600 disabled:bg-red-300 text-white font-semibold rounded-xl shadow-sm hover:shadow-md transition-all cursor-pointer disabled:cursor-not-allowed"
         >
           {connecting ? "Redirecting..." : "Connect Todoist"}
         </button>
 
-        <p className="text-center text-xs text-gray-400 pt-2">
-          <a href="https://github.com/viktor-svirsky/todoist-ai-agent" target="_blank" rel="noopener noreferrer" className="hover:text-gray-600 hover:underline">GitHub</a>
+        <p className="text-center text-xs text-gray-400">
+          <a href="https://github.com/viktor-svirsky/todoist-ai-agent" target="_blank" rel="noopener noreferrer" className="hover:text-gray-600 transition-colors">GitHub</a>
         </p>
       </div>
     </div>
