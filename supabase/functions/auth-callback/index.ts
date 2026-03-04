@@ -29,9 +29,14 @@ Deno.serve(withSentry(async (req) => {
   try {
     const url = new URL(req.url);
     const code = url.searchParams.get("code");
+    const state = url.searchParams.get("state");
 
     if (!code) {
       return errorRedirect("missing_code");
+    }
+
+    if (!state) {
+      return errorRedirect("missing_state");
     }
 
     // 1. Exchange code for access token
@@ -153,7 +158,7 @@ Deno.serve(withSentry(async (req) => {
           });
           return new Response(null, {
             status: 302,
-            headers: { ...corsHeaders, Location: `${FRONTEND_URL}/auth/callback#${params.toString()}` },
+            headers: { ...corsHeaders, Location: `${FRONTEND_URL}/auth/callback?state=${encodeURIComponent(state)}#${params.toString()}` },
           });
         }
 
@@ -270,7 +275,7 @@ Deno.serve(withSentry(async (req) => {
       status: 302,
       headers: {
         ...corsHeaders,
-        Location: `${FRONTEND_URL}/auth/callback#${params.toString()}`,
+        Location: `${FRONTEND_URL}/auth/callback?state=${encodeURIComponent(state)}#${params.toString()}`,
       },
     });
   } catch (error) {

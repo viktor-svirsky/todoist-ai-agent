@@ -1,8 +1,11 @@
 import { createServiceClient, createUserClient } from "../_shared/supabase.ts";
 import { withSentry } from "../_shared/sentry.ts";
+import { validateSettings } from "../_shared/validation.ts";
+
+const FRONTEND_URL = Deno.env.get("FRONTEND_URL")!;
 
 const CORS_HEADERS = {
-  "Access-Control-Allow-Origin": Deno.env.get("FRONTEND_URL") || "*",
+  "Access-Control-Allow-Origin": FRONTEND_URL,
   "Access-Control-Allow-Methods": "GET, PUT, DELETE, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type, Authorization",
 };
@@ -98,6 +101,12 @@ Deno.serve(withSentry(async (req) => {
       return jsonResponse({ error: "No fields to update" }, 400);
     }
 
+    // Validate inputs
+    const validationErrors = validateSettings(updates);
+    if (validationErrors.length > 0) {
+      return jsonResponse({ error: "Validation failed", details: validationErrors }, 400);
+    }
+
     // Use service client to update (handles encrypted fields)
     const serviceClient = createServiceClient();
     const { error } = await serviceClient
@@ -106,7 +115,8 @@ Deno.serve(withSentry(async (req) => {
       .eq("id", user.id);
 
     if (error) {
-      return jsonResponse({ error: error.message }, 500);
+      console.error("Failed to update settings:", error);
+      return jsonResponse({ error: "Failed to update settings" }, 500);
     }
 
     return jsonResponse({ ok: true });
@@ -119,7 +129,8 @@ Deno.serve(withSentry(async (req) => {
     // Delete the Supabase Auth user (cascades to users_config, conversations, messages)
     const { error } = await serviceClient.auth.admin.deleteUser(user.id);
     if (error) {
-      return jsonResponse({ error: error.message }, 500);
+      console.error("Failed to delete user:", error);
+      return jsonResponse({ error: "Failed to delete account" }, 500);
     }
 
     // Sign out the current session
