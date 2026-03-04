@@ -135,6 +135,10 @@ Deno.test("validateSettings: custom_prompt not a string", () => {
   assertEquals(errors[0].field, "custom_prompt");
 });
 
+Deno.test("validateSettings: custom_prompt at exactly 2000 chars (boundary)", () => {
+  assertEquals(validateSettings({ custom_prompt: "a".repeat(2000) }), []);
+});
+
 // -- multiple fields --
 
 Deno.test("validateSettings: multiple valid fields", () => {

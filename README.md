@@ -247,6 +247,20 @@ deno test supabase/functions/tests/ --no-check --coverage
 deno test supabase/functions/tests/crypto.test.ts --no-check
 ```
 
+### Test Coverage
+
+118 tests covering all shared modules:
+
+| Module | Tests | What's covered |
+|--------|-------|----------------|
+| **ai.ts** | 25 | `buildMessages` (custom prompts, images, edge cases), `executePrompt` (success, errors, tool calls) |
+| **validation.ts** | 25 | All settings fields: type checks, boundaries, nulls, multi-field errors |
+| **messages.ts** | 30 | Comment parsing, trigger word stripping, special chars, normalize helpers |
+| **crypto.ts** | 13 | AES-256-GCM encrypt/decrypt round-trips, HMAC verification, key errors |
+| **todoist.ts** | 15 | All TodoistClient methods: API calls, auth headers, error handling, trusted domains |
+| **search.ts** | 6 | Brave Search: result mapping, params, headers, empty/error responses |
+| **sentry.ts** | 4 | `withSentry` wrapper, error handling, `captureException` no-op |
+
 ### Linting
 
 ```bash
