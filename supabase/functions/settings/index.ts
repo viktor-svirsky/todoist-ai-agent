@@ -1,6 +1,7 @@
 import { createServiceClient, createUserClient } from "../_shared/supabase.ts";
 import { withSentry } from "../_shared/sentry.ts";
 import { validateSettings } from "../_shared/validation.ts";
+import { encryptIfPresent } from "../_shared/crypto.ts";
 
 const FRONTEND_URL = Deno.env.get("FRONTEND_URL")!;
 
@@ -105,6 +106,14 @@ Deno.serve(withSentry(async (req) => {
     const validationErrors = validateSettings(updates);
     if (validationErrors.length > 0) {
       return jsonResponse({ error: "Validation failed", details: validationErrors }, 400);
+    }
+
+    // Encrypt sensitive fields before writing
+    if ("custom_ai_api_key" in updates) {
+      updates.custom_ai_api_key = await encryptIfPresent(updates.custom_ai_api_key as string | null);
+    }
+    if ("custom_brave_key" in updates) {
+      updates.custom_brave_key = await encryptIfPresent(updates.custom_brave_key as string | null);
     }
 
     // Use service client to update (handles encrypted fields)
