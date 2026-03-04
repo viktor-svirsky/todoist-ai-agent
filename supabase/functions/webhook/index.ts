@@ -9,7 +9,7 @@ import {
 } from "../_shared/constants.ts";
 import { commentsToMessages, normalizeModel } from "../_shared/messages.ts";
 import { withSentry, captureException } from "../_shared/sentry.ts";
-import { uint8ToBase64, verifyHmac } from "../_shared/crypto.ts";
+import { uint8ToBase64, verifyHmac, decrypt, decryptIfPresent } from "../_shared/crypto.ts";
 
 // ---------------------------------------------------------------------------
 // Event handler
@@ -183,10 +183,17 @@ Deno.serve(withSentry(async (req: Request) => {
     });
   }
 
+  const decryptedUser = {
+    ...user,
+    todoist_token: await decrypt(user.todoist_token),
+    custom_ai_api_key: await decryptIfPresent(user.custom_ai_api_key),
+    custom_brave_key: await decryptIfPresent(user.custom_brave_key),
+  };
+
   const processPromise = (async () => {
     try {
       if (event.event_name === "note:added") {
-        await handleNoteAdded(event, user);
+        await handleNoteAdded(event, decryptedUser);
       }
       // item:completed no longer needs handling — no DB cleanup required
     } catch (error) {

@@ -1,6 +1,7 @@
 import { createServiceClient } from "../_shared/supabase.ts";
 import { TODOIST_TOKEN_URL, TODOIST_SYNC_URL, TODOIST_USER_URL } from "../_shared/constants.ts";
 import { withSentry, captureException } from "../_shared/sentry.ts";
+import { encrypt } from "../_shared/crypto.ts";
 
 const FRONTEND_URL = Deno.env.get("FRONTEND_URL")!;
 
@@ -88,7 +89,7 @@ Deno.serve(withSentry(async (req) => {
 
       const { error: updateError } = await supabase
         .from("users_config")
-        .update({ todoist_token: access_token })
+        .update({ todoist_token: await encrypt(access_token) })
         .eq("id", userId);
 
       if (updateError) {
@@ -127,7 +128,7 @@ Deno.serve(withSentry(async (req) => {
           userId = racedUser.id;
           await supabase
             .from("users_config")
-            .update({ todoist_token: access_token })
+            .update({ todoist_token: await encrypt(access_token) })
             .eq("id", userId);
           // Skip webhook + insert — jump straight to magic link
           const { data: linkData, error: linkError } = await supabase.auth.admin.generateLink({
@@ -217,9 +218,9 @@ Deno.serve(withSentry(async (req) => {
 
       const { error: insertError } = await supabase.from("users_config").insert({
         id: userId,
-        todoist_token: access_token,
+        todoist_token: await encrypt(access_token),
         todoist_user_id: todoistUserId,
-        webhook_secret: webhookSecret,
+        webhook_secret: await encrypt(webhookSecret),
       });
 
       if (insertError) {
