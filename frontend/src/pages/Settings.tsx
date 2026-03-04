@@ -127,49 +127,56 @@ export default function Settings() {
 
   if (error) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <p className="text-red-600">{error}</p>
+      <div className="min-h-screen bg-gray-100 flex items-center justify-center px-4 sm:px-6">
+        <div className="bg-white rounded-2xl shadow-xl p-8 sm:p-10">
+          <p className="text-red-600">{error}</p>
+        </div>
       </div>
     );
   }
 
   if (!settings) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <p className="text-gray-600">Loading...</p>
+      <div className="min-h-screen bg-gray-100 flex items-center justify-center px-4 sm:px-6">
+        <div className="bg-white rounded-2xl shadow-xl p-8 sm:p-10">
+          <p className="text-gray-500">Loading...</p>
+        </div>
       </div>
     );
   }
 
-  return (
-    <div className="min-h-screen bg-gray-50 flex flex-col items-center py-12 px-4">
-      <div className="max-w-md w-full space-y-6">
-        <h1 className="text-2xl font-bold text-gray-900">Settings</h1>
+  const inputClasses = "mt-1.5 w-full px-3.5 py-2.5 border border-gray-300 rounded-xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-shadow";
 
-        <div className="space-y-4">
+  return (
+    <div className="min-h-screen bg-gray-100 flex flex-col items-center py-8 sm:py-12 px-4 sm:px-6">
+      <div className="max-w-lg w-full bg-white rounded-2xl shadow-xl p-8 sm:p-10 space-y-6">
+        <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Settings</h1>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700">Trigger word</label>
+          <input
+            type="text"
+            value={triggerWord}
+            onChange={(e) => setTriggerWord(e.target.value)}
+            className={inputClasses}
+            placeholder="@ai"
+          />
+          <p className="mt-1.5 text-xs text-gray-500">
+            The agent responds when this word appears in a comment.
+          </p>
+        </div>
+
+        <div className="rounded-xl bg-gray-50 p-5 space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700">Trigger word</label>
-            <input
-              type="text"
-              value={triggerWord}
-              onChange={(e) => setTriggerWord(e.target.value)}
-              className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
-              placeholder="@ai"
-            />
-            <p className="mt-1 text-xs text-gray-500">
-              The agent responds when this word appears in a comment.
+            <p className="text-sm font-semibold text-gray-800">AI Provider</p>
+            <p className="mt-1 text-xs text-gray-500 leading-relaxed">
+              Optional. Any OpenAI-compatible provider works.
+              Get a key from{" "}
+              <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">OpenAI</a>,{" "}
+              <a href="https://openrouter.ai/keys" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">OpenRouter</a>, or{" "}
+              <a href="https://console.groq.com/keys" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">Groq</a>.
             </p>
           </div>
-
-          <hr />
-          <p className="text-sm font-medium text-gray-700">AI Provider (optional)</p>
-          <p className="text-xs text-gray-500">
-            Leave empty to use the shared default. Any OpenAI-compatible provider works.
-            Get a key from{" "}
-            <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">OpenAI</a>,{" "}
-            <a href="https://openrouter.ai/keys" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">OpenRouter</a>, or{" "}
-            <a href="https://console.groq.com/keys" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">Groq</a>.
-          </p>
 
           <div>
             <label className="block text-sm text-gray-600">Base URL</label>
@@ -177,7 +184,7 @@ export default function Settings() {
               type="text"
               value={aiBaseUrl}
               onChange={(e) => setAiBaseUrl(e.target.value)}
-              className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+              className={inputClasses}
               placeholder="https://api.openai.com/v1"
             />
           </div>
@@ -188,7 +195,7 @@ export default function Settings() {
               type="password"
               value={aiApiKey}
               onChange={(e) => setAiApiKey(e.target.value)}
-              className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+              className={inputClasses}
               placeholder={settings.has_custom_ai_key ? "••••••••  (key set)" : "sk-..."}
             />
           </div>
@@ -199,17 +206,20 @@ export default function Settings() {
               type="text"
               value={aiModel}
               onChange={(e) => setAiModel(e.target.value)}
-              className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+              className={inputClasses}
               placeholder="gpt-4o-mini"
             />
           </div>
+        </div>
 
-          <hr />
-          <p className="text-sm font-medium text-gray-700">Web Search (optional)</p>
-          <p className="text-xs text-gray-500">
-            Leave empty to use the shared default. Get a free key from{" "}
-            <a href="https://brave.com/search/api/" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">Brave Search API</a>.
-          </p>
+        <div className="rounded-xl bg-gray-50 p-5 space-y-4">
+          <div>
+            <p className="text-sm font-semibold text-gray-800">Web Search</p>
+            <p className="mt-1 text-xs text-gray-500 leading-relaxed">
+              Optional. Get a free key from{" "}
+              <a href="https://brave.com/search/api/" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">Brave Search API</a>.
+            </p>
+          </div>
 
           <div>
             <label className="block text-sm text-gray-600">Brave Search API Key</label>
@@ -217,38 +227,40 @@ export default function Settings() {
               type="password"
               value={braveKey}
               onChange={(e) => setBraveKey(e.target.value)}
-              className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+              className={inputClasses}
               placeholder={settings.has_custom_brave_key ? "••••••••  (key set)" : "BSA..."}
             />
           </div>
         </div>
 
         {message && (
-          <p className={`text-sm ${message.includes("Failed") ? "text-red-600" : "text-green-600"}`}>
+          <div className={`p-3 rounded-xl text-sm text-center ${message.includes("Failed") || message.includes("error") ? "bg-red-50 text-red-600" : "bg-green-50 text-green-600"}`}>
             {message}
-          </p>
+          </div>
         )}
 
         <button
           onClick={handleSave}
           disabled={saving}
-          className="w-full py-2 px-4 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-medium rounded-lg transition-colors"
+          className="w-full py-3 px-4 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-semibold rounded-xl shadow-sm hover:shadow-md transition-all cursor-pointer disabled:cursor-not-allowed"
         >
           {saving ? "Saving..." : "Save Settings"}
         </button>
 
-        <button
-          onClick={handleDisconnect}
-          className="w-full py-2 px-4 bg-white border border-red-300 text-red-600 hover:bg-red-50 font-medium rounded-lg transition-colors"
-        >
-          Disconnect & Delete Account
-        </button>
+        <div className="pt-4 border-t border-gray-200">
+          <button
+            onClick={handleDisconnect}
+            className="w-full py-3 px-4 bg-white border border-red-200 text-red-600 hover:bg-red-50 font-medium rounded-xl transition-colors cursor-pointer"
+          >
+            Disconnect & Delete Account
+          </button>
+        </div>
 
-        <p className="text-center text-xs text-gray-400 pt-2">
-          <a href="https://github.com/viktor-svirsky/todoist-ai-agent" target="_blank" rel="noopener noreferrer" className="hover:text-gray-600 hover:underline">GitHub</a>
+        <p className="text-center text-xs text-gray-400">
+          <a href="https://github.com/viktor-svirsky/todoist-ai-agent" target="_blank" rel="noopener noreferrer" className="hover:text-gray-600 transition-colors">GitHub</a>
           {" · "}
-          Questions or issues? Open a{" "}
-          <a href="https://github.com/viktor-svirsky/todoist-ai-agent/issues" target="_blank" rel="noopener noreferrer" className="hover:text-gray-600 hover:underline">GitHub issue</a>.
+          Questions? Open a{" "}
+          <a href="https://github.com/viktor-svirsky/todoist-ai-agent/issues" target="_blank" rel="noopener noreferrer" className="hover:text-gray-600 transition-colors">GitHub issue</a>.
         </p>
       </div>
     </div>

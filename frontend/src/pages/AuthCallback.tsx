@@ -31,8 +31,10 @@ export default function AuthCallback() {
   }, [navigate]);
 
   return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-      <p className="text-gray-600">Completing setup...</p>
+    <div className="min-h-screen bg-gray-100 flex items-center justify-center px-4 sm:px-6">
+      <div className="bg-white rounded-2xl shadow-xl p-8 sm:p-10">
+        <p className="text-gray-500">Completing setup...</p>
+      </div>
     </div>
   );
 }
