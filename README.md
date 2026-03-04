@@ -122,10 +122,12 @@ todoist-ai-agent/
 │   └── functions/
 │       ├── _shared/
 │       │   ├── ai.ts               # Chat completions + tool loop
-│       │   ├── crypto.ts           # HMAC verification
+│       │   ├── constants.ts        # API URLs, defaults, limits
+│       │   ├── crypto.ts           # AES-256-GCM encryption + HMAC verification
 │       │   ├── messages.ts         # Comment → message parsing
 │       │   ├── search.ts           # Brave Search client
 │       │   ├── sentry.ts           # Error tracking
+│       │   ├── supabase.ts         # Supabase client factories
 │       │   ├── todoist.ts          # Todoist REST API client
 │       │   └── validation.ts       # Input validation
 │       ├── auth-callback/          # OAuth flow handler
@@ -181,6 +183,7 @@ DEFAULT_AI_API_KEY=your_openai_key
 DEFAULT_AI_MODEL=gpt-4o-mini
 DEFAULT_BRAVE_API_KEY=your_brave_key    # optional
 PUBLIC_SITE_URL=http://localhost:5173
+SENTRY_DSN=your_sentry_dsn              # optional
 
 # Required: encryption key for sensitive DB columns (AES-256-GCM)
 # Generate with: deno -e "console.log(btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(32)))))"
@@ -265,12 +268,13 @@ deno lint supabase/functions/   # Deno lint for Edge Functions
 | Measure | Implementation |
 |---------|---------------|
 | **Webhook verification** | HMAC-SHA256 signature on every Todoist webhook |
+| **Data encryption** | AES-256-GCM for sensitive DB columns (tokens, API keys) |
 | **Data isolation** | PostgreSQL Row Level Security per user |
 | **Authentication** | JWT-based via Supabase Auth |
 | **Secrets management** | All credentials in environment variables |
 | **Input validation** | Server-side validation on all user settings |
 | **Dependency scanning** | Automated npm audit + Dependabot |
-| **Image limits** | 10 MB max per attachment |
+| **Image limits** | 4 MB max per attachment |
 
 ## License
 
