@@ -6,6 +6,8 @@ import {
   ERROR_PREFIX,
   DEFAULT_AI_MODEL,
   DEFAULT_MAX_MESSAGES,
+  RATE_LIMIT_MAX_REQUESTS,
+  RATE_LIMIT_WINDOW_SECONDS,
 } from "../_shared/constants.ts";
 import { commentsToMessages, normalizeModel } from "../_shared/messages.ts";
 import { withSentry, captureException } from "../_shared/sentry.ts";
@@ -186,6 +188,20 @@ Deno.serve(withSentry(async (req: Request) => {
   if (userErr || !user) {
     return new Response(JSON.stringify({ error: "User not found" }), {
       status: 404,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  // Rate limit check — before any processing or decryption
+  const { data: allowed, error: rlErr } = await supabase.rpc("check_rate_limit", {
+    p_user_todoist_id: userId,
+    p_max_requests: RATE_LIMIT_MAX_REQUESTS,
+    p_window_seconds: RATE_LIMIT_WINDOW_SECONDS,
+  });
+
+  if (rlErr || !allowed) {
+    return new Response(JSON.stringify({ error: "Rate limit exceeded" }), {
+      status: 429,
       headers: { "Content-Type": "application/json" },
     });
   }
