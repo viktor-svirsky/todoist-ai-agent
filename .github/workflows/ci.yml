@@ -28,3 +28,13 @@ jobs:
 
       - name: Build
         run: cd frontend && npm run build
+
+  deno-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: denoland/setup-deno@v2
+
+      - name: Run tests
+        run: deno test supabase/functions/tests/ --no-check
