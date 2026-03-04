@@ -1,10 +1,18 @@
 ## Summary
-<!-- What does this PR do? -->
 
-## Test plan
+<!-- What does this PR do and why? -->
+
+## Changes
+
+<!-- List the key changes made -->
+
+-
+
+## Test Plan
+
 <!-- How was this tested? -->
 
-- [ ] Tests pass locally (`npm run test:unit -- --run`)
-- [ ] Lint passes (`npm run lint`)
-- [ ] Types check (`npm run typecheck`)
-- [ ] Build succeeds (`npm run build`)
+- [ ] Deno tests pass (`npm test`)
+- [ ] Frontend lint passes (`cd frontend && npm run lint`)
+- [ ] Frontend builds (`npm run frontend:build`)
+- [ ] Manually tested locally (if applicable)
