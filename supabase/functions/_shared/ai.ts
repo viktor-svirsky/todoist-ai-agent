@@ -156,20 +156,34 @@ export async function executePrompt(
   }
 
   // Exhausted tool rounds — get final response without tools
-  const res = await Sentry.startSpan(
-    { name: "ai.chat_completion", op: "ai.chat", attributes: { "ai.model": config.model, "ai.round": "final" } },
-    () =>
-      fetch(`${config.baseUrl}/chat/completions`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${config.apiKey}`,
-        },
-        body: JSON.stringify({ model: config.model, messages: runMessages, max_tokens: DEFAULT_MAX_TOKENS }),
-      })
-  );
-  const data = await res.json();
-  return data.choices?.[0]?.message?.content?.trim() || "(no response)";
+  const finalController = new AbortController();
+  const finalTimeout = setTimeout(() => finalController.abort(), config.timeoutMs);
+
+  try {
+    const res = await Sentry.startSpan(
+      { name: "ai.chat_completion", op: "ai.chat", attributes: { "ai.model": config.model, "ai.round": "final" } },
+      () =>
+        fetch(`${config.baseUrl}/chat/completions`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${config.apiKey}`,
+          },
+          body: JSON.stringify({ model: config.model, messages: runMessages, max_tokens: DEFAULT_MAX_TOKENS }),
+          signal: finalController.signal,
+        })
+    );
+
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(`AI API error ${res.status}: ${text}`);
+    }
+
+    const data = await res.json();
+    return data.choices?.[0]?.message?.content?.trim() || "(no response)";
+  } finally {
+    clearTimeout(finalTimeout);
+  }
 }
 
 async function handleToolCall(

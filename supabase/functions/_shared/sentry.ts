@@ -55,7 +55,7 @@ export function withSentry(handler: Handler): Handler {
         op: "http.server",
         attributes: {
           "http.method": req.method,
-          "http.url": req.url,
+          "http.url": new URL(req.url).pathname,
         },
       },
       execute

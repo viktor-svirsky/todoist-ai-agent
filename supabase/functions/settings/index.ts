@@ -3,7 +3,10 @@ import { withSentry } from "../_shared/sentry.ts";
 import { validateSettings } from "../_shared/validation.ts";
 import { encryptIfPresent } from "../_shared/crypto.ts";
 
-const FRONTEND_URL = Deno.env.get("FRONTEND_URL")!;
+const FRONTEND_URL = Deno.env.get("FRONTEND_URL");
+if (!FRONTEND_URL) {
+  throw new Error("Missing required environment variable: FRONTEND_URL");
+}
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": FRONTEND_URL,
@@ -75,7 +78,12 @@ Deno.serve(withSentry(async (req) => {
 
   // ── PUT: Update user settings ──────────────────────────────────────
   if (req.method === "PUT") {
-    const body = await req.json();
+    let body: any;
+    try {
+      body = await req.json();
+    } catch {
+      return jsonResponse({ error: "Invalid JSON body" }, 400);
+    }
 
     const allowedFields = [
       "trigger_word",

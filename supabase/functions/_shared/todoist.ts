@@ -82,8 +82,18 @@ export class TodoistClient {
       throw new Error(`Todoist updateComment failed: ${res.status}`);
   }
 
+  private isTrustedDomain(url: string): boolean {
+    try {
+      const host = new URL(url).hostname;
+      return host.endsWith(".todoist.com") || host.endsWith(".doist.com") || host.endsWith(".todoist.net");
+    } catch {
+      return false;
+    }
+  }
+
   async downloadFile(url: string): Promise<Uint8Array> {
-    const res = await fetchWithTimeout(url, { headers: this.headers() });
+    const headers = this.isTrustedDomain(url) ? this.headers() : {};
+    const res = await fetchWithTimeout(url, { headers });
     if (!res.ok) throw new Error(`Download failed: ${res.status}`);
 
     if (!res.body) {

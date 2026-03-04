@@ -25,7 +25,7 @@ export async function getEncryptionKey(): Promise<CryptoKey> {
   const raw = base64ToUint8(b64);
   _cachedKey = await crypto.subtle.importKey(
     "raw",
-    raw,
+    raw.buffer as ArrayBuffer,
     { name: "AES-GCM" },
     false,
     ["encrypt", "decrypt"]

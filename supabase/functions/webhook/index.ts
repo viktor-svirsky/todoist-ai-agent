@@ -140,7 +140,14 @@ Deno.serve(withSentry(async (req: Request) => {
   }
 
   // Verify HMAC immediately — before parsing JSON or querying DB
-  const clientSecret = Deno.env.get("TODOIST_CLIENT_SECRET") ?? "";
+  const clientSecret = Deno.env.get("TODOIST_CLIENT_SECRET");
+  if (!clientSecret) {
+    console.error("TODOIST_CLIENT_SECRET is not configured");
+    return new Response(JSON.stringify({ error: "Server misconfiguration" }), {
+      status: 500,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
   const valid = await verifyHmac(clientSecret, rawBody, signature);
   if (!valid) {
     return new Response(JSON.stringify({ error: "Invalid signature" }), {
@@ -172,7 +179,7 @@ Deno.serve(withSentry(async (req: Request) => {
   const supabase = createServiceClient();
   const { data: user, error: userErr } = await supabase
     .from("users_config")
-    .select("id, todoist_token, todoist_user_id, webhook_secret, trigger_word, custom_ai_base_url, custom_ai_api_key, custom_ai_model, custom_brave_key, max_messages")
+    .select("id, todoist_token, todoist_user_id, trigger_word, custom_ai_base_url, custom_ai_api_key, custom_ai_model, custom_brave_key, max_messages")
     .eq("todoist_user_id", userId)
     .maybeSingle();
 
