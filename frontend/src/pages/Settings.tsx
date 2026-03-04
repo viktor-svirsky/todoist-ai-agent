@@ -131,7 +131,13 @@ export default function Settings() {
 
           <hr />
           <p className="text-sm font-medium text-gray-700">AI Provider (optional)</p>
-          <p className="text-xs text-gray-500">Leave empty to use the shared default.</p>
+          <p className="text-xs text-gray-500">
+            Leave empty to use the shared default. Any OpenAI-compatible provider works.
+            Get a key from{" "}
+            <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">OpenAI</a>,{" "}
+            <a href="https://openrouter.ai/keys" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">OpenRouter</a>, or{" "}
+            <a href="https://console.groq.com/keys" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">Groq</a>.
+          </p>
 
           <div>
             <label className="block text-sm text-gray-600">Base URL</label>
@@ -140,7 +146,7 @@ export default function Settings() {
               value={aiBaseUrl}
               onChange={(e) => setAiBaseUrl(e.target.value)}
               className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
-              placeholder="https://api.anthropic.com/v1"
+              placeholder="https://api.openai.com/v1"
             />
           </div>
 
@@ -162,13 +168,16 @@ export default function Settings() {
               value={aiModel}
               onChange={(e) => setAiModel(e.target.value)}
               className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
-              placeholder="claude-sonnet-4-5-20250514"
+              placeholder="gpt-4o-mini"
             />
           </div>
 
           <hr />
           <p className="text-sm font-medium text-gray-700">Web Search (optional)</p>
-          <p className="text-xs text-gray-500">Leave empty to use the shared default.</p>
+          <p className="text-xs text-gray-500">
+            Leave empty to use the shared default. Get a free key from{" "}
+            <a href="https://brave.com/search/api/" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">Brave Search API</a>.
+          </p>
 
           <div>
             <label className="block text-sm text-gray-600">Brave Search API Key</label>
@@ -202,6 +211,13 @@ export default function Settings() {
         >
           Disconnect & Delete Account
         </button>
+
+        <p className="text-center text-xs text-gray-400 pt-2">
+          <a href="https://github.com/viktor-svirsky/todoist-ai-agent" target="_blank" rel="noopener noreferrer" className="hover:text-gray-600 hover:underline">GitHub</a>
+          {" · "}
+          Questions or issues? Open a{" "}
+          <a href="https://github.com/viktor-svirsky/todoist-ai-agent/issues" target="_blank" rel="noopener noreferrer" className="hover:text-gray-600 hover:underline">GitHub issue</a>.
+        </p>
       </div>
     </div>
   );

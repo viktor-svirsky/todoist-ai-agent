@@ -68,6 +68,10 @@ export default function Landing() {
         >
           {connecting ? "Redirecting..." : "Connect Todoist"}
         </button>
+
+        <p className="text-center text-xs text-gray-400 pt-2">
+          <a href="https://github.com/viktor-svirsky/todoist-ai-agent" target="_blank" rel="noopener noreferrer" className="hover:text-gray-600 hover:underline">GitHub</a>
+        </p>
       </div>
     </div>
   );
