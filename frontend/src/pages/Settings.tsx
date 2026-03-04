@@ -158,7 +158,7 @@ export default function Settings() {
             type="text"
             value={triggerWord}
             onChange={(e) => setTriggerWord(e.target.value)}
-            className={inputClasses}
+            className={`${inputClasses} font-mono`}
             placeholder="@ai"
           />
           <p className="mt-1.5 text-xs text-gray-500">
