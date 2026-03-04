@@ -14,6 +14,20 @@ updates:
         dependency-type: production
         update-types: [minor, patch]
 
+  - package-ecosystem: npm
+    directory: /frontend
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 10
+    groups:
+      frontend-dev-dependencies:
+        dependency-type: development
+        update-types: [minor, patch]
+      frontend-production-dependencies:
+        dependency-type: production
+        update-types: [minor, patch]
+
   - package-ecosystem: github-actions
     directory: /
     schedule:
