@@ -11,3 +11,6 @@ export const PROGRESS_INDICATOR = "🤖 **AI Agent**\n\n_Reviewing..._";
 export const MAX_TOOL_ROUNDS = 5;
 export const DEFAULT_AI_MODEL = "claude-sonnet-4-6";
 export const DEFAULT_MAX_MESSAGES = 20;
+
+export const MAX_IMAGE_SIZE_BYTES = 10 * 1024 * 1024; // 10 MB
+export const TODOIST_API_TIMEOUT_MS = 30_000; // 30 seconds
