@@ -17,8 +17,8 @@ export default function AuthCallback() {
       return;
     }
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (session) {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (session && (event === 'SIGNED_IN' || event === 'USER_UPDATED')) {
         navigate("/settings");
       }
     });

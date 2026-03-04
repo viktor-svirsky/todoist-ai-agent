@@ -16,6 +16,7 @@ export default function Settings() {
   const [settings, setSettings] = useState<UserSettings | null>(null);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const [triggerWord, setTriggerWord] = useState("@ai");
   const [aiBaseUrl, setAiBaseUrl] = useState("");
@@ -24,16 +25,22 @@ export default function Settings() {
   const [braveKey, setBraveKey] = useState("");
 
   async function loadSettings(token: string) {
-    const res = await fetch(
-      `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/settings`,
-      { headers: { Authorization: `Bearer ${token}` } }
-    );
-    if (res.ok) {
-      const data = await res.json();
-      setSettings(data);
-      setTriggerWord(data.trigger_word);
-      setAiBaseUrl(data.custom_ai_base_url || "");
-      setAiModel(data.custom_ai_model || "");
+    try {
+      const res = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/settings`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      if (res.ok) {
+        const data = await res.json();
+        setSettings(data);
+        setTriggerWord(data.trigger_word);
+        setAiBaseUrl(data.custom_ai_base_url || "");
+        setAiModel(data.custom_ai_model || "");
+      } else {
+        setError("Failed to load settings.");
+      }
+    } catch {
+      setError("Network error. Please check your connection and refresh.");
     }
   }
 
@@ -51,54 +58,79 @@ export default function Settings() {
     setSaving(true);
     setMessage(null);
 
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) return;
-
-    const updates: Record<string, string | null> = {
-      trigger_word: triggerWord,
-      custom_ai_base_url: aiBaseUrl || null,
-      custom_ai_model: aiModel || null,
-    };
-    if (aiApiKey) updates.custom_ai_api_key = aiApiKey;
-    if (braveKey) updates.custom_brave_key = braveKey;
-
-    const res = await fetch(
-      `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/settings`,
-      {
-        method: "PUT",
-        headers: {
-          Authorization: `Bearer ${session.access_token}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(updates),
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        setSaving(false);
+        return;
       }
-    );
 
-    setSaving(false);
-    setMessage(res.ok ? "Settings saved." : "Failed to save settings.");
-    if (res.ok) {
-      setAiApiKey("");
-      setBraveKey("");
-      loadSettings(session.access_token);
+      const updates: Record<string, string | null> = {
+        trigger_word: triggerWord,
+        custom_ai_base_url: aiBaseUrl || null,
+        custom_ai_model: aiModel || null,
+      };
+      if (aiApiKey) updates.custom_ai_api_key = aiApiKey;
+      if (braveKey) updates.custom_brave_key = braveKey;
+
+      const res = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/settings`,
+        {
+          method: "PUT",
+          headers: {
+            Authorization: `Bearer ${session.access_token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(updates),
+        }
+      );
+
+      setMessage(res.ok ? "Settings saved." : "Failed to save settings.");
+      if (res.ok) {
+        setAiApiKey("");
+        setBraveKey("");
+        loadSettings(session.access_token);
+      }
+    } catch {
+      setMessage("Network error. Please try again.");
+    } finally {
+      setSaving(false);
     }
   }
 
   async function handleDisconnect() {
     if (!confirm("This will delete your account and all data. Continue?")) return;
 
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) return;
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
 
-    await fetch(
-      `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/settings`,
-      {
-        method: "DELETE",
-        headers: { Authorization: `Bearer ${session.access_token}` },
+      const res = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/settings`,
+        {
+          method: "DELETE",
+          headers: { Authorization: `Bearer ${session.access_token}` },
+        }
+      );
+
+      if (!res.ok) {
+        setMessage("Failed to delete account. Please try again.");
+        return;
       }
-    );
 
-    await supabase.auth.signOut();
-    navigate("/");
+      await supabase.auth.signOut();
+      navigate("/");
+    } catch {
+      setMessage("Network error. Please try again.");
+    }
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <p className="text-red-600">{error}</p>
+      </div>
+    );
   }
 
   if (!settings) {

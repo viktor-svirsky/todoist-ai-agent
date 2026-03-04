@@ -3,7 +3,10 @@ import { TODOIST_TOKEN_URL, TODOIST_SYNC_URL, TODOIST_USER_URL } from "../_share
 import { withSentry, captureException } from "../_shared/sentry.ts";
 import { encrypt } from "../_shared/crypto.ts";
 
-const FRONTEND_URL = Deno.env.get("FRONTEND_URL")!;
+const FRONTEND_URL = Deno.env.get("FRONTEND_URL");
+if (!FRONTEND_URL) {
+  throw new Error("Missing required environment variable: FRONTEND_URL");
+}
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": FRONTEND_URL,
@@ -126,10 +129,14 @@ Deno.serve(withSentry(async (req) => {
 
         if (racedUser) {
           userId = racedUser.id;
-          await supabase
+          const { error: raceUpdateError } = await supabase
             .from("users_config")
             .update({ todoist_token: await encrypt(access_token) })
             .eq("id", userId);
+          if (raceUpdateError) {
+            console.error("Failed to update token (race path):", raceUpdateError);
+            return errorRedirect("update_failed");
+          }
           // Skip webhook + insert — jump straight to magic link
           const { data: linkData, error: linkError } = await supabase.auth.admin.generateLink({
             type: "magiclink",
