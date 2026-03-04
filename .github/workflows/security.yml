@@ -22,3 +22,6 @@ jobs:
 
       - run: npm ci
       - run: npm audit --omit=dev
+
+      - run: cd frontend && npm ci
+      - run: cd frontend && npm audit --omit=dev
