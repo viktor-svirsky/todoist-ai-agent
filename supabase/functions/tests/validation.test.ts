@@ -115,6 +115,26 @@ Deno.test("validateSettings: brave key too long", () => {
   assertEquals(errors[0].field, "custom_brave_key");
 });
 
+// -- custom_prompt --
+
+Deno.test("validateSettings: valid custom_prompt", () => {
+  assertEquals(validateSettings({ custom_prompt: "I live in Berlin" }), []);
+  assertEquals(validateSettings({ custom_prompt: "a".repeat(2000) }), []);
+  assertEquals(validateSettings({ custom_prompt: null }), []);
+});
+
+Deno.test("validateSettings: custom_prompt too long", () => {
+  const errors = validateSettings({ custom_prompt: "a".repeat(2001) });
+  assertEquals(errors.length, 1);
+  assertEquals(errors[0].field, "custom_prompt");
+});
+
+Deno.test("validateSettings: custom_prompt not a string", () => {
+  const errors = validateSettings({ custom_prompt: 123 });
+  assertEquals(errors.length, 1);
+  assertEquals(errors[0].field, "custom_prompt");
+});
+
 // -- multiple fields --
 
 Deno.test("validateSettings: multiple valid fields", () => {

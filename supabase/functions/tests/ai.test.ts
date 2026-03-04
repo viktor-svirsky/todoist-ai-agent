@@ -53,3 +53,32 @@ Deno.test("buildMessages: no images — message content stays as string", () => 
   const result = buildMessages("Task", undefined, messages);
   assertEquals(typeof result[1].content, "string");
 });
+
+Deno.test("buildMessages: custom prompt injected into system message", () => {
+  const result = buildMessages("Task", undefined, [], undefined, "I live in Berlin");
+  assertStringIncludes(result[0].content, "User's custom instructions:");
+  assertStringIncludes(result[0].content, "I live in Berlin");
+});
+
+Deno.test("buildMessages: custom prompt appears before task context", () => {
+  const result = buildMessages("Buy milk", undefined, [], undefined, "Respond in German");
+  const content = result[0].content;
+  const promptIdx = content.indexOf("Respond in German");
+  const taskIdx = content.indexOf("Buy milk");
+  assertEquals(promptIdx < taskIdx, true);
+});
+
+Deno.test("buildMessages: null custom prompt not included in system message", () => {
+  const result = buildMessages("Task", undefined, [], undefined, null);
+  assertEquals(result[0].content.includes("custom instructions"), false);
+});
+
+Deno.test("buildMessages: empty string custom prompt not included", () => {
+  const result = buildMessages("Task", undefined, [], undefined, "");
+  assertEquals(result[0].content.includes("custom instructions"), false);
+});
+
+Deno.test("buildMessages: undefined custom prompt not included", () => {
+  const result = buildMessages("Task", undefined, []);
+  assertEquals(result[0].content.includes("custom instructions"), false);
+});
