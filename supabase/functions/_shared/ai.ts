@@ -1,5 +1,5 @@
 import { braveSearch } from "./search.ts";
-import { MAX_TOOL_ROUNDS } from "./constants.ts";
+import { MAX_TOOL_ROUNDS, DEFAULT_MAX_TOKENS } from "./constants.ts";
 import * as Sentry from "npm:@sentry/deno"; // startSpan is a no-op when Sentry is not initialized (no DSN set)
 
 interface Message {
@@ -97,7 +97,7 @@ export async function executePrompt(
   const runMessages = [...messages];
 
   for (let round = 0; round <= MAX_TOOL_ROUNDS; round++) {
-    const body: any = { model: config.model, messages: runMessages };
+    const body: any = { model: config.model, messages: runMessages, max_tokens: DEFAULT_MAX_TOKENS };
     if (useTools) body.tools = TOOLS;
 
     const controller = new AbortController();
@@ -165,7 +165,7 @@ export async function executePrompt(
           "Content-Type": "application/json",
           Authorization: `Bearer ${config.apiKey}`,
         },
-        body: JSON.stringify({ model: config.model, messages: runMessages }),
+        body: JSON.stringify({ model: config.model, messages: runMessages, max_tokens: DEFAULT_MAX_TOKENS }),
       })
   );
   const data = await res.json();
