@@ -181,6 +181,10 @@ DEFAULT_AI_API_KEY=your_openai_key
 DEFAULT_AI_MODEL=gpt-4o-mini
 DEFAULT_BRAVE_API_KEY=your_brave_key    # optional
 PUBLIC_SITE_URL=http://localhost:5173
+
+# Required: encryption key for sensitive DB columns (AES-256-GCM)
+# Generate with: deno -e "console.log(btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(32)))))"
+ENCRYPTION_KEY=your_generated_key
 ```
 
 Create **`frontend/.env.local`**:
