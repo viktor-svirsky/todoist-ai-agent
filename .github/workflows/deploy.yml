@@ -24,6 +24,11 @@ jobs:
         with:
           node-version: 22
 
+      - name: Run DB Migrations
+        run: npx supabase db push --project-ref ${{ vars.SUPABASE_PROJECT_REF }}
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+
       - name: Deploy Edge Functions
         run: npx supabase functions deploy --project-ref ${{ vars.SUPABASE_PROJECT_REF }}
         env:
