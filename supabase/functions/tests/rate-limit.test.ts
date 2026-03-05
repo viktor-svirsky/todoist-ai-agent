@@ -1,6 +1,16 @@
-import { assertEquals, assertStringIncludes } from "jsr:@std/assert";
+import { assertEquals } from "jsr:@std/assert";
+import {
+  getRateLimitConfig,
+  getSettingsRateLimitConfig,
+  rateLimitResponse,
+  checkRateLimitByTodoistId,
+  checkRateLimitByUuid,
+} from "../_shared/rate-limit.ts";
 
-// Env vars must be set before importing the module
+// ---------------------------------------------------------------------------
+// Env helpers
+// ---------------------------------------------------------------------------
+
 const envBackup: Record<string, string | undefined> = {};
 
 function setEnv(key: string, value: string) {
@@ -26,21 +36,14 @@ function restoreEnv() {
   }
 }
 
-// Dynamic import helper so env vars are read fresh
-async function importModule() {
-  const timestamp = Date.now() + Math.random();
-  return await import(`../_shared/rate-limit.ts?t=${timestamp}`);
-}
-
 // ============================================================================
 // getRateLimitConfig
 // ============================================================================
 
-Deno.test("getRateLimitConfig: returns defaults when no env vars set", async () => {
+Deno.test("getRateLimitConfig: returns defaults when no env vars set", () => {
   clearEnv("RATE_LIMIT_MAX_REQUESTS");
   clearEnv("RATE_LIMIT_WINDOW_SECONDS");
   try {
-    const { getRateLimitConfig } = await importModule();
     const config = getRateLimitConfig();
     assertEquals(config.maxRequests, 5);
     assertEquals(config.windowSeconds, 60);
@@ -49,11 +52,10 @@ Deno.test("getRateLimitConfig: returns defaults when no env vars set", async () 
   }
 });
 
-Deno.test("getRateLimitConfig: reads env var overrides", async () => {
+Deno.test("getRateLimitConfig: reads env var overrides", () => {
   setEnv("RATE_LIMIT_MAX_REQUESTS", "20");
   setEnv("RATE_LIMIT_WINDOW_SECONDS", "120");
   try {
-    const { getRateLimitConfig } = await importModule();
     const config = getRateLimitConfig();
     assertEquals(config.maxRequests, 20);
     assertEquals(config.windowSeconds, 120);
@@ -62,11 +64,10 @@ Deno.test("getRateLimitConfig: reads env var overrides", async () => {
   }
 });
 
-Deno.test("getRateLimitConfig: falls back on non-numeric env var", async () => {
+Deno.test("getRateLimitConfig: falls back on non-numeric env var", () => {
   setEnv("RATE_LIMIT_MAX_REQUESTS", "abc");
   setEnv("RATE_LIMIT_WINDOW_SECONDS", "xyz");
   try {
-    const { getRateLimitConfig } = await importModule();
     const config = getRateLimitConfig();
     assertEquals(config.maxRequests, 5);
     assertEquals(config.windowSeconds, 60);
@@ -75,10 +76,9 @@ Deno.test("getRateLimitConfig: falls back on non-numeric env var", async () => {
   }
 });
 
-Deno.test("getRateLimitConfig: falls back on zero", async () => {
+Deno.test("getRateLimitConfig: falls back on zero", () => {
   setEnv("RATE_LIMIT_MAX_REQUESTS", "0");
   try {
-    const { getRateLimitConfig } = await importModule();
     const config = getRateLimitConfig();
     assertEquals(config.maxRequests, 5);
   } finally {
@@ -86,10 +86,9 @@ Deno.test("getRateLimitConfig: falls back on zero", async () => {
   }
 });
 
-Deno.test("getRateLimitConfig: falls back on negative", async () => {
+Deno.test("getRateLimitConfig: falls back on negative", () => {
   setEnv("RATE_LIMIT_MAX_REQUESTS", "-5");
   try {
-    const { getRateLimitConfig } = await importModule();
     const config = getRateLimitConfig();
     assertEquals(config.maxRequests, 5);
   } finally {
@@ -97,11 +96,10 @@ Deno.test("getRateLimitConfig: falls back on negative", async () => {
   }
 });
 
-Deno.test("getRateLimitConfig: partial override (only max_requests)", async () => {
+Deno.test("getRateLimitConfig: partial override (only max_requests)", () => {
   setEnv("RATE_LIMIT_MAX_REQUESTS", "10");
   clearEnv("RATE_LIMIT_WINDOW_SECONDS");
   try {
-    const { getRateLimitConfig } = await importModule();
     const config = getRateLimitConfig();
     assertEquals(config.maxRequests, 10);
     assertEquals(config.windowSeconds, 60);
@@ -110,10 +108,9 @@ Deno.test("getRateLimitConfig: partial override (only max_requests)", async () =
   }
 });
 
-Deno.test("getRateLimitConfig: falls back on float", async () => {
+Deno.test("getRateLimitConfig: falls back on float", () => {
   setEnv("RATE_LIMIT_MAX_REQUESTS", "5.5");
   try {
-    const { getRateLimitConfig } = await importModule();
     const config = getRateLimitConfig();
     assertEquals(config.maxRequests, 5);
   } finally {
@@ -125,11 +122,10 @@ Deno.test("getRateLimitConfig: falls back on float", async () => {
 // getSettingsRateLimitConfig
 // ============================================================================
 
-Deno.test("getSettingsRateLimitConfig: returns defaults", async () => {
+Deno.test("getSettingsRateLimitConfig: returns defaults", () => {
   clearEnv("SETTINGS_RATE_LIMIT_MAX_REQUESTS");
   clearEnv("RATE_LIMIT_WINDOW_SECONDS");
   try {
-    const { getSettingsRateLimitConfig } = await importModule();
     const config = getSettingsRateLimitConfig();
     assertEquals(config.maxRequests, 30);
     assertEquals(config.windowSeconds, 60);
@@ -138,10 +134,9 @@ Deno.test("getSettingsRateLimitConfig: returns defaults", async () => {
   }
 });
 
-Deno.test("getSettingsRateLimitConfig: reads env var override", async () => {
+Deno.test("getSettingsRateLimitConfig: reads env var override", () => {
   setEnv("SETTINGS_RATE_LIMIT_MAX_REQUESTS", "50");
   try {
-    const { getSettingsRateLimitConfig } = await importModule();
     const config = getSettingsRateLimitConfig();
     assertEquals(config.maxRequests, 50);
   } finally {
@@ -154,7 +149,6 @@ Deno.test("getSettingsRateLimitConfig: reads env var override", async () => {
 // ============================================================================
 
 Deno.test("rateLimitResponse: returns 429 with Retry-After header", async () => {
-  const { rateLimitResponse } = await importModule();
   const resp = rateLimitResponse(30);
   assertEquals(resp.status, 429);
   assertEquals(resp.headers.get("Retry-After"), "30");
@@ -163,26 +157,22 @@ Deno.test("rateLimitResponse: returns 429 with Retry-After header", async () => 
   assertEquals(body.error, "Rate limit exceeded");
 });
 
-Deno.test("rateLimitResponse: clamps Retry-After to minimum 1", async () => {
-  const { rateLimitResponse } = await importModule();
+Deno.test("rateLimitResponse: clamps Retry-After to minimum 1", () => {
   const resp = rateLimitResponse(0);
   assertEquals(resp.headers.get("Retry-After"), "1");
 });
 
-Deno.test("rateLimitResponse: clamps negative to 1", async () => {
-  const { rateLimitResponse } = await importModule();
+Deno.test("rateLimitResponse: clamps negative to 1", () => {
   const resp = rateLimitResponse(-10);
   assertEquals(resp.headers.get("Retry-After"), "1");
 });
 
-Deno.test("rateLimitResponse: ceils fractional Retry-After", async () => {
-  const { rateLimitResponse } = await importModule();
+Deno.test("rateLimitResponse: ceils fractional Retry-After", () => {
   const resp = rateLimitResponse(2.3);
   assertEquals(resp.headers.get("Retry-After"), "3");
 });
 
-Deno.test("rateLimitResponse: merges extra headers", async () => {
-  const { rateLimitResponse } = await importModule();
+Deno.test("rateLimitResponse: merges extra headers", () => {
   const resp = rateLimitResponse(10, {
     "Access-Control-Allow-Origin": "https://example.com",
   });
@@ -195,7 +185,6 @@ Deno.test("rateLimitResponse: merges extra headers", async () => {
 // ============================================================================
 
 Deno.test("checkRateLimitByTodoistId: allowed when RPC returns allowed=true", async () => {
-  const { checkRateLimitByTodoistId } = await importModule();
   const mockSupabase = {
     rpc: async () => ({ data: { allowed: true, retry_after: 0 }, error: null }),
   };
@@ -209,7 +198,6 @@ Deno.test("checkRateLimitByTodoistId: allowed when RPC returns allowed=true", as
 });
 
 Deno.test("checkRateLimitByTodoistId: blocked with retry_after", async () => {
-  const { checkRateLimitByTodoistId } = await importModule();
   const mockSupabase = {
     rpc: async () => ({ data: { allowed: false, retry_after: 45 }, error: null }),
   };
@@ -223,7 +211,6 @@ Deno.test("checkRateLimitByTodoistId: blocked with retry_after", async () => {
 });
 
 Deno.test("checkRateLimitByTodoistId: RPC error returns blocked", async () => {
-  const { checkRateLimitByTodoistId } = await importModule();
   const mockSupabase = {
     rpc: async () => ({ data: null, error: { message: "db down" } }),
   };
@@ -237,7 +224,6 @@ Deno.test("checkRateLimitByTodoistId: RPC error returns blocked", async () => {
 });
 
 Deno.test("checkRateLimitByTodoistId: null data returns blocked", async () => {
-  const { checkRateLimitByTodoistId } = await importModule();
   const mockSupabase = {
     rpc: async () => ({ data: null, error: null }),
   };
@@ -251,7 +237,6 @@ Deno.test("checkRateLimitByTodoistId: null data returns blocked", async () => {
 });
 
 Deno.test("checkRateLimitByTodoistId: parses string JSON data", async () => {
-  const { checkRateLimitByTodoistId } = await importModule();
   const mockSupabase = {
     rpc: async () => ({ data: JSON.stringify({ allowed: true, retry_after: 0 }), error: null }),
   };
@@ -264,7 +249,6 @@ Deno.test("checkRateLimitByTodoistId: parses string JSON data", async () => {
 });
 
 Deno.test("checkRateLimitByTodoistId: passes correct params to RPC", async () => {
-  const { checkRateLimitByTodoistId } = await importModule();
   let capturedParams: Record<string, unknown> = {};
   const mockSupabase = {
     rpc: async (_fn: string, params: Record<string, unknown>) => {
@@ -287,7 +271,6 @@ Deno.test("checkRateLimitByTodoistId: passes correct params to RPC", async () =>
 // ============================================================================
 
 Deno.test("checkRateLimitByUuid: allowed when RPC returns allowed=true", async () => {
-  const { checkRateLimitByUuid } = await importModule();
   const mockSupabase = {
     rpc: async () => ({ data: { allowed: true, retry_after: 0 }, error: null }),
   };
@@ -300,7 +283,6 @@ Deno.test("checkRateLimitByUuid: allowed when RPC returns allowed=true", async (
 });
 
 Deno.test("checkRateLimitByUuid: RPC error returns blocked", async () => {
-  const { checkRateLimitByUuid } = await importModule();
   const mockSupabase = {
     rpc: async () => ({ data: null, error: { message: "fail" } }),
   };
@@ -314,7 +296,6 @@ Deno.test("checkRateLimitByUuid: RPC error returns blocked", async () => {
 });
 
 Deno.test("checkRateLimitByUuid: passes correct params to RPC", async () => {
-  const { checkRateLimitByUuid } = await importModule();
   let capturedFn = "";
   let capturedParams: Record<string, unknown> = {};
   const mockSupabase = {
