@@ -23,7 +23,6 @@ LANGUAGE plpgsql
 AS $$
 DECLARE
   v_disabled boolean;
-  v_reason text;
   v_count int;
   v_prev int;
   v_reset timestamptz;
@@ -52,12 +51,11 @@ BEGIN
   WHERE todoist_user_id = p_user_todoist_id
   RETURNING
     is_disabled,
-    disabled_reason,
     rate_limit_count,
     rate_limit_prev_count,
     rate_limit_reset_at,
     COALESCE(rate_limit_max_requests, p_max_requests)
-  INTO v_disabled, v_reason, v_count, v_prev, v_reset, v_max;
+  INTO v_disabled, v_count, v_prev, v_reset, v_max;
 
   IF NOT FOUND THEN
     RETURN jsonb_build_object('allowed', false, 'blocked', false, 'retry_after', p_window_seconds);
@@ -65,7 +63,7 @@ BEGIN
 
   -- Check if account is disabled
   IF v_disabled THEN
-    RETURN jsonb_build_object('allowed', false, 'blocked', true, 'reason', COALESCE(v_reason, 'Account disabled'));
+    RETURN jsonb_build_object('allowed', false, 'blocked', true, 'retry_after', 0);
   END IF;
 
   -- Sliding window: weight previous window by remaining fraction
@@ -92,7 +90,6 @@ LANGUAGE plpgsql
 AS $$
 DECLARE
   v_disabled boolean;
-  v_reason text;
   v_count int;
   v_prev int;
   v_reset timestamptz;
@@ -119,18 +116,17 @@ BEGIN
   WHERE id = p_user_id
   RETURNING
     is_disabled,
-    disabled_reason,
     settings_rl_count,
     settings_rl_prev,
     settings_rl_reset_at
-  INTO v_disabled, v_reason, v_count, v_prev, v_reset;
+  INTO v_disabled, v_count, v_prev, v_reset;
 
   IF NOT FOUND THEN
     RETURN jsonb_build_object('allowed', false, 'blocked', false, 'retry_after', p_window_seconds);
   END IF;
 
   IF v_disabled THEN
-    RETURN jsonb_build_object('allowed', false, 'blocked', true, 'reason', COALESCE(v_reason, 'Account disabled'));
+    RETURN jsonb_build_object('allowed', false, 'blocked', true, 'retry_after', 0);
   END IF;
 
   v_remaining := GREATEST(EXTRACT(EPOCH FROM v_reset - now()), 0);

@@ -201,7 +201,7 @@ Deno.serve(withSentry(async (req: Request) => {
   const rlConfig = getRateLimitConfig();
   const rlResult = await checkRateLimitByTodoistId(supabase, userId, rlConfig);
   if (rlResult.blocked) {
-    return accountBlockedResponse(rlResult.reason);
+    return accountBlockedResponse();
   }
   if (!rlResult.allowed) {
     return rateLimitResponse(rlResult.retry_after);

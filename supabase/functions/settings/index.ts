@@ -56,7 +56,7 @@ Deno.serve(withSentry(async (req) => {
   const rlConfig = getSettingsRateLimitConfig();
   const rlResult = await checkRateLimitByUuid(serviceClient, user.id, rlConfig);
   if (rlResult.blocked) {
-    return accountBlockedResponse(rlResult.reason, CORS_HEADERS);
+    return accountBlockedResponse(CORS_HEADERS);
   }
   if (!rlResult.allowed) {
     return rateLimitResponse(rlResult.retry_after, CORS_HEADERS);

@@ -185,23 +185,17 @@ Deno.test("rateLimitResponse: merges extra headers", () => {
 // accountBlockedResponse
 // ============================================================================
 
-Deno.test("accountBlockedResponse: returns 403 with default reason", async () => {
+Deno.test("accountBlockedResponse: returns 403 with generic message", async () => {
   const resp = accountBlockedResponse();
   assertEquals(resp.status, 403);
   assertEquals(resp.headers.get("Content-Type"), "application/json");
   const body = await resp.json();
   assertEquals(body.error, "Account disabled");
-  assertEquals(body.reason, "Account disabled");
-});
-
-Deno.test("accountBlockedResponse: includes custom reason", async () => {
-  const resp = accountBlockedResponse("Abuse detected");
-  const body = await resp.json();
-  assertEquals(body.reason, "Abuse detected");
+  assertEquals(body.reason, undefined);
 });
 
 Deno.test("accountBlockedResponse: merges extra headers", () => {
-  const resp = accountBlockedResponse(undefined, {
+  const resp = accountBlockedResponse({
     "Access-Control-Allow-Origin": "https://example.com",
   });
   assertEquals(resp.status, 403);
@@ -298,10 +292,10 @@ Deno.test("checkRateLimitByTodoistId: passes correct params to RPC", async () =>
   assertEquals(capturedParams.p_window_seconds, 120);
 });
 
-Deno.test("checkRateLimitByTodoistId: blocked account returns blocked=true with reason", async () => {
+Deno.test("checkRateLimitByTodoistId: blocked account returns blocked=true", async () => {
   const mockSupabase = {
     rpc: async () => ({
-      data: { allowed: false, blocked: true, reason: "Abuse detected" },
+      data: { allowed: false, blocked: true, retry_after: 0 },
       error: null,
     }),
   };
@@ -312,7 +306,7 @@ Deno.test("checkRateLimitByTodoistId: blocked account returns blocked=true with 
   );
   assertEquals(result.allowed, false);
   assertEquals(result.blocked, true);
-  assertEquals(result.reason, "Abuse detected");
+  assertEquals(result.retry_after, 0);
 });
 
 Deno.test("checkRateLimitByTodoistId: defaults blocked to false when field missing", async () => {
@@ -379,10 +373,10 @@ Deno.test("checkRateLimitByUuid: passes correct params to RPC", async () => {
   assertEquals(capturedParams.p_window_seconds, 60);
 });
 
-Deno.test("checkRateLimitByUuid: blocked account returns blocked=true with reason", async () => {
+Deno.test("checkRateLimitByUuid: blocked account returns blocked=true", async () => {
   const mockSupabase = {
     rpc: async () => ({
-      data: { allowed: false, blocked: true, reason: "Terms violation" },
+      data: { allowed: false, blocked: true, retry_after: 0 },
       error: null,
     }),
   };
@@ -393,7 +387,7 @@ Deno.test("checkRateLimitByUuid: blocked account returns blocked=true with reaso
   );
   assertEquals(result.allowed, false);
   assertEquals(result.blocked, true);
-  assertEquals(result.reason, "Terms violation");
+  assertEquals(result.retry_after, 0);
 });
 
 Deno.test("checkRateLimitByUuid: defaults blocked to false when field missing", async () => {
