@@ -17,6 +17,10 @@
 </p>
 
 <p align="center">
+  <a href="https://todoist-ai-agent.pages.dev"><img src="https://img.shields.io/badge/Live_Demo-Try_it_now-E44332?style=for-the-badge" alt="Live Demo" /></a>
+</p>
+
+<p align="center">
   <a href="https://github.com/viktor-svirsky/todoist-ai-agent/actions/workflows/ci.yml"><img src="https://github.com/viktor-svirsky/todoist-ai-agent/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
   <a href="https://github.com/viktor-svirsky/todoist-ai-agent/actions/workflows/deploy.yml"><img src="https://github.com/viktor-svirsky/todoist-ai-agent/actions/workflows/deploy.yml/badge.svg" alt="Deploy" /></a>
   <a href="https://github.com/viktor-svirsky/todoist-ai-agent/actions/workflows/security.yml"><img src="https://github.com/viktor-svirsky/todoist-ai-agent/actions/workflows/security.yml/badge.svg" alt="Security Audit" /></a>
