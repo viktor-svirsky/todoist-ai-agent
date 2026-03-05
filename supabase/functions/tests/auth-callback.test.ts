@@ -1,195 +1,284 @@
 import { assertEquals } from "jsr:@std/assert";
 
-// ============================================================================
-// Auth callback: URL parameter parsing
-// ============================================================================
+// ---------------------------------------------------------------------------
+// Env + dynamic import setup
+// ---------------------------------------------------------------------------
 
-Deno.test("auth-callback: extracts code and state from URL", () => {
-  const url = new URL("https://example.com/auth-callback?code=abc123&state=xyz789");
-  assertEquals(url.searchParams.get("code"), "abc123");
-  assertEquals(url.searchParams.get("state"), "xyz789");
-});
+const FRONTEND_URL = "https://app.example.com";
+Deno.env.set("SUPABASE_URL", "http://localhost:54321");
+Deno.env.set("SUPABASE_SERVICE_ROLE_KEY", "test-service-key");
+Deno.env.set("SUPABASE_ANON_KEY", "test-anon-key");
+Deno.env.set("FRONTEND_URL", FRONTEND_URL);
+Deno.env.set("TODOIST_CLIENT_ID", "test-client-id");
+Deno.env.set("TODOIST_CLIENT_SECRET", "test-client-secret");
+Deno.env.set("ENCRYPTION_KEY", btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(32)))));
 
-Deno.test("auth-callback: missing code returns null", () => {
-  const url = new URL("https://example.com/auth-callback?state=xyz789");
-  assertEquals(url.searchParams.get("code"), null);
-});
+const { authCallbackHandler: handler } = await import("../auth-callback/handler.ts");
 
-Deno.test("auth-callback: missing state returns null", () => {
-  const url = new URL("https://example.com/auth-callback?code=abc123");
-  assertEquals(url.searchParams.get("state"), null);
-});
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
 
-// ============================================================================
-// Auth callback: Error redirect construction
-// ============================================================================
+// Disable sanitizers — Supabase client starts token refresh intervals
+function t(name: string, fn: () => Promise<void>) {
+  Deno.test({ name, fn, sanitizeOps: false, sanitizeResources: false });
+}
 
-Deno.test("auth-callback: error redirect encodes message", () => {
-  const FRONTEND_URL = "https://app.example.com";
-  const message = "auth_failed";
-  const location = `${FRONTEND_URL}/?error=${encodeURIComponent(message)}`;
-  assertEquals(location, "https://app.example.com/?error=auth_failed");
-});
+function mockFetch(
+  fn: (url: string, init?: RequestInit) => Response | Promise<Response>,
+): () => void {
+  const original = globalThis.fetch;
+  globalThis.fetch = ((input: unknown, init?: unknown) =>
+    Promise.resolve(fn(String(input), init as RequestInit))) as typeof fetch;
+  return () => { globalThis.fetch = original; };
+}
 
-Deno.test("auth-callback: error redirect handles special characters", () => {
-  const FRONTEND_URL = "https://app.example.com";
-  const message = "token exchange failed & retry";
-  const location = `${FRONTEND_URL}/?error=${encodeURIComponent(message)}`;
-  assertEquals(location.includes("&retry"), false); // & should be encoded
-  assertEquals(location.includes("%26"), true);
-});
+function callbackUrl(params: Record<string, string> = {}): string {
+  const merged = { code: "oauth-code", state: "csrf-state", ...params };
+  return `http://localhost/auth-callback?${new URLSearchParams(merged).toString()}`;
+}
 
-Deno.test("auth-callback: default error message is auth_failed", () => {
-  const message = "auth_failed";
-  assertEquals(message, "auth_failed");
-});
+const SESSION_TOKENS = {
+  access_token: "session-access-token",
+  refresh_token: "session-refresh-token",
+  expires_in: 3600,
+  token_type: "bearer",
+};
 
-// ============================================================================
-// Auth callback: CORS headers
-// ============================================================================
-
-Deno.test("auth-callback: CORS headers restrict origin to FRONTEND_URL", () => {
-  const FRONTEND_URL = "https://app.example.com";
-  const corsHeaders = {
-    "Access-Control-Allow-Origin": FRONTEND_URL,
-    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-    "Access-Control-Allow-Methods": "GET, OPTIONS",
+/** Mock Todoist token exchange + user profile, then delegate to extra handler. */
+function todoistAndSupabaseMock(
+  todoistUser: { id: number; email: string },
+  extra: (url: string, init?: RequestInit) => Response | null,
+): (url: string, init?: RequestInit) => Response {
+  return (url, init) => {
+    if (url.includes("todoist.com/oauth/access_token")) {
+      return new Response(JSON.stringify({ access_token: "test-access-token" }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+    if (url.includes("api.todoist.com") && url.includes("/user")) {
+      return new Response(JSON.stringify(todoistUser), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+    const res = extra(url, init);
+    if (res) return res;
+    return new Response("{}", { status: 200, headers: { "Content-Type": "application/json" } });
   };
-  assertEquals(corsHeaders["Access-Control-Allow-Origin"], FRONTEND_URL);
-  assertEquals(corsHeaders["Access-Control-Allow-Methods"], "GET, OPTIONS");
+}
+
+// ============================================================================
+// CORS
+// ============================================================================
+
+t("authCallbackHandler: OPTIONS returns CORS headers", async () => {
+  const req = new Request("http://localhost/auth-callback", { method: "OPTIONS" });
+  const res = await handler(req);
+  assertEquals(res.status, 200);
+  assertEquals(res.headers.get("Access-Control-Allow-Origin"), FRONTEND_URL);
 });
 
 // ============================================================================
-// Auth callback: OAuth token exchange body
+// Parameter validation
 // ============================================================================
 
-Deno.test("auth-callback: token exchange request body is correct", () => {
-  const clientId = "test-client-id";
-  const clientSecret = "test-client-secret";
-  const code = "oauth-code-123";
+t("authCallbackHandler: missing code redirects with error", async () => {
+  const req = new Request("http://localhost/auth-callback?state=csrf");
+  const res = await handler(req);
+  assertEquals(res.status, 302);
+  const location = res.headers.get("Location")!;
+  assertEquals(location.includes("error=missing_code"), true);
+});
 
-  const body = {
-    client_id: clientId,
-    client_secret: clientSecret,
-    code,
-  };
-
-  assertEquals(body.client_id, "test-client-id");
-  assertEquals(body.client_secret, "test-client-secret");
-  assertEquals(body.code, "oauth-code-123");
+t("authCallbackHandler: missing state redirects with error", async () => {
+  const req = new Request("http://localhost/auth-callback?code=abc");
+  const res = await handler(req);
+  assertEquals(res.status, 302);
+  const location = res.headers.get("Location")!;
+  assertEquals(location.includes("error=missing_state"), true);
 });
 
 // ============================================================================
-// Auth callback: User ID extraction
+// External API failures
 // ============================================================================
 
-Deno.test("auth-callback: extracts todoist user ID as string", () => {
-  const userData = { id: 12345, email: "user@example.com" };
-  const todoistUserId = String(userData.id);
-  assertEquals(todoistUserId, "12345");
-  assertEquals(typeof todoistUserId, "string");
-});
-
-Deno.test("auth-callback: handles numeric user ID conversion", () => {
-  const userData = { id: 9876543210 };
-  assertEquals(String(userData.id), "9876543210");
-});
-
-// ============================================================================
-// Auth callback: Webhook URL construction
-// ============================================================================
-
-Deno.test("auth-callback: webhook URL uses todoist user ID", () => {
-  const supabaseUrl = "https://project.supabase.co";
-  const todoistUserId = "12345";
-  const webhookUrl = `${supabaseUrl}/functions/v1/webhook/${todoistUserId}`;
-  assertEquals(webhookUrl, "https://project.supabase.co/functions/v1/webhook/12345");
-});
-
-// ============================================================================
-// Auth callback: Webhook registration command
-// ============================================================================
-
-Deno.test("auth-callback: sync command has correct structure", () => {
-  const webhookUrl = "https://project.supabase.co/functions/v1/webhook/12345";
-  const uuid = "test-uuid";
-
-  const commands = JSON.stringify([
-    {
-      type: "live_notifications_set_service",
-      uuid,
-      args: { service_url: webhookUrl },
-    },
-  ]);
-
-  const parsed = JSON.parse(commands);
-  assertEquals(parsed.length, 1);
-  assertEquals(parsed[0].type, "live_notifications_set_service");
-  assertEquals(parsed[0].args.service_url, webhookUrl);
-});
-
-// ============================================================================
-// Auth callback: Session redirect construction
-// ============================================================================
-
-Deno.test("auth-callback: redirect URL uses fragment (#) for tokens", () => {
-  const FRONTEND_URL = "https://app.example.com";
-  const state = "csrf-state-123";
-  const session = {
-    access_token: "jwt-access-token",
-    refresh_token: "jwt-refresh-token",
-    expires_in: 3600,
-    token_type: "bearer",
-  };
-
-  const params = new URLSearchParams({
-    access_token: session.access_token,
-    refresh_token: session.refresh_token,
-    expires_in: String(session.expires_in),
-    token_type: session.token_type,
-    type: "magiclink",
+t("authCallbackHandler: token exchange failure redirects with error", async () => {
+  const restore = mockFetch((url) => {
+    if (url.includes("todoist.com/oauth/access_token")) {
+      return new Response("Bad Request", { status: 400 });
+    }
+    return new Response("{}", { status: 200, headers: { "Content-Type": "application/json" } });
   });
-
-  const location = `${FRONTEND_URL}/auth/callback?state=${encodeURIComponent(state)}#${params.toString()}`;
-
-  // Fragment (#) comes after query string
-  assertEquals(location.includes("#access_token="), true);
-  // State is in query string, tokens in fragment
-  assertEquals(location.includes("?state=csrf-state-123#"), true);
-  // Tokens should be in fragment, not query string
-  const [queryPart, fragmentPart] = location.split("#");
-  assertEquals(queryPart.includes("access_token"), false);
-  assertEquals(fragmentPart.includes("access_token"), true);
-});
-
-Deno.test("auth-callback: defaults token_type to bearer", () => {
-  const session = { token_type: undefined };
-  const tokenType = session.token_type || "bearer";
-  assertEquals(tokenType, "bearer");
-});
-
-// ============================================================================
-// Auth callback: Race condition handling
-// ============================================================================
-
-Deno.test("auth-callback: detects email-already-registered error", () => {
-  const errorCases = [
-    { message: "A user with this email address has already been registered" },
-    { message: "other error", status: 422 },
-  ];
-
-  for (const errorCase of errorCases) {
-    const isEmailExists =
-      (errorCase.message?.includes("already been registered")) ||
-      ((errorCase as Record<string, unknown>).status === 422);
-    assertEquals(isEmailExists, true);
+  try {
+    const req = new Request(callbackUrl());
+    const res = await handler(req);
+    assertEquals(res.status, 302);
+    assertEquals(res.headers.get("Location")!.includes("error=token_exchange_failed"), true);
+  } finally {
+    restore();
   }
 });
 
-Deno.test("auth-callback: non-email-exists errors are not retried", () => {
-  const error = { message: "Internal server error", status: 500 };
-  const isEmailExists =
-    error.message?.includes("already been registered") ||
-    error.status === 422;
-  assertEquals(isEmailExists, false);
+t("authCallbackHandler: profile fetch failure redirects with error", async () => {
+  const restore = mockFetch((url) => {
+    if (url.includes("todoist.com/oauth/access_token")) {
+      return new Response(JSON.stringify({ access_token: "token" }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+    if (url.includes("api.todoist.com") && url.includes("/user")) {
+      return new Response("Unauthorized", { status: 401 });
+    }
+    return new Response("{}", { status: 200, headers: { "Content-Type": "application/json" } });
+  });
+  try {
+    const req = new Request(callbackUrl());
+    const res = await handler(req);
+    assertEquals(res.status, 302);
+    assertEquals(res.headers.get("Location")!.includes("error=profile_fetch_failed"), true);
+  } finally {
+    restore();
+  }
+});
+
+// ============================================================================
+// Existing user flow
+// ============================================================================
+
+t("authCallbackHandler: existing user updates token and redirects with session", async () => {
+  const restore = mockFetch(todoistAndSupabaseMock(
+    { id: 12345, email: "user@example.com" },
+    (url, init) => {
+      // users_config select (existing user found)
+      if (url.includes("/rest/v1/users_config") && (!init?.method || init.method === "GET")) {
+        return new Response(JSON.stringify({ id: "a1b2c3d4-e5f6-7890-abcd-ef1234567890" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      // admin generateLink
+      if (url.includes("/auth/v1/admin/generate_link")) {
+        return new Response(JSON.stringify({
+          id: "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+          email: "user@example.com",
+          properties: { hashed_token: "test-token-hash" },
+        }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      // verify OTP
+      if (url.includes("/auth/v1/verify")) {
+        return new Response(JSON.stringify(SESSION_TOKENS), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      return null;
+    },
+  ));
+  try {
+    const req = new Request(callbackUrl());
+    const res = await handler(req);
+    assertEquals(res.status, 302);
+    const location = res.headers.get("Location")!;
+    assertEquals(location.includes(`${FRONTEND_URL}/auth/callback`), true);
+    assertEquals(location.includes("#access_token=session-access-token"), true);
+    assertEquals(location.includes("state=csrf-state"), true);
+  } finally {
+    restore();
+  }
+});
+
+// ============================================================================
+// New user flow
+// ============================================================================
+
+t("authCallbackHandler: new user creates account and redirects with session", async () => {
+  const restore = mockFetch(todoistAndSupabaseMock(
+    { id: 99999, email: "new@example.com" },
+    (url, init) => {
+      // users_config select (user not found)
+      if (url.includes("/rest/v1/users_config") && (!init?.method || init.method === "GET")) {
+        return new Response(JSON.stringify(null), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      // admin createUser
+      if (url.includes("/auth/v1/admin/users") && init?.method === "POST") {
+        return new Response(JSON.stringify({
+          id: "b2c3d4e5-f6a7-8901-bcde-f23456789012",
+          email: "new@example.com",
+        }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      // Todoist sync (webhook registration)
+      if (url.includes("api.todoist.com") && url.includes("/sync")) {
+        return new Response(JSON.stringify({ sync_status: {} }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      // users_config insert
+      if (url.includes("/rest/v1/users_config") && init?.method === "POST") {
+        return new Response("{}", {
+          status: 201,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      // admin generateLink
+      if (url.includes("/auth/v1/admin/generate_link")) {
+        return new Response(JSON.stringify({
+          id: "b2c3d4e5-f6a7-8901-bcde-f23456789012",
+          email: "new@example.com",
+          properties: { hashed_token: "new-hash" },
+        }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      // verify OTP
+      if (url.includes("/auth/v1/verify")) {
+        return new Response(JSON.stringify(SESSION_TOKENS), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      return null;
+    },
+  ));
+  try {
+    const req = new Request(callbackUrl());
+    const res = await handler(req);
+    assertEquals(res.status, 302);
+    const location = res.headers.get("Location")!;
+    assertEquals(location.includes(`${FRONTEND_URL}/auth/callback`), true);
+    assertEquals(location.includes("#access_token=session-access-token"), true);
+  } finally {
+    restore();
+  }
+});
+
+// ============================================================================
+// Error handling
+// ============================================================================
+
+t("authCallbackHandler: catches internal errors and redirects", async () => {
+  const restore = mockFetch(() => {
+    throw new Error("Network failure");
+  });
+  try {
+    const req = new Request(callbackUrl());
+    const res = await handler(req);
+    assertEquals(res.status, 302);
+    assertEquals(res.headers.get("Location")!.includes("error=auth_failed"), true);
+  } finally {
+    restore();
+  }
 });
