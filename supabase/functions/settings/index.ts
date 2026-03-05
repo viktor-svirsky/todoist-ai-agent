@@ -2,6 +2,11 @@ import { createServiceClient, createUserClient } from "../_shared/supabase.ts";
 import { withSentry } from "../_shared/sentry.ts";
 import { validateSettings } from "../_shared/validation.ts";
 import { encryptIfPresent } from "../_shared/crypto.ts";
+import {
+  getSettingsRateLimitConfig,
+  checkRateLimitByUuid,
+  rateLimitResponse,
+} from "../_shared/rate-limit.ts";
 
 const FRONTEND_URL = Deno.env.get("FRONTEND_URL");
 if (!FRONTEND_URL) {
@@ -45,6 +50,14 @@ Deno.serve(withSentry(async (req) => {
     return new Response("Unauthorized", { status: 401, headers: CORS_HEADERS });
   }
 
+  // Rate limit check — before any route handling
+  const serviceClient = createServiceClient();
+  const rlConfig = getSettingsRateLimitConfig();
+  const rlResult = await checkRateLimitByUuid(serviceClient, user.id, rlConfig);
+  if (!rlResult.allowed) {
+    return rateLimitResponse(rlResult.retry_after, CORS_HEADERS);
+  }
+
   // ── GET: Return user settings ──────────────────────────────────────
   if (req.method === "GET") {
     // Fetch non-sensitive fields via user client (respects RLS)
@@ -59,7 +72,6 @@ Deno.serve(withSentry(async (req) => {
     }
 
     // Check key presence via service client (bypasses RLS, can see encrypted cols)
-    const serviceClient = createServiceClient();
     const { data: fullConfig } = await serviceClient
       .from("users_config")
       .select("custom_ai_api_key, custom_brave_key")
@@ -127,7 +139,6 @@ Deno.serve(withSentry(async (req) => {
     }
 
     // Use service client to update (handles encrypted fields)
-    const serviceClient = createServiceClient();
     const { error } = await serviceClient
       .from("users_config")
       .update(updates)
@@ -143,8 +154,6 @@ Deno.serve(withSentry(async (req) => {
 
   // ── DELETE: Delete account ─────────────────────────────────────────
   if (req.method === "DELETE") {
-    const serviceClient = createServiceClient();
-
     // Delete the Supabase Auth user (cascades to users_config, conversations, messages)
     const { error } = await serviceClient.auth.admin.deleteUser(user.id);
     if (error) {

@@ -6,9 +6,12 @@ import {
   ERROR_PREFIX,
   DEFAULT_AI_MODEL,
   DEFAULT_MAX_MESSAGES,
-  RATE_LIMIT_MAX_REQUESTS,
-  RATE_LIMIT_WINDOW_SECONDS,
 } from "../_shared/constants.ts";
+import {
+  getRateLimitConfig,
+  checkRateLimitByTodoistId,
+  rateLimitResponse,
+} from "../_shared/rate-limit.ts";
 import { commentsToMessages, normalizeModel } from "../_shared/messages.ts";
 import { withSentry, captureException } from "../_shared/sentry.ts";
 import { uint8ToBase64, verifyHmac, decrypt, decryptIfPresent } from "../_shared/crypto.ts";
@@ -194,17 +197,10 @@ Deno.serve(withSentry(async (req: Request) => {
   }
 
   // Rate limit check — before any processing or decryption
-  const { data: allowed, error: rlErr } = await supabase.rpc("check_rate_limit", {
-    p_user_todoist_id: userId,
-    p_max_requests: RATE_LIMIT_MAX_REQUESTS,
-    p_window_seconds: RATE_LIMIT_WINDOW_SECONDS,
-  });
-
-  if (rlErr || !allowed) {
-    return new Response(JSON.stringify({ error: "Rate limit exceeded" }), {
-      status: 429,
-      headers: { "Content-Type": "application/json" },
-    });
+  const rlConfig = getRateLimitConfig();
+  const rlResult = await checkRateLimitByTodoistId(supabase, userId, rlConfig);
+  if (!rlResult.allowed) {
+    return rateLimitResponse(rlResult.retry_after);
   }
 
   const decryptedUser = {
