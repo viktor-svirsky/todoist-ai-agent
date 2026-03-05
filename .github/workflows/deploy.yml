@@ -29,11 +29,6 @@ jobs:
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
 
-      - name: Repair Remote Migration History
-        run: npx supabase migration repair --status reverted 20260227184135 20260302220324 20260304224333 20260304224343
-        env:
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-
       - name: Run DB Migrations
         run: npx supabase db push --linked
         env:
