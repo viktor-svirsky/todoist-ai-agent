@@ -3,6 +3,7 @@ import {
   getRateLimitConfig,
   getSettingsRateLimitConfig,
   rateLimitResponse,
+  accountBlockedResponse,
   checkRateLimitByTodoistId,
   checkRateLimitByUuid,
 } from "../_shared/rate-limit.ts";
@@ -181,12 +182,33 @@ Deno.test("rateLimitResponse: merges extra headers", () => {
 });
 
 // ============================================================================
+// accountBlockedResponse
+// ============================================================================
+
+Deno.test("accountBlockedResponse: returns 403 with generic message", async () => {
+  const resp = accountBlockedResponse();
+  assertEquals(resp.status, 403);
+  assertEquals(resp.headers.get("Content-Type"), "application/json");
+  const body = await resp.json();
+  assertEquals(body.error, "Account disabled");
+  assertEquals(body.reason, undefined);
+});
+
+Deno.test("accountBlockedResponse: merges extra headers", () => {
+  const resp = accountBlockedResponse({
+    "Access-Control-Allow-Origin": "https://example.com",
+  });
+  assertEquals(resp.status, 403);
+  assertEquals(resp.headers.get("Access-Control-Allow-Origin"), "https://example.com");
+});
+
+// ============================================================================
 // checkRateLimitByTodoistId
 // ============================================================================
 
 Deno.test("checkRateLimitByTodoistId: allowed when RPC returns allowed=true", async () => {
   const mockSupabase = {
-    rpc: async () => ({ data: { allowed: true, retry_after: 0 }, error: null }),
+    rpc: async () => ({ data: { allowed: true, blocked: false, retry_after: 0 }, error: null }),
   };
   const result = await checkRateLimitByTodoistId(
     mockSupabase,
@@ -194,12 +216,13 @@ Deno.test("checkRateLimitByTodoistId: allowed when RPC returns allowed=true", as
     { maxRequests: 5, windowSeconds: 60 },
   );
   assertEquals(result.allowed, true);
+  assertEquals(result.blocked, false);
   assertEquals(result.retry_after, 0);
 });
 
-Deno.test("checkRateLimitByTodoistId: blocked with retry_after", async () => {
+Deno.test("checkRateLimitByTodoistId: rate limited with retry_after", async () => {
   const mockSupabase = {
-    rpc: async () => ({ data: { allowed: false, retry_after: 45 }, error: null }),
+    rpc: async () => ({ data: { allowed: false, blocked: false, retry_after: 45 }, error: null }),
   };
   const result = await checkRateLimitByTodoistId(
     mockSupabase,
@@ -207,10 +230,11 @@ Deno.test("checkRateLimitByTodoistId: blocked with retry_after", async () => {
     { maxRequests: 5, windowSeconds: 60 },
   );
   assertEquals(result.allowed, false);
+  assertEquals(result.blocked, false);
   assertEquals(result.retry_after, 45);
 });
 
-Deno.test("checkRateLimitByTodoistId: RPC error returns blocked", async () => {
+Deno.test("checkRateLimitByTodoistId: RPC error returns not allowed", async () => {
   const mockSupabase = {
     rpc: async () => ({ data: null, error: { message: "db down" } }),
   };
@@ -220,10 +244,11 @@ Deno.test("checkRateLimitByTodoistId: RPC error returns blocked", async () => {
     { maxRequests: 5, windowSeconds: 60 },
   );
   assertEquals(result.allowed, false);
+  assertEquals(result.blocked, false);
   assertEquals(result.retry_after, 60);
 });
 
-Deno.test("checkRateLimitByTodoistId: null data returns blocked", async () => {
+Deno.test("checkRateLimitByTodoistId: null data returns not allowed", async () => {
   const mockSupabase = {
     rpc: async () => ({ data: null, error: null }),
   };
@@ -233,6 +258,7 @@ Deno.test("checkRateLimitByTodoistId: null data returns blocked", async () => {
     { maxRequests: 5, windowSeconds: 60 },
   );
   assertEquals(result.allowed, false);
+  assertEquals(result.blocked, false);
   assertEquals(result.retry_after, 60);
 });
 
@@ -266,13 +292,42 @@ Deno.test("checkRateLimitByTodoistId: passes correct params to RPC", async () =>
   assertEquals(capturedParams.p_window_seconds, 120);
 });
 
+Deno.test("checkRateLimitByTodoistId: blocked account returns blocked=true", async () => {
+  const mockSupabase = {
+    rpc: async () => ({
+      data: { allowed: false, blocked: true, retry_after: 0 },
+      error: null,
+    }),
+  };
+  const result = await checkRateLimitByTodoistId(
+    mockSupabase,
+    "123",
+    { maxRequests: 5, windowSeconds: 60 },
+  );
+  assertEquals(result.allowed, false);
+  assertEquals(result.blocked, true);
+  assertEquals(result.retry_after, 0);
+});
+
+Deno.test("checkRateLimitByTodoistId: defaults blocked to false when field missing", async () => {
+  const mockSupabase = {
+    rpc: async () => ({ data: { allowed: true, retry_after: 0 }, error: null }),
+  };
+  const result = await checkRateLimitByTodoistId(
+    mockSupabase,
+    "123",
+    { maxRequests: 5, windowSeconds: 60 },
+  );
+  assertEquals(result.blocked, false);
+});
+
 // ============================================================================
 // checkRateLimitByUuid
 // ============================================================================
 
 Deno.test("checkRateLimitByUuid: allowed when RPC returns allowed=true", async () => {
   const mockSupabase = {
-    rpc: async () => ({ data: { allowed: true, retry_after: 0 }, error: null }),
+    rpc: async () => ({ data: { allowed: true, blocked: false, retry_after: 0 }, error: null }),
   };
   const result = await checkRateLimitByUuid(
     mockSupabase,
@@ -280,9 +335,10 @@ Deno.test("checkRateLimitByUuid: allowed when RPC returns allowed=true", async (
     { maxRequests: 30, windowSeconds: 60 },
   );
   assertEquals(result.allowed, true);
+  assertEquals(result.blocked, false);
 });
 
-Deno.test("checkRateLimitByUuid: RPC error returns blocked", async () => {
+Deno.test("checkRateLimitByUuid: RPC error returns not allowed", async () => {
   const mockSupabase = {
     rpc: async () => ({ data: null, error: { message: "fail" } }),
   };
@@ -292,6 +348,7 @@ Deno.test("checkRateLimitByUuid: RPC error returns blocked", async () => {
     { maxRequests: 30, windowSeconds: 60 },
   );
   assertEquals(result.allowed, false);
+  assertEquals(result.blocked, false);
   assertEquals(result.retry_after, 60);
 });
 
@@ -314,4 +371,33 @@ Deno.test("checkRateLimitByUuid: passes correct params to RPC", async () => {
   assertEquals(capturedParams.p_user_id, "uuid-123");
   assertEquals(capturedParams.p_max_requests, 30);
   assertEquals(capturedParams.p_window_seconds, 60);
+});
+
+Deno.test("checkRateLimitByUuid: blocked account returns blocked=true", async () => {
+  const mockSupabase = {
+    rpc: async () => ({
+      data: { allowed: false, blocked: true, retry_after: 0 },
+      error: null,
+    }),
+  };
+  const result = await checkRateLimitByUuid(
+    mockSupabase,
+    "uuid-abc",
+    { maxRequests: 30, windowSeconds: 60 },
+  );
+  assertEquals(result.allowed, false);
+  assertEquals(result.blocked, true);
+  assertEquals(result.retry_after, 0);
+});
+
+Deno.test("checkRateLimitByUuid: defaults blocked to false when field missing", async () => {
+  const mockSupabase = {
+    rpc: async () => ({ data: { allowed: true, retry_after: 0 }, error: null }),
+  };
+  const result = await checkRateLimitByUuid(
+    mockSupabase,
+    "uuid-abc",
+    { maxRequests: 30, windowSeconds: 60 },
+  );
+  assertEquals(result.blocked, false);
 });

@@ -14,6 +14,7 @@ export interface RateLimitConfig {
 
 export interface RateLimitResult {
   allowed: boolean;
+  blocked: boolean;
   retry_after: number;
 }
 
@@ -75,6 +76,21 @@ export function rateLimitResponse(
   });
 }
 
+export function accountBlockedResponse(
+  extraHeaders?: Record<string, string>,
+): Response {
+  return new Response(
+    JSON.stringify({ error: "Account disabled" }),
+    {
+      status: 403,
+      headers: {
+        "Content-Type": "application/json",
+        ...extraHeaders,
+      },
+    },
+  );
+}
+
 // ---------------------------------------------------------------------------
 // RPC wrappers
 // ---------------------------------------------------------------------------
@@ -91,12 +107,13 @@ export async function checkRateLimitByTodoistId(
   });
 
   if (error || !data) {
-    return { allowed: false, retry_after: config.windowSeconds };
+    return { allowed: false, blocked: false, retry_after: config.windowSeconds };
   }
 
   const result = typeof data === "string" ? JSON.parse(data) : data;
   return {
     allowed: result.allowed,
+    blocked: result.blocked ?? false,
     retry_after: result.retry_after ?? config.windowSeconds,
   };
 }
@@ -113,12 +130,13 @@ export async function checkRateLimitByUuid(
   });
 
   if (error || !data) {
-    return { allowed: false, retry_after: config.windowSeconds };
+    return { allowed: false, blocked: false, retry_after: config.windowSeconds };
   }
 
   const result = typeof data === "string" ? JSON.parse(data) : data;
   return {
     allowed: result.allowed,
+    blocked: result.blocked ?? false,
     retry_after: result.retry_after ?? config.windowSeconds,
   };
 }

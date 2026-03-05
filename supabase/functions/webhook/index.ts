@@ -11,6 +11,7 @@ import {
   getRateLimitConfig,
   checkRateLimitByTodoistId,
   rateLimitResponse,
+  accountBlockedResponse,
 } from "../_shared/rate-limit.ts";
 import { commentsToMessages, normalizeModel } from "../_shared/messages.ts";
 import { withSentry, captureException } from "../_shared/sentry.ts";
@@ -199,6 +200,9 @@ Deno.serve(withSentry(async (req: Request) => {
   // Rate limit check — before any processing or decryption
   const rlConfig = getRateLimitConfig();
   const rlResult = await checkRateLimitByTodoistId(supabase, userId, rlConfig);
+  if (rlResult.blocked) {
+    return accountBlockedResponse();
+  }
   if (!rlResult.allowed) {
     return rateLimitResponse(rlResult.retry_after);
   }
