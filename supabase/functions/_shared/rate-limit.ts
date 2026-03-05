@@ -114,7 +114,6 @@ export async function checkRateLimitByTodoistId(
   return {
     allowed: result.allowed,
     blocked: result.blocked ?? false,
-
     retry_after: result.retry_after ?? config.windowSeconds,
   };
 }
@@ -138,7 +137,6 @@ export async function checkRateLimitByUuid(
   return {
     allowed: result.allowed,
     blocked: result.blocked ?? false,
-
     retry_after: result.retry_after ?? config.windowSeconds,
   };
 }
