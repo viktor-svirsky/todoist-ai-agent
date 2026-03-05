@@ -6,6 +6,7 @@ import {
   getSettingsRateLimitConfig,
   checkRateLimitByUuid,
   rateLimitResponse,
+  accountBlockedResponse,
 } from "../_shared/rate-limit.ts";
 
 const FRONTEND_URL = Deno.env.get("FRONTEND_URL");
@@ -54,6 +55,9 @@ Deno.serve(withSentry(async (req) => {
   const serviceClient = createServiceClient();
   const rlConfig = getSettingsRateLimitConfig();
   const rlResult = await checkRateLimitByUuid(serviceClient, user.id, rlConfig);
+  if (rlResult.blocked) {
+    return accountBlockedResponse(rlResult.reason, CORS_HEADERS);
+  }
   if (!rlResult.allowed) {
     return rateLimitResponse(rlResult.retry_after, CORS_HEADERS);
   }
