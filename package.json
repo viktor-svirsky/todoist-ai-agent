@@ -1,6 +1,6 @@
 {
   "name": "todoist-ai-agent",
-  "version": "2.0.0",
+  "version": "0.1.0",
   "private": true,
   "description": "Multi-tenant AI agent for Todoist",
   "scripts": {
@@ -10,6 +10,7 @@
     "functions:serve": "npx supabase functions serve --env-file supabase/.env.local",
     "frontend:dev": "cd frontend && npm run dev",
     "frontend:build": "cd frontend && npm run build",
-    "test": "npx deno test supabase/functions/tests/ --no-check --allow-env"
+    "test": "npx deno test supabase/functions/tests/ --no-check --allow-env",
+    "test:frontend": "cd frontend && npm test"
   }
 }

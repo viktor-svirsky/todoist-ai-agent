@@ -39,6 +39,11 @@ export default function Settings() {
         setAiBaseUrl(data.custom_ai_base_url || "");
         setAiModel(data.custom_ai_model || "");
         setCustomPrompt(data.custom_prompt || "");
+      } else if (res.status === 429) {
+        const retryAfter = res.headers.get("Retry-After") || "60";
+        setError(`Too many requests. Please try again in ${retryAfter} seconds.`);
+      } else if (res.status === 403) {
+        setError("Your account has been disabled. Please contact support.");
       } else {
         setError("Failed to load settings.");
       }
@@ -89,11 +94,18 @@ export default function Settings() {
         }
       );
 
-      setMessage(res.ok ? "Settings saved." : "Failed to save settings.");
       if (res.ok) {
+        setMessage("Settings saved.");
         setAiApiKey("");
         setBraveKey("");
         loadSettings(session.access_token);
+      } else if (res.status === 429) {
+        const retryAfter = res.headers.get("Retry-After") || "60";
+        setMessage(`Too many requests. Please try again in ${retryAfter} seconds.`);
+      } else if (res.status === 403) {
+        setMessage("Your account has been disabled. Please contact support.");
+      } else {
+        setMessage("Failed to save settings.");
       }
     } catch {
       setMessage("Network error. Please try again.");
@@ -118,7 +130,14 @@ export default function Settings() {
       );
 
       if (!res.ok) {
-        setMessage("Failed to delete account. Please try again.");
+        if (res.status === 429) {
+          const retryAfter = res.headers.get("Retry-After") || "60";
+          setMessage(`Too many requests. Please try again in ${retryAfter} seconds.`);
+        } else if (res.status === 403) {
+          setMessage("Your account has been disabled. Please contact support.");
+        } else {
+          setMessage("Failed to delete account. Please try again.");
+        }
         return;
       }
 
@@ -256,7 +275,7 @@ export default function Settings() {
         </div>
 
         {message && (
-          <div className={`p-3 rounded-xl text-sm text-center ${message.includes("Failed") || message.includes("error") ? "bg-red-50 text-red-600" : "bg-green-50 text-green-600"}`}>
+          <div className={`p-3 rounded-xl text-sm text-center ${message === "Settings saved." ? "bg-green-50 text-green-600" : "bg-red-50 text-red-600"}`}>
             {message}
           </div>
         )}
