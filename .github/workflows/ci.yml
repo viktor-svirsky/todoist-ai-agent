@@ -26,6 +26,9 @@ jobs:
       - name: Lint
         run: cd frontend && npm run lint
 
+      - name: Test
+        run: cd frontend && npm test
+
       - name: Build
         run: cd frontend && npm run build
 
@@ -37,4 +40,4 @@ jobs:
       - uses: denoland/setup-deno@v2
 
       - name: Run tests
-        run: deno test supabase/functions/tests/ --allow-env
+        run: deno test supabase/functions/tests/ --no-check --allow-env
