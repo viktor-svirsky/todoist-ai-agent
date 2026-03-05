@@ -9,6 +9,9 @@ ALTER TABLE users_config ADD COLUMN settings_rl_count int NOT NULL DEFAULT 0;
 ALTER TABLE users_config ADD COLUMN settings_rl_prev int NOT NULL DEFAULT 0;
 ALTER TABLE users_config ADD COLUMN settings_rl_reset_at timestamptz NOT NULL DEFAULT now();
 
+-- Drop old function (return type changed from boolean to jsonb)
+DROP FUNCTION IF EXISTS check_rate_limit(text, int, int);
+
 -- Replace check_rate_limit: sliding window, returns jsonb with retry_after
 CREATE OR REPLACE FUNCTION check_rate_limit(
   p_user_todoist_id text,
