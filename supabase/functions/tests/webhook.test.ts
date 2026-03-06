@@ -303,3 +303,116 @@ t("webhookHandler: accepts valid request and returns 200", async () => {
     restore();
   }
 });
+
+// ============================================================================
+// AI request tracking
+// ============================================================================
+
+t("webhookHandler: calls increment_ai_requests RPC for note:added with trigger word", async () => {
+  const payload = JSON.stringify(makePayload());
+  const req = await signedRequest(payload);
+
+  let rpcCalled = false;
+
+  Deno.env.set("DEFAULT_AI_BASE_URL", "https://api.openai.com/v1");
+  Deno.env.set("DEFAULT_AI_API_KEY", "test-key");
+  Deno.env.set("DEFAULT_AI_MODEL", "gpt-4o-mini");
+
+  const restore = mockFetch((url, init) => {
+    if (url.includes("/rest/v1/users_config") && init?.method !== "POST" && !url.includes("rpc")) {
+      return new Response(JSON.stringify(mockUserConfig()), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+    if (url.includes("/rest/v1/rpc/check_rate_limit")) {
+      return new Response(JSON.stringify({ allowed: true, blocked: false, retry_after: 0 }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+    if (url.includes("/rest/v1/rpc/increment_ai_requests")) {
+      rpcCalled = true;
+      return new Response("null", { status: 200, headers: { "Content-Type": "application/json" } });
+    }
+    // Mock Todoist API calls (postProgressComment, getTask, getComments)
+    if (url.includes("api.todoist.com")) {
+      if (url.includes("/comments") && init?.method === "POST") {
+        return new Response(JSON.stringify({ id: "progress-1" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      if (url.includes("/comments")) {
+        return new Response(JSON.stringify([]), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      if (url.includes("/tasks/")) {
+        return new Response(JSON.stringify({ content: "Test task", description: "" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+    }
+    // Mock AI API call
+    if (url.includes("api.openai.com")) {
+      return new Response(JSON.stringify({
+        choices: [{ message: { content: "AI response", role: "assistant" } }],
+      }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+    return new Response("{}", { status: 200, headers: { "Content-Type": "application/json" } });
+  });
+
+  try {
+    const res = await handler(req);
+    assertEquals(res.status, 200);
+    // Wait for background processing
+    await new Promise((r) => setTimeout(r, 100));
+    assertEquals(rpcCalled, true, "increment_ai_requests RPC should be called");
+  } finally {
+    restore();
+  }
+});
+
+t("webhookHandler: does NOT call increment_ai_requests for non-trigger comments", async () => {
+  const payload = JSON.stringify(makePayload({
+    event_data: { content: "just a regular comment", item_id: "task-1" },
+  }));
+  const req = await signedRequest(payload);
+
+  let rpcCalled = false;
+
+  const restore = mockFetch((url, init) => {
+    if (url.includes("/rest/v1/users_config") && init?.method !== "POST" && !url.includes("rpc")) {
+      return new Response(JSON.stringify(mockUserConfig()), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+    if (url.includes("/rest/v1/rpc/check_rate_limit")) {
+      return new Response(JSON.stringify({ allowed: true, blocked: false, retry_after: 0 }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+    if (url.includes("/rest/v1/rpc/increment_ai_requests")) {
+      rpcCalled = true;
+      return new Response("null", { status: 200, headers: { "Content-Type": "application/json" } });
+    }
+    return new Response("{}", { status: 200, headers: { "Content-Type": "application/json" } });
+  });
+
+  try {
+    const res = await handler(req);
+    assertEquals(res.status, 200);
+    await new Promise((r) => setTimeout(r, 100));
+    assertEquals(rpcCalled, false, "increment_ai_requests RPC should NOT be called for non-trigger comments");
+  } finally {
+    restore();
+  }
+});
