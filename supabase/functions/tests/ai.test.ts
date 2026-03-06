@@ -467,6 +467,58 @@ Deno.test("executePrompt (Anthropic): sends system as top-level param, not in me
   }
 });
 
+Deno.test("executePrompt (Anthropic): batches multiple tool results into single user message", async () => {
+  let capturedBodies: any[] = [];
+  const originalFetch = globalThis.fetch;
+  let callIndex = 0;
+  const responses = [
+    // 1st fetch: AI call — model requests two tool_use blocks
+    {
+      status: 200,
+      body: {
+        content: [
+          { type: "tool_use", id: "toolu_1", name: "web_search", input: { query: "query one" } },
+          { type: "tool_use", id: "toolu_2", name: "web_search", input: { query: "query two" } },
+        ],
+      },
+    },
+    // 2nd fetch: Brave Search for first tool call
+    { status: 200, body: { web: { results: [{ title: "R1", url: "https://r1.com", description: "d1" }] } } },
+    // 3rd fetch: Brave Search for second tool call
+    { status: 200, body: { web: { results: [{ title: "R2", url: "https://r2.com", description: "d2" }] } } },
+    // 4th fetch: AI call — model returns final answer
+    {
+      status: 200,
+      body: { content: [{ type: "text", text: "Combined results" }] },
+    },
+  ];
+  globalThis.fetch = ((_input: unknown, init?: any) => {
+    capturedBodies.push(JSON.parse(init?.body || "{}"));
+    const response = responses[callIndex++] || responses[responses.length - 1];
+    return Promise.resolve(new Response(JSON.stringify(response.body), {
+      status: response.status,
+      headers: { "Content-Type": "application/json" },
+    }));
+  }) as typeof fetch;
+  try {
+    const config = { ...ANTHROPIC_CONFIG, braveApiKey: "brave-test-key" };
+    const result = await executePrompt([{ role: "user", content: "test" }], config);
+    assertEquals(result, "Combined results");
+    // Fourth request (2nd AI call) should have tool results batched in a single user message
+    const secondBody = capturedBodies[3];
+    const toolResultMsgs = secondBody.messages.filter(
+      (m: any) => m.role === "user" && Array.isArray(m.content) && m.content.some((c: any) => c.type === "tool_result")
+    );
+    // Should be exactly 1 user message containing both tool results
+    assertEquals(toolResultMsgs.length, 1);
+    assertEquals(toolResultMsgs[0].content.length, 2);
+    assertEquals(toolResultMsgs[0].content[0].tool_use_id, "toolu_1");
+    assertEquals(toolResultMsgs[0].content[1].tool_use_id, "toolu_2");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 Deno.test("executePrompt (Anthropic): sends to /v1/messages endpoint", async () => {
   let capturedUrl = "";
   const originalFetch = globalThis.fetch;

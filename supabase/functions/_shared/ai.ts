@@ -318,9 +318,19 @@ export async function executePrompt(
       runMessages.push(assistantMsg(data));
 
       const toolCalls = extractToolCalls(data);
-      for (const tc of toolCalls) {
-        const result = await handleToolCall(tc.name, tc.arguments, config.braveApiKey!);
-        runMessages.push(toolResultMsg(tc.id, result));
+      if (anthropic) {
+        // Anthropic requires all tool results in a single user message
+        const toolResults: any[] = [];
+        for (const tc of toolCalls) {
+          const result = await handleToolCall(tc.name, tc.arguments, config.braveApiKey!);
+          toolResults.push({ type: "tool_result", tool_use_id: tc.id, content: result });
+        }
+        runMessages.push({ role: "user", content: toolResults });
+      } else {
+        for (const tc of toolCalls) {
+          const result = await handleToolCall(tc.name, tc.arguments, config.braveApiKey!);
+          runMessages.push(toolResultMsg(tc.id, result));
+        }
       }
     } finally {
       clearTimeout(timeout);
