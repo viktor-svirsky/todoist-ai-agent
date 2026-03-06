@@ -66,5 +66,44 @@ export function validateSettings(
     }
   }
 
+  if ("digest_enabled" in updates) {
+    const v = updates.digest_enabled;
+    if (typeof v !== "boolean") {
+      errors.push({ field: "digest_enabled", message: "Must be a boolean" });
+    }
+  }
+
+  if ("digest_time" in updates) {
+    const v = updates.digest_time;
+    if (typeof v !== "string" || !/^\d{2}:\d{2}$/.test(v)) {
+      errors.push({ field: "digest_time", message: "Must be in HH:MM format" });
+    } else {
+      const [h, m] = v.split(":").map(Number);
+      if (h < 0 || h > 23 || m < 0 || m > 59) {
+        errors.push({ field: "digest_time", message: "Must be a valid time (00:00–23:59)" });
+      }
+    }
+  }
+
+  if ("digest_timezone" in updates) {
+    const v = updates.digest_timezone;
+    if (typeof v !== "string") {
+      errors.push({ field: "digest_timezone", message: "Must be a string" });
+    } else {
+      try {
+        Intl.DateTimeFormat(undefined, { timeZone: v });
+      } catch {
+        errors.push({ field: "digest_timezone", message: "Must be a valid IANA timezone" });
+      }
+    }
+  }
+
+  if ("digest_project_id" in updates && updates.digest_project_id != null) {
+    const v = updates.digest_project_id;
+    if (typeof v !== "string") {
+      errors.push({ field: "digest_project_id", message: "Must be a string or null" });
+    }
+  }
+
   return errors;
 }

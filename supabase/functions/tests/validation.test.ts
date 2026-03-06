@@ -139,6 +139,74 @@ Deno.test("validateSettings: custom_prompt at exactly 2000 chars (boundary)", ()
   assertEquals(validateSettings({ custom_prompt: "a".repeat(2000) }), []);
 });
 
+// -- digest_enabled --
+
+Deno.test("validateSettings: digest_enabled must be boolean", () => {
+  assertEquals(validateSettings({ digest_enabled: true }), []);
+  assertEquals(validateSettings({ digest_enabled: false }), []);
+  const errors = validateSettings({ digest_enabled: "yes" });
+  assertEquals(errors.length, 1);
+  assertEquals(errors[0].field, "digest_enabled");
+});
+
+// -- digest_time --
+
+Deno.test("validateSettings: digest_time must be valid HH:MM format", () => {
+  assertEquals(validateSettings({ digest_time: "08:00" }), []);
+  assertEquals(validateSettings({ digest_time: "23:59" }), []);
+  assertEquals(validateSettings({ digest_time: "00:00" }), []);
+});
+
+Deno.test("validateSettings: digest_time rejects invalid format", () => {
+  const errors1 = validateSettings({ digest_time: "8:00" });
+  assertEquals(errors1.length, 1);
+  assertEquals(errors1[0].field, "digest_time");
+
+  const errors2 = validateSettings({ digest_time: "25:00" });
+  assertEquals(errors2.length, 1);
+  assertEquals(errors2[0].field, "digest_time");
+
+  const errors3 = validateSettings({ digest_time: "08:60" });
+  assertEquals(errors3.length, 1);
+  assertEquals(errors3[0].field, "digest_time");
+});
+
+Deno.test("validateSettings: digest_time rejects non-string", () => {
+  const errors = validateSettings({ digest_time: 800 });
+  assertEquals(errors.length, 1);
+  assertEquals(errors[0].field, "digest_time");
+});
+
+// -- digest_timezone --
+
+Deno.test("validateSettings: digest_timezone must be valid IANA timezone", () => {
+  assertEquals(validateSettings({ digest_timezone: "America/New_York" }), []);
+  assertEquals(validateSettings({ digest_timezone: "Europe/London" }), []);
+  assertEquals(validateSettings({ digest_timezone: "UTC" }), []);
+});
+
+Deno.test("validateSettings: digest_timezone rejects invalid timezone", () => {
+  const errors = validateSettings({ digest_timezone: "Mars/Olympus" });
+  assertEquals(errors.length, 1);
+  assertEquals(errors[0].field, "digest_timezone");
+});
+
+Deno.test("validateSettings: digest_timezone rejects non-string", () => {
+  const errors = validateSettings({ digest_timezone: 123 });
+  assertEquals(errors.length, 1);
+  assertEquals(errors[0].field, "digest_timezone");
+});
+
+// -- digest_project_id --
+
+Deno.test("validateSettings: digest_project_id must be string or null", () => {
+  assertEquals(validateSettings({ digest_project_id: "12345" }), []);
+  assertEquals(validateSettings({ digest_project_id: null }), []);
+  const errors = validateSettings({ digest_project_id: 12345 });
+  assertEquals(errors.length, 1);
+  assertEquals(errors[0].field, "digest_project_id");
+});
+
 // -- multiple fields --
 
 Deno.test("validateSettings: multiple valid fields", () => {

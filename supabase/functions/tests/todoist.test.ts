@@ -268,6 +268,146 @@ Deno.test("TodoistClient.downloadFile: no auth header for untrusted domains", as
   }
 });
 
+// ---------------------------------------------------------------------------
+// getTasks
+// ---------------------------------------------------------------------------
+
+Deno.test("TodoistClient.getTasks: sends correct filter parameter, returns parsed task list", async () => {
+  const { restore, calls } = capturingFetch({
+    status: 200,
+    body: {
+      results: [
+        { id: "t1", content: "Task 1", priority: 4, labels: [] },
+        { id: "t2", content: "Task 2", priority: 1, labels: ["work"] },
+      ],
+    },
+  });
+  try {
+    const client = new TodoistClient("token");
+    const tasks = await client.getTasks("today | overdue");
+    assertEquals(tasks.length, 2);
+    assertEquals(tasks[0].id, "t1");
+    assertEquals(tasks[1].labels, ["work"]);
+    assertStringIncludes(calls[0].url, "filter=today+%7C+overdue");
+  } finally {
+    restore();
+  }
+});
+
+Deno.test("TodoistClient.getTasks: handles empty response (no tasks matching filter)", async () => {
+  const restore = mockFetch({ status: 200, body: { results: [] } });
+  try {
+    const client = new TodoistClient("token");
+    const tasks = await client.getTasks("overdue");
+    assertEquals(tasks.length, 0);
+  } finally {
+    restore();
+  }
+});
+
+Deno.test("TodoistClient.getTasks: handles API error (401, 500)", async () => {
+  const restore = mockFetch({ status: 401, body: { error: "Unauthorized" } });
+  try {
+    const client = new TodoistClient("token");
+    await assertRejects(
+      () => client.getTasks("today"),
+      Error,
+      "Todoist getTasks failed: 401"
+    );
+  } finally {
+    restore();
+  }
+});
+
+// ---------------------------------------------------------------------------
+// getProjects
+// ---------------------------------------------------------------------------
+
+Deno.test("TodoistClient.getProjects: returns parsed project list", async () => {
+  const restore = mockFetch({
+    status: 200,
+    body: { results: [{ id: "p1", name: "Inbox" }, { id: "p2", name: "Work" }] },
+  });
+  try {
+    const client = new TodoistClient("token");
+    const projects = await client.getProjects();
+    assertEquals(projects.length, 2);
+    assertEquals(projects[0].name, "Inbox");
+  } finally {
+    restore();
+  }
+});
+
+Deno.test("TodoistClient.getProjects: handles API error", async () => {
+  const restore = mockFetch({ status: 500, body: {} });
+  try {
+    const client = new TodoistClient("token");
+    await assertRejects(
+      () => client.getProjects(),
+      Error,
+      "Todoist getProjects failed: 500"
+    );
+  } finally {
+    restore();
+  }
+});
+
+// ---------------------------------------------------------------------------
+// createTask
+// ---------------------------------------------------------------------------
+
+Deno.test("TodoistClient.createTask: creates task with content and project", async () => {
+  const { restore, calls } = capturingFetch({
+    status: 200,
+    body: { id: "new-task-1" },
+  });
+  try {
+    const client = new TodoistClient("token");
+    const id = await client.createTask("Digest content", "proj-123");
+    assertEquals(id, "new-task-1");
+    const body = JSON.parse(calls[0].init.body as string);
+    assertEquals(body.content, "Digest content");
+    assertEquals(body.project_id, "proj-123");
+  } finally {
+    restore();
+  }
+});
+
+Deno.test("TodoistClient.createTask: creates task without project (Inbox)", async () => {
+  const { restore, calls } = capturingFetch({
+    status: 200,
+    body: { id: "new-task-2" },
+  });
+  try {
+    const client = new TodoistClient("token");
+    const id = await client.createTask("Digest content");
+    assertEquals(id, "new-task-2");
+    const body = JSON.parse(calls[0].init.body as string);
+    assertEquals(body.content, "Digest content");
+    assertEquals(body.project_id, undefined);
+  } finally {
+    restore();
+  }
+});
+
+Deno.test("TodoistClient.createTask: throws on API error", async () => {
+  const restore = mockFetch({ status: 403, body: {} });
+  try {
+    const client = new TodoistClient("token");
+    await assertRejects(
+      () => client.createTask("content"),
+      Error,
+      "Todoist createTask failed: 403"
+    );
+  } finally {
+    restore();
+  }
+});
+
+// ---------------------------------------------------------------------------
+// downloadFile
+// ---------------------------------------------------------------------------
+
 Deno.test("TodoistClient.downloadFile: throws on HTTP error", async () => {
   const restore = mockFetch({ status: 404, body: {} });
   try {

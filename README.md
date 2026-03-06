@@ -65,6 +65,7 @@ sequenceDiagram
 | **Bring your own key** | Supports Anthropic (Claude) and any OpenAI-compatible provider |
 | **Image support** | Attach images to comments for multimodal AI analysis |
 | **Data isolation** | Row Level Security ensures complete tenant separation |
+| **Daily digest** | Scheduled AI summary of overdue, today's, and upcoming tasks |
 | **Error tracking** | Optional Sentry integration for monitoring |
 
 ## Architecture
@@ -130,6 +131,7 @@ todoist-ai-agent/
 │       │   ├── ai.ts               # Chat completions + tool loop
 │       │   ├── constants.ts        # API URLs, defaults, limits
 │       │   ├── crypto.ts           # AES-256-GCM encryption + HMAC verification
+│       │   ├── digest.ts           # Daily digest prompt builder + processor
 │       │   ├── messages.ts         # Comment → message parsing
 │       │   ├── rate-limit.ts       # Per-user rate limiting + account blocking
 │       │   ├── search.ts           # Brave Search client
@@ -140,6 +142,7 @@ todoist-ai-agent/
 │       ├── auth-callback/          # OAuth flow handler
 │       ├── webhook/                # Todoist webhook processor
 │       ├── settings/               # User config CRUD
+│       ├── digest/                 # Daily digest generator
 │       └── tests/                  # Deno test suite
 ├── frontend/
 │   └── src/
@@ -255,20 +258,22 @@ deno test supabase/functions/tests/crypto.test.ts --no-check --allow-env
 
 ### Test Coverage
 
-195 tests covering all shared modules and handlers:
+259 tests covering all shared modules and handlers:
 
 | Module | Tests | What's covered |
 |--------|-------|----------------|
 | **ai.ts** | 41 | `buildMessages` (custom prompts, images, edge cases), `executePrompt` (OpenAI + Anthropic providers, tool calls, multi-tool batching) |
 | **messages.ts** | 30 | Comment parsing, trigger word stripping, special chars, normalize helpers |
 | **rate-limit.ts** | 29 | Config parsing, env overrides, rate limit checks, account blocking |
-| **validation.ts** | 25 | All settings fields: type checks, boundaries, nulls, multi-field errors |
-| **todoist.ts** | 15 | All TodoistClient methods: API calls, auth headers, error handling, trusted domains |
+| **validation.ts** | 33 | All settings fields including digest: type checks, boundaries, nulls, multi-field errors |
+| **todoist.ts** | 23 | All TodoistClient methods: API calls, auth headers, error handling, trusted domains, getTasks, getProjects, createTask |
+| **digest.ts** | 20 | `buildDigestPrompt` (formatting, sorting, truncation, empty tasks), `processDigestForUser` (happy path, error handling, idempotency), `isDigestTimeNow` |
 | **crypto.ts** | 13 | AES-256-GCM encrypt/decrypt round-trips, HMAC verification, key errors |
 | **settings** | 13 | CRUD operations, auth, rate limiting, field validation |
 | **webhook** | 11 | HMAC verification, rate limiting, request validation |
 | **auth-callback** | 8 | OAuth flow, token exchange, error handling |
 | **search.ts** | 6 | Brave Search: result mapping, params, headers, empty/error responses |
+| **digest handler** | 5 | Method validation, cron auth, batch processing |
 | **sentry.ts** | 4 | `withSentry` wrapper, error handling, `captureException` no-op |
 
 ### Linting

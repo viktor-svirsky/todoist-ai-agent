@@ -91,6 +91,39 @@ export class TodoistClient {
     }
   }
 
+  async getTasks(filter: string): Promise<any[]> {
+    const params = new URLSearchParams({ filter });
+    const res = await fetchWithTimeout(
+      `${TODOIST_API_URL}/tasks?${params}`,
+      { headers: this.headers() },
+    );
+    if (!res.ok) throw new Error(`Todoist getTasks failed: ${res.status}`);
+    const data = await res.json();
+    return data.results || [];
+  }
+
+  async getProjects(): Promise<any[]> {
+    const res = await fetchWithTimeout(`${TODOIST_API_URL}/projects`, {
+      headers: this.headers(),
+    });
+    if (!res.ok) throw new Error(`Todoist getProjects failed: ${res.status}`);
+    const data = await res.json();
+    return data.results || [];
+  }
+
+  async createTask(content: string, projectId?: string): Promise<string> {
+    const body: Record<string, string> = { content };
+    if (projectId) body.project_id = projectId;
+    const res = await fetchWithTimeout(`${TODOIST_API_URL}/tasks`, {
+      method: "POST",
+      headers: { ...this.headers(), "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) throw new Error(`Todoist createTask failed: ${res.status}`);
+    const data = await res.json();
+    return data.id;
+  }
+
   async downloadFile(url: string): Promise<Uint8Array> {
     const headers = this.isTrustedDomain(url) ? this.headers() : {};
     const res = await fetchWithTimeout(url, { headers });

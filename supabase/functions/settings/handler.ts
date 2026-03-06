@@ -75,7 +75,7 @@ export async function settingsHandler(req: Request): Promise<Response> {
     // Fetch non-sensitive fields via user client (respects RLS)
     const { data, error } = await supabase
       .from("users_config")
-      .select("trigger_word, custom_ai_base_url, custom_ai_model, max_messages, custom_prompt")
+      .select("trigger_word, custom_ai_base_url, custom_ai_model, max_messages, custom_prompt, digest_enabled, digest_time, digest_timezone, digest_project_id")
       .eq("id", user.id)
       .single();
 
@@ -98,6 +98,10 @@ export async function settingsHandler(req: Request): Promise<Response> {
       has_custom_brave_key: !!fullConfig?.custom_brave_key,
       max_messages: data.max_messages,
       custom_prompt: data.custom_prompt,
+      digest_enabled: data.digest_enabled,
+      digest_time: data.digest_time,
+      digest_timezone: data.digest_timezone,
+      digest_project_id: data.digest_project_id,
     }, 200, CORS_HEADERS);
   }
 
@@ -118,13 +122,17 @@ export async function settingsHandler(req: Request): Promise<Response> {
       "custom_brave_key",
       "max_messages",
       "custom_prompt",
+      "digest_enabled",
+      "digest_time",
+      "digest_timezone",
+      "digest_project_id",
     ];
 
     const updates: Record<string, unknown> = {};
     for (const field of allowedFields) {
       if (body[field] !== undefined) {
         // Set empty strings to null for optional text fields
-        if (field !== "trigger_word" && field !== "max_messages") {
+        if (field !== "trigger_word" && field !== "max_messages" && field !== "digest_enabled" && field !== "digest_time" && field !== "digest_timezone") {
           updates[field] = body[field] || null;
         } else {
           updates[field] = body[field];
