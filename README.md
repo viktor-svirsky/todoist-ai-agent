@@ -24,7 +24,7 @@
   <a href="https://github.com/viktor-svirsky/todoist-ai-agent/actions/workflows/ci.yml"><img src="https://github.com/viktor-svirsky/todoist-ai-agent/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
   <a href="https://github.com/viktor-svirsky/todoist-ai-agent/actions/workflows/deploy.yml"><img src="https://github.com/viktor-svirsky/todoist-ai-agent/actions/workflows/deploy.yml/badge.svg" alt="Deploy" /></a>
   <a href="https://github.com/viktor-svirsky/todoist-ai-agent/actions/workflows/security.yml"><img src="https://github.com/viktor-svirsky/todoist-ai-agent/actions/workflows/security.yml/badge.svg" alt="Security Audit" /></a>
-  <img src="https://img.shields.io/badge/version-2.0.0-blue" alt="Version" />
+  <img src="https://img.shields.io/badge/version-0.1.0-blue" alt="Version" />
   <img src="https://img.shields.io/badge/license-ISC-green" alt="License" />
 </p>
 
@@ -60,10 +60,11 @@ sequenceDiagram
 | **Self-service onboarding** | Connect via Todoist OAuth in one click |
 | **Trigger word** | Customizable per user (default: `@ai`) |
 | **Web search** | Real-time information via Brave Search API |
-| **Conversation memory** | Full message history per task, auto-cleared on completion |
+| **Conversation memory** | Full message history per task for contextual responses |
 | **Bring your own key** | Use any OpenAI-compatible AI provider |
 | **Image support** | Attach images to comments for multimodal AI analysis |
 | **Data isolation** | Row Level Security ensures complete tenant separation |
+| **Rate limiting** | Per-user request throttling to prevent abuse |
 | **Error tracking** | Optional Sentry integration for monitoring |
 
 ## Architecture
@@ -116,7 +117,8 @@ todoist-ai-agent/
 │   ├── workflows/
 │   │   ├── ci.yml                  # Lint, build, test
 │   │   ├── deploy.yml              # Edge Functions + Cloudflare Pages
-│   │   └── security.yml            # Weekly npm audit
+│   │   ├── security.yml            # npm audit on push/PR/weekly
+│   │   └── codeql.yml              # CodeQL static analysis
 │   ├── ISSUE_TEMPLATE/             # Bug report & feature request forms
 │   ├── pull_request_template.md
 │   └── dependabot.yml              # Automated dependency updates
@@ -133,6 +135,7 @@ todoist-ai-agent/
 │       │   ├── sentry.ts           # Error tracking
 │       │   ├── supabase.ts         # Supabase client factories
 │       │   ├── todoist.ts          # Todoist REST API client
+│       │   ├── rate-limit.ts      # Per-user rate limiting
 │       │   └── validation.ts       # Input validation
 │       ├── auth-callback/          # OAuth flow handler
 │       ├── webhook/                # Todoist webhook processor
@@ -182,9 +185,9 @@ Create **`supabase/.env.local`**:
 ```env
 TODOIST_CLIENT_ID=your_client_id
 TODOIST_CLIENT_SECRET=your_client_secret
-DEFAULT_AI_BASE_URL=https://api.openai.com/v1
-DEFAULT_AI_API_KEY=your_openai_key
-DEFAULT_AI_MODEL=gpt-4o-mini
+DEFAULT_AI_BASE_URL=https://api.anthropic.com/v1
+DEFAULT_AI_API_KEY=your_api_key
+DEFAULT_AI_MODEL=claude-sonnet-4-6
 DEFAULT_BRAVE_API_KEY=your_brave_key    # optional
 PUBLIC_SITE_URL=http://localhost:5173
 SENTRY_DSN=your_sentry_dsn              # optional
@@ -221,8 +224,7 @@ Open [localhost:5173](http://localhost:5173), click **Connect Todoist**, and aut
 1. Open any task in Todoist
 2. Add a comment: `@ai What should I prioritize this week?`
 3. The agent responds as a new comment
-4. Continue the conversation — context is preserved per task
-5. When the task is completed, conversation history is automatically cleared
+4. Continue the conversation — full history is preserved per task for context
 
 ## Development
 
@@ -248,22 +250,26 @@ npm test
 deno test supabase/functions/tests/ --no-check --coverage
 
 # Specific test file
-deno test supabase/functions/tests/crypto.test.ts --no-check
+deno test supabase/functions/tests/crypto.test.ts --no-check --allow-env
 ```
 
 ### Test Coverage
 
-118 tests covering all shared modules:
+150 tests covering shared modules and edge functions:
 
 | Module | Tests | What's covered |
 |--------|-------|----------------|
+| **messages.ts** | 30 | Comment parsing, trigger word stripping, special chars, normalize helpers |
+| **rate-limit.ts** | 29 | Per-user rate limiting, sliding window, concurrent requests |
 | **ai.ts** | 25 | `buildMessages` (custom prompts, images, edge cases), `executePrompt` (success, errors, tool calls) |
 | **validation.ts** | 25 | All settings fields: type checks, boundaries, nulls, multi-field errors |
-| **messages.ts** | 30 | Comment parsing, trigger word stripping, special chars, normalize helpers |
-| **crypto.ts** | 13 | AES-256-GCM encrypt/decrypt round-trips, HMAC verification, key errors |
 | **todoist.ts** | 15 | All TodoistClient methods: API calls, auth headers, error handling, trusted domains |
+| **crypto.ts** | 13 | AES-256-GCM encrypt/decrypt round-trips, HMAC verification, key errors |
 | **search.ts** | 6 | Brave Search: result mapping, params, headers, empty/error responses |
 | **sentry.ts** | 4 | `withSentry` wrapper, error handling, `captureException` no-op |
+| **webhook** | 1 | Webhook handler integration |
+| **auth-callback** | 1 | OAuth callback integration |
+| **settings** | 1 | Settings CRUD integration |
 
 ### Linting
 
@@ -276,9 +282,10 @@ deno lint supabase/functions/   # Deno lint for Edge Functions
 
 | Workflow | Trigger | What it does |
 |----------|---------|--------------|
-| **CI** | Push & PR to `main` | Lint + build frontend, run Deno tests |
+| **CI** | Push & PR to `main` | Lint, test, and build frontend; run Deno tests |
 | **Deploy** | Push to `main` | Deploy Edge Functions to Supabase, build & deploy frontend to Cloudflare Pages |
-| **Security Audit** | Weekly + push to `main` | Run `npm audit` on dependencies |
+| **Security Audit** | Push & PR to `main`, weekly | Run `npm audit` on root and frontend dependencies |
+| **CodeQL** | Push & PR to `main`, weekly | Static analysis for JavaScript/TypeScript security vulnerabilities |
 | **Dependabot** | Weekly (Monday) | Open PRs for outdated npm packages and GitHub Actions |
 
 ## Security
@@ -291,7 +298,7 @@ deno lint supabase/functions/   # Deno lint for Edge Functions
 | **Authentication** | JWT-based via Supabase Auth |
 | **Secrets management** | All credentials in environment variables |
 | **Input validation** | Server-side validation on all user settings |
-| **Dependency scanning** | Automated npm audit + Dependabot |
+| **Dependency scanning** | Automated npm audit, Dependabot, and CodeQL static analysis |
 | **Image limits** | 4 MB max per attachment |
 
 ## License

@@ -25,7 +25,7 @@ See the [Getting Started](README.md#getting-started) section in the README for f
 
 ## Code Style
 
-- **Edge Functions (Deno/TypeScript)**: Follow Deno conventions, use `deno lint` and `deno fmt`
+- **Edge Functions (Deno/TypeScript)**: Follow Deno conventions, use `deno lint`
 - **Frontend (React/TypeScript)**: Follow ESLint + Prettier configuration in the project
 
 ## Reporting Issues
