@@ -44,6 +44,10 @@ async function handleNoteAdded(event: any, user: any): Promise<void> {
   );
   if (!triggerRegex.test(content)) return;
 
+  // Track AI request — all filters passed, this will invoke AI
+  const supabase = createServiceClient();
+  await supabase.rpc("increment_ai_requests", { p_todoist_user_id: String(event.user_id) });
+
   const todoist = new TodoistClient(user.todoist_token);
   const progressCommentId = await todoist.postProgressComment(taskId);
 

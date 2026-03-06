@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Todoist AI Agent — a multi-tenant SaaS that adds AI-powered conversations to Todoist tasks. Users mention `@ai` in task comments to get intelligent responses with web search, conversation memory, and bring-your-own-key support. Includes a daily digest feature that generates AI summaries of overdue/today/upcoming tasks.
+Todoist AI Agent — a multi-tenant SaaS that adds AI-powered conversations to Todoist tasks. Users mention `@ai` in task comments to get intelligent responses with web search, conversation memory, and bring-your-own-key support.
 
 ## Architecture
 
@@ -26,7 +26,6 @@ Todoist AI Agent — a multi-tenant SaaS that adds AI-powered conversations to T
 
 - `ai.ts` — Dual-provider AI client (Anthropic native + OpenAI-compatible). Auto-detects provider by URL. Handles tool call loop.
 - `crypto.ts` — AES-256-GCM encryption/decryption + HMAC verification for webhook signatures.
-- `digest.ts` — Daily digest: prompt builder, batch processor, timezone-aware scheduling.
 - `messages.ts` — Converts Todoist comments to AI conversation messages.
 - `todoist.ts` — Todoist REST API client (comments, tasks, projects, file downloads).
 - `rate-limit.ts` — Per-user rate limiting with account blocking via PostgreSQL function.
@@ -39,7 +38,6 @@ Todoist AI Agent — a multi-tenant SaaS that adds AI-powered conversations to T
 | `webhook` | No | Receives Todoist webhooks, triggers AI responses |
 | `auth-callback` | No | Handles Todoist OAuth token exchange |
 | `settings` | No* | CRUD for user preferences (validates auth header manually) |
-| `digest` | No | Cron-triggered daily digest batch processor |
 
 *Settings validates the Authorization header via Supabase user client, not Edge Function JWT verification.
 
