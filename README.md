@@ -253,15 +253,19 @@ deno test supabase/functions/tests/crypto.test.ts --no-check
 
 ### Test Coverage
 
-118 tests covering all shared modules:
+195 tests covering all shared modules and handlers:
 
 | Module | Tests | What's covered |
 |--------|-------|----------------|
-| **ai.ts** | 25 | `buildMessages` (custom prompts, images, edge cases), `executePrompt` (success, errors, tool calls) |
-| **validation.ts** | 25 | All settings fields: type checks, boundaries, nulls, multi-field errors |
+| **ai.ts** | 41 | `buildMessages` (custom prompts, images, edge cases), `executePrompt` (OpenAI + Anthropic providers, tool calls, multi-tool batching) |
 | **messages.ts** | 30 | Comment parsing, trigger word stripping, special chars, normalize helpers |
-| **crypto.ts** | 13 | AES-256-GCM encrypt/decrypt round-trips, HMAC verification, key errors |
+| **rate-limit.ts** | 29 | Config parsing, env overrides, rate limit checks, account blocking |
+| **validation.ts** | 25 | All settings fields: type checks, boundaries, nulls, multi-field errors |
 | **todoist.ts** | 15 | All TodoistClient methods: API calls, auth headers, error handling, trusted domains |
+| **crypto.ts** | 13 | AES-256-GCM encrypt/decrypt round-trips, HMAC verification, key errors |
+| **settings** | 13 | CRUD operations, auth, rate limiting, field validation |
+| **webhook** | 11 | HMAC verification, rate limiting, request validation |
+| **auth-callback** | 8 | OAuth flow, token exchange, error handling |
 | **search.ts** | 6 | Brave Search: result mapping, params, headers, empty/error responses |
 | **sentry.ts** | 4 | `withSentry` wrapper, error handling, `captureException` no-op |
 
