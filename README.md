@@ -131,11 +131,11 @@ todoist-ai-agent/
 │       │   ├── constants.ts        # API URLs, defaults, limits
 │       │   ├── crypto.ts           # AES-256-GCM encryption + HMAC verification
 │       │   ├── messages.ts         # Comment → message parsing
+│       │   ├── rate-limit.ts       # Per-user rate limiting
 │       │   ├── search.ts           # Brave Search client
 │       │   ├── sentry.ts           # Error tracking
 │       │   ├── supabase.ts         # Supabase client factories
 │       │   ├── todoist.ts          # Todoist REST API client
-│       │   ├── rate-limit.ts      # Per-user rate limiting
 │       │   └── validation.ts       # Input validation
 │       ├── auth-callback/          # OAuth flow handler
 │       ├── webhook/                # Todoist webhook processor
@@ -185,9 +185,9 @@ Create **`supabase/.env.local`**:
 ```env
 TODOIST_CLIENT_ID=your_client_id
 TODOIST_CLIENT_SECRET=your_client_secret
-DEFAULT_AI_BASE_URL=https://api.anthropic.com/v1
+DEFAULT_AI_BASE_URL=https://api.openai.com/v1
 DEFAULT_AI_API_KEY=your_api_key
-DEFAULT_AI_MODEL=claude-sonnet-4-6
+DEFAULT_AI_MODEL=gpt-4o-mini
 DEFAULT_BRAVE_API_KEY=your_brave_key    # optional
 PUBLIC_SITE_URL=http://localhost:5173
 SENTRY_DSN=your_sentry_dsn              # optional
@@ -247,7 +247,7 @@ npm test                    # Run Deno test suite
 npm test
 
 # With coverage
-deno test supabase/functions/tests/ --no-check --coverage
+deno test supabase/functions/tests/ --no-check --allow-env --coverage
 
 # Specific test file
 deno test supabase/functions/tests/crypto.test.ts --no-check --allow-env
