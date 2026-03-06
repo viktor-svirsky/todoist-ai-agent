@@ -61,7 +61,7 @@ sequenceDiagram
 | **Trigger word** | Customizable per user (default: `@ai`) |
 | **Web search** | Real-time information via Brave Search API |
 | **Conversation memory** | Full message history per task, auto-cleared on completion |
-| **Bring your own key** | Use any OpenAI-compatible AI provider |
+| **Bring your own key** | Supports Anthropic (Claude) and any OpenAI-compatible provider |
 | **Image support** | Attach images to comments for multimodal AI analysis |
 | **Data isolation** | Row Level Security ensures complete tenant separation |
 | **Error tracking** | Optional Sentry integration for monitoring |
@@ -182,9 +182,9 @@ Create **`supabase/.env.local`**:
 ```env
 TODOIST_CLIENT_ID=your_client_id
 TODOIST_CLIENT_SECRET=your_client_secret
-DEFAULT_AI_BASE_URL=https://api.openai.com/v1
-DEFAULT_AI_API_KEY=your_openai_key
-DEFAULT_AI_MODEL=gpt-4o-mini
+DEFAULT_AI_BASE_URL=https://api.anthropic.com/v1
+DEFAULT_AI_API_KEY=your_api_key
+DEFAULT_AI_MODEL=claude-sonnet-4-6
 DEFAULT_BRAVE_API_KEY=your_brave_key    # optional
 PUBLIC_SITE_URL=http://localhost:5173
 SENTRY_DSN=your_sentry_dsn              # optional
