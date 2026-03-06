@@ -1,5 +1,5 @@
 import { assertEquals, assertStringIncludes, assertRejects } from "jsr:@std/assert";
-import { buildMessages, executePrompt } from "../_shared/ai.ts";
+import { buildMessages, executePrompt, isAnthropicUrl } from "../_shared/ai.ts";
 
 Deno.test("buildMessages: starts with system message containing task content", () => {
   const result = buildMessages("Buy milk", undefined, []);
@@ -286,5 +286,252 @@ Deno.test("executePrompt: no tool calls returns directly even with braveApiKey",
     assertEquals(result, "Direct answer");
   } finally {
     restore();
+  }
+});
+
+// ---------------------------------------------------------------------------
+// isAnthropicUrl
+// ---------------------------------------------------------------------------
+
+Deno.test("isAnthropicUrl: detects api.anthropic.com", () => {
+  assertEquals(isAnthropicUrl("https://api.anthropic.com/v1"), true);
+});
+
+Deno.test("isAnthropicUrl: detects subdomain of anthropic.com", () => {
+  assertEquals(isAnthropicUrl("https://custom.anthropic.com"), true);
+});
+
+Deno.test("isAnthropicUrl: rejects OpenAI URL", () => {
+  assertEquals(isAnthropicUrl("https://api.openai.com/v1"), false);
+});
+
+Deno.test("isAnthropicUrl: rejects other providers", () => {
+  assertEquals(isAnthropicUrl("https://openrouter.ai/api/v1"), false);
+});
+
+Deno.test("isAnthropicUrl: rejects invalid URL", () => {
+  assertEquals(isAnthropicUrl("not-a-url"), false);
+});
+
+Deno.test("isAnthropicUrl: rejects URL containing anthropic in path but not hostname", () => {
+  assertEquals(isAnthropicUrl("https://proxy.example.com/anthropic.com/v1"), false);
+});
+
+// ---------------------------------------------------------------------------
+// executePrompt — Anthropic provider
+// ---------------------------------------------------------------------------
+
+const ANTHROPIC_CONFIG = {
+  baseUrl: "https://api.anthropic.com/v1",
+  apiKey: "sk-ant-test-key",
+  model: "claude-sonnet-4-6",
+  timeoutMs: 5000,
+};
+
+Deno.test("executePrompt (Anthropic): returns content from text response", async () => {
+  const restore = mockFetch([{
+    status: 200,
+    body: { content: [{ type: "text", text: "Hello from Claude" }] },
+  }]);
+  try {
+    const messages = [{ role: "system", content: "You are helpful" }];
+    const result = await executePrompt(messages, ANTHROPIC_CONFIG);
+    assertEquals(result, "Hello from Claude");
+  } finally {
+    restore();
+  }
+});
+
+Deno.test("executePrompt (Anthropic): returns '(no response)' for empty content", async () => {
+  const restore = mockFetch([{
+    status: 200,
+    body: { content: [] },
+  }]);
+  try {
+    const result = await executePrompt([{ role: "system", content: "test" }], ANTHROPIC_CONFIG);
+    assertEquals(result, "(no response)");
+  } finally {
+    restore();
+  }
+});
+
+Deno.test("executePrompt (Anthropic): throws on API error", async () => {
+  const restore = mockFetch([{
+    status: 400,
+    body: { error: { message: "Bad request" } },
+  }]);
+  try {
+    await assertRejects(
+      () => executePrompt([{ role: "system", content: "test" }], ANTHROPIC_CONFIG),
+      Error,
+      "AI API error 400"
+    );
+  } finally {
+    restore();
+  }
+});
+
+Deno.test("executePrompt (Anthropic): handles tool use and returns final response", async () => {
+  const restore = mockFetch([
+    // First call — model requests tool_use
+    {
+      status: 200,
+      body: {
+        content: [
+          { type: "text", text: "Let me search for that." },
+          { type: "tool_use", id: "toolu_1", name: "web_search", input: { query: "test query" } },
+        ],
+      },
+    },
+    // Second call — model returns final answer
+    {
+      status: 200,
+      body: { content: [{ type: "text", text: "Here are the results" }] },
+    },
+  ]);
+  try {
+    const config = { ...ANTHROPIC_CONFIG, braveApiKey: "brave-test-key" };
+    const result = await executePrompt([{ role: "system", content: "test" }], config);
+    assertEquals(result, "Here are the results");
+  } finally {
+    restore();
+  }
+});
+
+Deno.test("executePrompt (Anthropic): no tool use returns directly even with braveApiKey", async () => {
+  const restore = mockFetch([{
+    status: 200,
+    body: { content: [{ type: "text", text: "Direct answer" }] },
+  }]);
+  try {
+    const config = { ...ANTHROPIC_CONFIG, braveApiKey: "brave-test-key" };
+    const result = await executePrompt([{ role: "system", content: "test" }], config);
+    assertEquals(result, "Direct answer");
+  } finally {
+    restore();
+  }
+});
+
+Deno.test("executePrompt (Anthropic): trims whitespace from response", async () => {
+  const restore = mockFetch([{
+    status: 200,
+    body: { content: [{ type: "text", text: "  trimmed  " }] },
+  }]);
+  try {
+    const result = await executePrompt([{ role: "system", content: "test" }], ANTHROPIC_CONFIG);
+    assertEquals(result, "trimmed");
+  } finally {
+    restore();
+  }
+});
+
+Deno.test("executePrompt (Anthropic): sends x-api-key header, not Bearer", async () => {
+  let capturedHeaders: Record<string, string> = {};
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = ((_input: unknown, init?: any) => {
+    capturedHeaders = init?.headers || {};
+    return Promise.resolve(new Response(JSON.stringify({
+      content: [{ type: "text", text: "ok" }],
+    }), { status: 200, headers: { "Content-Type": "application/json" } }));
+  }) as typeof fetch;
+  try {
+    await executePrompt([{ role: "system", content: "test" }], ANTHROPIC_CONFIG);
+    assertEquals(capturedHeaders["x-api-key"], "sk-ant-test-key");
+    assertEquals(capturedHeaders["Authorization"], undefined);
+    assertEquals(capturedHeaders["anthropic-version"], "2023-06-01");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+Deno.test("executePrompt (Anthropic): sends system as top-level param, not in messages", async () => {
+  let capturedBody: any = {};
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = ((_input: unknown, init?: any) => {
+    capturedBody = JSON.parse(init?.body || "{}");
+    return Promise.resolve(new Response(JSON.stringify({
+      content: [{ type: "text", text: "ok" }],
+    }), { status: 200, headers: { "Content-Type": "application/json" } }));
+  }) as typeof fetch;
+  try {
+    const messages = [
+      { role: "system", content: "You are helpful" },
+      { role: "user", content: "hello" },
+    ];
+    await executePrompt(messages, ANTHROPIC_CONFIG);
+    assertStringIncludes(capturedBody.system, "You are helpful");
+    const hasSystemMsg = capturedBody.messages.some((m: any) => m.role === "system");
+    assertEquals(hasSystemMsg, false);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+Deno.test("executePrompt (Anthropic): batches multiple tool results into single user message", async () => {
+  let capturedBodies: any[] = [];
+  const originalFetch = globalThis.fetch;
+  let callIndex = 0;
+  const responses = [
+    // 1st fetch: AI call — model requests two tool_use blocks
+    {
+      status: 200,
+      body: {
+        content: [
+          { type: "tool_use", id: "toolu_1", name: "web_search", input: { query: "query one" } },
+          { type: "tool_use", id: "toolu_2", name: "web_search", input: { query: "query two" } },
+        ],
+      },
+    },
+    // 2nd fetch: Brave Search for first tool call
+    { status: 200, body: { web: { results: [{ title: "R1", url: "https://r1.com", description: "d1" }] } } },
+    // 3rd fetch: Brave Search for second tool call
+    { status: 200, body: { web: { results: [{ title: "R2", url: "https://r2.com", description: "d2" }] } } },
+    // 4th fetch: AI call — model returns final answer
+    {
+      status: 200,
+      body: { content: [{ type: "text", text: "Combined results" }] },
+    },
+  ];
+  globalThis.fetch = ((_input: unknown, init?: any) => {
+    capturedBodies.push(JSON.parse(init?.body || "{}"));
+    const response = responses[callIndex++] || responses[responses.length - 1];
+    return Promise.resolve(new Response(JSON.stringify(response.body), {
+      status: response.status,
+      headers: { "Content-Type": "application/json" },
+    }));
+  }) as typeof fetch;
+  try {
+    const config = { ...ANTHROPIC_CONFIG, braveApiKey: "brave-test-key" };
+    const result = await executePrompt([{ role: "user", content: "test" }], config);
+    assertEquals(result, "Combined results");
+    // Fourth request (2nd AI call) should have tool results batched in a single user message
+    const secondBody = capturedBodies[3];
+    const toolResultMsgs = secondBody.messages.filter(
+      (m: any) => m.role === "user" && Array.isArray(m.content) && m.content.some((c: any) => c.type === "tool_result")
+    );
+    // Should be exactly 1 user message containing both tool results
+    assertEquals(toolResultMsgs.length, 1);
+    assertEquals(toolResultMsgs[0].content.length, 2);
+    assertEquals(toolResultMsgs[0].content[0].tool_use_id, "toolu_1");
+    assertEquals(toolResultMsgs[0].content[1].tool_use_id, "toolu_2");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+Deno.test("executePrompt (Anthropic): sends to /v1/messages endpoint", async () => {
+  let capturedUrl = "";
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = ((input: unknown, _init?: any) => {
+    capturedUrl = String(input);
+    return Promise.resolve(new Response(JSON.stringify({
+      content: [{ type: "text", text: "ok" }],
+    }), { status: 200, headers: { "Content-Type": "application/json" } }));
+  }) as typeof fetch;
+  try {
+    await executePrompt([{ role: "user", content: "test" }], ANTHROPIC_CONFIG);
+    assertEquals(capturedUrl, "https://api.anthropic.com/v1/messages");
+  } finally {
+    globalThis.fetch = originalFetch;
   }
 });

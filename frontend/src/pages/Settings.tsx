@@ -211,8 +211,9 @@ export default function Settings() {
           <div>
             <p className="text-sm font-semibold text-gray-800">AI Provider</p>
             <p className="mt-1 text-xs text-gray-500 leading-relaxed">
-              Optional. Any OpenAI-compatible provider works.
+              Optional. Supports Anthropic and any OpenAI-compatible provider.
               Get a key from{" "}
+              <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">Anthropic</a>,{" "}
               <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">OpenAI</a>,{" "}
               <a href="https://openrouter.ai/keys" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">OpenRouter</a>, or{" "}
               <a href="https://console.groq.com/keys" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">Groq</a>.

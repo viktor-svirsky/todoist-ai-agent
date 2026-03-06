@@ -61,7 +61,7 @@ sequenceDiagram
 | **Trigger word** | Customizable per user (default: `@ai`) |
 | **Web search** | Real-time information via Brave Search API |
 | **Conversation memory** | Full message history per task, auto-cleared on completion |
-| **Bring your own key** | Use any OpenAI-compatible AI provider |
+| **Bring your own key** | Supports Anthropic (Claude) and any OpenAI-compatible provider |
 | **Image support** | Attach images to comments for multimodal AI analysis |
 | **Data isolation** | Row Level Security ensures complete tenant separation |
 | **Error tracking** | Optional Sentry integration for monitoring |
@@ -182,9 +182,9 @@ Create **`supabase/.env.local`**:
 ```env
 TODOIST_CLIENT_ID=your_client_id
 TODOIST_CLIENT_SECRET=your_client_secret
-DEFAULT_AI_BASE_URL=https://api.openai.com/v1
-DEFAULT_AI_API_KEY=your_openai_key
-DEFAULT_AI_MODEL=gpt-4o-mini
+DEFAULT_AI_BASE_URL=https://api.anthropic.com/v1
+DEFAULT_AI_API_KEY=your_api_key
+DEFAULT_AI_MODEL=claude-sonnet-4-6
 DEFAULT_BRAVE_API_KEY=your_brave_key    # optional
 PUBLIC_SITE_URL=http://localhost:5173
 SENTRY_DSN=your_sentry_dsn              # optional
@@ -253,15 +253,19 @@ deno test supabase/functions/tests/crypto.test.ts --no-check
 
 ### Test Coverage
 
-118 tests covering all shared modules:
+195 tests covering all shared modules and handlers:
 
 | Module | Tests | What's covered |
 |--------|-------|----------------|
-| **ai.ts** | 25 | `buildMessages` (custom prompts, images, edge cases), `executePrompt` (success, errors, tool calls) |
-| **validation.ts** | 25 | All settings fields: type checks, boundaries, nulls, multi-field errors |
+| **ai.ts** | 41 | `buildMessages` (custom prompts, images, edge cases), `executePrompt` (OpenAI + Anthropic providers, tool calls, multi-tool batching) |
 | **messages.ts** | 30 | Comment parsing, trigger word stripping, special chars, normalize helpers |
-| **crypto.ts** | 13 | AES-256-GCM encrypt/decrypt round-trips, HMAC verification, key errors |
+| **rate-limit.ts** | 29 | Config parsing, env overrides, rate limit checks, account blocking |
+| **validation.ts** | 25 | All settings fields: type checks, boundaries, nulls, multi-field errors |
 | **todoist.ts** | 15 | All TodoistClient methods: API calls, auth headers, error handling, trusted domains |
+| **crypto.ts** | 13 | AES-256-GCM encrypt/decrypt round-trips, HMAC verification, key errors |
+| **settings** | 13 | CRUD operations, auth, rate limiting, field validation |
+| **webhook** | 11 | HMAC verification, rate limiting, request validation |
+| **auth-callback** | 8 | OAuth flow, token exchange, error handling |
 | **search.ts** | 6 | Brave Search: result mapping, params, headers, empty/error responses |
 | **sentry.ts** | 4 | `withSentry` wrapper, error handling, `captureException` no-op |
 
