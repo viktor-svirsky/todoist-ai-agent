@@ -336,7 +336,8 @@ t("webhookHandler: calls increment_ai_requests RPC for note:added with trigger w
       return new Response("null", { status: 200, headers: { "Content-Type": "application/json" } });
     }
     // Mock Todoist API calls (postProgressComment, getTask, getComments)
-    if (url.includes("api.todoist.com")) {
+    const host = new URL(url).hostname;
+    if (host === "api.todoist.com") {
       if (url.includes("/comments") && init?.method === "POST") {
         return new Response(JSON.stringify({ id: "progress-1" }), {
           status: 200,
@@ -357,7 +358,7 @@ t("webhookHandler: calls increment_ai_requests RPC for note:added with trigger w
       }
     }
     // Mock AI API call
-    if (url.includes("api.openai.com")) {
+    if (host === "api.openai.com") {
       return new Response(JSON.stringify({
         choices: [{ message: { content: "AI response", role: "assistant" } }],
       }), {
