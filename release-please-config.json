@@ -6,7 +6,8 @@
       "changelog-path": "CHANGELOG.md",
       "bump-minor-pre-major": true,
       "extra-files": [
-        "frontend/package.json"
+        "frontend/package.json",
+        "README.md"
       ]
     }
   }
