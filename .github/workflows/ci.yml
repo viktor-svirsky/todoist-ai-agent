@@ -40,4 +40,4 @@ jobs:
       - uses: denoland/setup-deno@v2
 
       - name: Run tests
-        run: deno test supabase/functions/tests/ --no-check --allow-env
+        run: deno test supabase/functions/tests/ --no-check --allow-env --allow-read
