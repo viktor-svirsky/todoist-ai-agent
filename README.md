@@ -247,10 +247,10 @@ npm test                    # Run Deno test suite
 npm test
 
 # With coverage
-deno test supabase/functions/tests/ --no-check --allow-env --coverage
+deno test supabase/functions/tests/ --no-check --allow-env --allow-read --coverage
 
 # Specific test file
-deno test supabase/functions/tests/crypto.test.ts --no-check --allow-env
+deno test supabase/functions/tests/crypto.test.ts --no-check --allow-env --allow-read
 ```
 
 ### Test Coverage

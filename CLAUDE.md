@@ -60,7 +60,7 @@ npm run frontend:dev
 # Run all Deno tests (backend)
 npm test
 # Single test file
-deno test supabase/functions/tests/crypto.test.ts --no-check --allow-env
+deno test supabase/functions/tests/crypto.test.ts --no-check --allow-env --allow-read
 
 # Frontend tests (Vitest)
 cd frontend && npm test
