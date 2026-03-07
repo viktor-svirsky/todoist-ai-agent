@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.2.0](https://github.com/viktor-svirsky/todoist-ai-agent/compare/todoist-ai-agent-v1.1.0...todoist-ai-agent-v1.2.0) (2026-03-07)
+
+
+### Features
+
+* change default AI model to claude-opus-4-6 ([#74](https://github.com/viktor-svirsky/todoist-ai-agent/issues/74)) ([64d5ed8](https://github.com/viktor-svirsky/todoist-ai-agent/commit/64d5ed8b43944a60952b0d5fce256ee753d2e3d7))
+* increase webhook rate limits to 10 req/120s ([#76](https://github.com/viktor-svirsky/todoist-ai-agent/issues/76)) ([7571b33](https://github.com/viktor-svirsky/todoist-ai-agent/commit/7571b33eb098770e8f2eedb103b6239a6ee3fdaa))
+
+
+### Bug Fixes
+
+* release workflow auto-merge and version badge 404 ([#71](https://github.com/viktor-svirsky/todoist-ai-agent/issues/71)) ([b03a961](https://github.com/viktor-svirsky/todoist-ai-agent/commit/b03a961caf8862a4c0b591513450d73805a2d990))
+* return 200 for rate-limited webhooks to prevent Todoist retry loop ([#77](https://github.com/viktor-svirsky/todoist-ai-agent/issues/77)) ([86513c0](https://github.com/viktor-svirsky/todoist-ai-agent/commit/86513c07cc522dcf41df172f3759d7d3a4831402))
+
 ## [1.1.0](https://github.com/viktor-svirsky/todoist-ai-agent/compare/todoist-ai-agent-v1.0.0...todoist-ai-agent-v1.1.0) (2026-03-06)
 
 
