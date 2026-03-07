@@ -46,8 +46,8 @@ Deno.test("getRateLimitConfig: returns defaults when no env vars set", () => {
   clearEnv("RATE_LIMIT_WINDOW_SECONDS");
   try {
     const config = getRateLimitConfig();
-    assertEquals(config.maxRequests, 5);
-    assertEquals(config.windowSeconds, 60);
+    assertEquals(config.maxRequests, 10);
+    assertEquals(config.windowSeconds, 120);
   } finally {
     restoreEnv();
   }
@@ -70,8 +70,8 @@ Deno.test("getRateLimitConfig: falls back on non-numeric env var", () => {
   setEnv("RATE_LIMIT_WINDOW_SECONDS", "xyz");
   try {
     const config = getRateLimitConfig();
-    assertEquals(config.maxRequests, 5);
-    assertEquals(config.windowSeconds, 60);
+    assertEquals(config.maxRequests, 10);
+    assertEquals(config.windowSeconds, 120);
   } finally {
     restoreEnv();
   }
@@ -81,7 +81,7 @@ Deno.test("getRateLimitConfig: falls back on zero", () => {
   setEnv("RATE_LIMIT_MAX_REQUESTS", "0");
   try {
     const config = getRateLimitConfig();
-    assertEquals(config.maxRequests, 5);
+    assertEquals(config.maxRequests, 10);
   } finally {
     restoreEnv();
   }
@@ -91,7 +91,7 @@ Deno.test("getRateLimitConfig: falls back on negative", () => {
   setEnv("RATE_LIMIT_MAX_REQUESTS", "-5");
   try {
     const config = getRateLimitConfig();
-    assertEquals(config.maxRequests, 5);
+    assertEquals(config.maxRequests, 10);
   } finally {
     restoreEnv();
   }
@@ -103,7 +103,7 @@ Deno.test("getRateLimitConfig: partial override (only max_requests)", () => {
   try {
     const config = getRateLimitConfig();
     assertEquals(config.maxRequests, 10);
-    assertEquals(config.windowSeconds, 60);
+    assertEquals(config.windowSeconds, 120);
   } finally {
     restoreEnv();
   }
@@ -113,7 +113,7 @@ Deno.test("getRateLimitConfig: falls back on float", () => {
   setEnv("RATE_LIMIT_MAX_REQUESTS", "5.5");
   try {
     const config = getRateLimitConfig();
-    assertEquals(config.maxRequests, 5);
+    assertEquals(config.maxRequests, 10);
   } finally {
     restoreEnv();
   }
@@ -129,7 +129,7 @@ Deno.test("getSettingsRateLimitConfig: returns defaults", () => {
   try {
     const config = getSettingsRateLimitConfig();
     assertEquals(config.maxRequests, 30);
-    assertEquals(config.windowSeconds, 60);
+    assertEquals(config.windowSeconds, 120);
   } finally {
     restoreEnv();
   }
