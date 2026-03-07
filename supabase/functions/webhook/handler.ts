@@ -10,8 +10,6 @@ import {
 import {
   getRateLimitConfig,
   checkRateLimitByTodoistId,
-  rateLimitResponse,
-  accountBlockedResponse,
 } from "../_shared/rate-limit.ts";
 import { commentsToMessages, normalizeModel } from "../_shared/messages.ts";
 import { captureException } from "../_shared/sentry.ts";
@@ -204,11 +202,12 @@ export async function webhookHandler(req: Request): Promise<Response> {
   // Rate limit check — before any processing or decryption
   const rlConfig = getRateLimitConfig();
   const rlResult = await checkRateLimitByTodoistId(supabase, userId, rlConfig);
-  if (rlResult.blocked) {
-    return accountBlockedResponse();
-  }
-  if (!rlResult.allowed) {
-    return rateLimitResponse(rlResult.retry_after);
+  if (rlResult.blocked || !rlResult.allowed) {
+    // Return 200 so Todoist does not retry — retries of 429 cause an infinite loop
+    return new Response(JSON.stringify({ ok: true, rate_limited: true }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
   }
 
   const decryptedUser = {

@@ -210,7 +210,7 @@ t("webhookHandler: returns 404 when user not found", async () => {
 // Rate limiting (requires Supabase mock)
 // ============================================================================
 
-t("webhookHandler: returns 429 when rate limited", async () => {
+t("webhookHandler: returns 200 with rate_limited flag when rate limited", async () => {
   const payload = JSON.stringify(makePayload());
   const req = await signedRequest(payload);
 
@@ -232,14 +232,15 @@ t("webhookHandler: returns 429 when rate limited", async () => {
 
   try {
     const res = await handler(req);
-    assertEquals(res.status, 429);
-    assertEquals(res.headers.get("Retry-After"), "45");
+    assertEquals(res.status, 200);
+    const body = await res.json();
+    assertEquals(body.rate_limited, true);
   } finally {
     restore();
   }
 });
 
-t("webhookHandler: returns 403 when account blocked", async () => {
+t("webhookHandler: returns 200 with rate_limited flag when account blocked", async () => {
   const payload = JSON.stringify(makePayload());
   const req = await signedRequest(payload);
 
@@ -261,9 +262,9 @@ t("webhookHandler: returns 403 when account blocked", async () => {
 
   try {
     const res = await handler(req);
-    assertEquals(res.status, 403);
+    assertEquals(res.status, 200);
     const body = await res.json();
-    assertEquals(body.error, "Account disabled");
+    assertEquals(body.rate_limited, true);
   } finally {
     restore();
   }
