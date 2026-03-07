@@ -10,6 +10,10 @@ interface UserSettings {
   has_custom_brave_key: boolean;
   max_messages: number;
   custom_prompt: string | null;
+  digest_enabled: boolean;
+  digest_time: string;
+  digest_timezone: string;
+  digest_project_id: string | null;
 }
 
 export default function Settings() {
@@ -25,6 +29,12 @@ export default function Settings() {
   const [aiModel, setAiModel] = useState("");
   const [braveKey, setBraveKey] = useState("");
   const [customPrompt, setCustomPrompt] = useState("");
+  const [digestEnabled, setDigestEnabled] = useState(false);
+  const [digestTime, setDigestTime] = useState("08:00");
+  const [digestTimezone, setDigestTimezone] = useState(
+    Intl.DateTimeFormat().resolvedOptions().timeZone,
+  );
+  const [digestProjectId, setDigestProjectId] = useState("");
 
   async function loadSettings(token: string) {
     try {
@@ -39,6 +49,10 @@ export default function Settings() {
         setAiBaseUrl(data.custom_ai_base_url || "");
         setAiModel(data.custom_ai_model || "");
         setCustomPrompt(data.custom_prompt || "");
+        setDigestEnabled(data.digest_enabled ?? false);
+        setDigestTime(data.digest_time ?? "08:00");
+        setDigestTimezone(data.digest_timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone);
+        setDigestProjectId(data.digest_project_id || "");
       } else if (res.status === 429) {
         const retryAfter = res.headers.get("Retry-After") || "60";
         setError(`Too many requests. Please try again in ${retryAfter} seconds.`);
@@ -73,11 +87,15 @@ export default function Settings() {
         return;
       }
 
-      const updates: Record<string, string | null> = {
+      const updates: Record<string, string | boolean | null> = {
         trigger_word: triggerWord,
         custom_ai_base_url: aiBaseUrl || null,
         custom_ai_model: aiModel || null,
         custom_prompt: customPrompt || null,
+        digest_enabled: digestEnabled,
+        digest_time: digestTime,
+        digest_timezone: digestTimezone,
+        digest_project_id: digestProjectId || null,
       };
       if (aiApiKey) updates.custom_ai_api_key = aiApiKey;
       if (braveKey) updates.custom_brave_key = braveKey;
@@ -252,6 +270,67 @@ export default function Settings() {
               placeholder="gpt-4o-mini"
             />
           </div>
+        </div>
+
+        <div className="rounded-xl bg-gray-50 p-5 space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-semibold text-gray-800">Daily Digest</p>
+              <p className="mt-1 text-xs text-gray-500 leading-relaxed">
+                Get a daily AI summary of your tasks — overdue items, today's priorities, and upcoming deadlines.
+              </p>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={digestEnabled}
+              onClick={() => setDigestEnabled(!digestEnabled)}
+              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors cursor-pointer ${digestEnabled ? "bg-blue-600" : "bg-gray-300"}`}
+            >
+              <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${digestEnabled ? "translate-x-6" : "translate-x-1"}`} />
+            </button>
+          </div>
+
+          {digestEnabled && (
+            <div className="space-y-4 pt-2">
+              <div>
+                <label className="block text-sm text-gray-600">Delivery Time</label>
+                <input
+                  type="time"
+                  value={digestTime}
+                  onChange={(e) => setDigestTime(e.target.value)}
+                  className={inputClasses}
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm text-gray-600">Timezone</label>
+                <select
+                  value={digestTimezone}
+                  onChange={(e) => setDigestTimezone(e.target.value)}
+                  className={inputClasses}
+                >
+                  {Intl.supportedValuesOf("timeZone").map((tz) => (
+                    <option key={tz} value={tz}>{tz.replace(/_/g, " ")}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm text-gray-600">Project (optional)</label>
+                <input
+                  type="text"
+                  value={digestProjectId}
+                  onChange={(e) => setDigestProjectId(e.target.value)}
+                  className={inputClasses}
+                  placeholder="Todoist project ID (blank = Inbox)"
+                />
+                <p className="mt-1.5 text-xs text-gray-500">
+                  Leave blank to create digest tasks in your Inbox.
+                </p>
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="rounded-xl bg-gray-50 p-5 space-y-4">

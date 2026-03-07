@@ -33,6 +33,10 @@ const mockSettings = {
   has_custom_brave_key: false,
   max_messages: 20,
   custom_prompt: null,
+  digest_enabled: false,
+  digest_time: "08:00",
+  digest_timezone: "UTC",
+  digest_project_id: null,
 };
 
 const mockSession = {
@@ -319,6 +323,76 @@ describe("Settings: form interactions", () => {
     const textarea = screen.getByPlaceholderText(/I live in Berlin/);
     await user.type(textarea, "Hello");
     expect(screen.getByText("5/2000")).toBeInTheDocument();
+  });
+});
+
+// ============================================================================
+// Digest settings
+// ============================================================================
+
+describe("Settings: digest", () => {
+  it("renders digest toggle and can toggle it", async () => {
+    const user = userEvent.setup();
+    renderSettings();
+    await waitFor(() => expect(screen.getByText("Daily Digest")).toBeInTheDocument());
+
+    const toggle = screen.getByRole("switch");
+    expect(toggle).toHaveAttribute("aria-checked", "false");
+
+    await user.click(toggle);
+    expect(toggle).toHaveAttribute("aria-checked", "true");
+  });
+
+  it("shows time and timezone fields when digest is enabled", async () => {
+    vi.mocked(fetch).mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve({ ...mockSettings, digest_enabled: true }),
+      headers: new Headers(),
+    } as Response);
+
+    renderSettings();
+    await waitFor(() => expect(screen.getByText("Delivery Time")).toBeInTheDocument());
+    expect(screen.getByText("Timezone")).toBeInTheDocument();
+  });
+
+  it("hides time and timezone fields when digest is disabled", async () => {
+    renderSettings();
+    await waitFor(() => expect(screen.getByText("Daily Digest")).toBeInTheDocument());
+    expect(screen.queryByText("Delivery Time")).not.toBeInTheDocument();
+  });
+
+  it("sends digest fields in PUT request on save", async () => {
+    vi.mocked(fetch).mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve({ ...mockSettings, digest_enabled: true }),
+      headers: new Headers(),
+    } as Response);
+
+    const user = userEvent.setup();
+    renderSettings();
+    await waitFor(() => expect(screen.getByText("Settings")).toBeInTheDocument());
+
+    vi.mocked(fetch).mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve(mockSettings),
+      headers: new Headers(),
+    } as Response);
+
+    await user.click(screen.getByText("Save Settings"));
+    await waitFor(() => expect(screen.getByText("Settings saved.")).toBeInTheDocument());
+
+    // Verify fetch was called with digest fields
+    const saveCall = vi.mocked(fetch).mock.calls.find(
+      (call) => (call[1] as RequestInit)?.method === "PUT",
+    );
+    expect(saveCall).toBeTruthy();
+    const body = JSON.parse((saveCall![1] as RequestInit).body as string);
+    expect(body).toHaveProperty("digest_enabled");
+    expect(body).toHaveProperty("digest_time");
+    expect(body).toHaveProperty("digest_timezone");
   });
 });
 
