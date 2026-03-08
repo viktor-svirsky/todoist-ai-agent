@@ -381,6 +381,77 @@ t("webhookHandler: calls increment_ai_requests RPC for note:added with trigger w
   }
 });
 
+t("webhookHandler: posts error comment to Todoist when AI API fails", async () => {
+  const payload = JSON.stringify(makePayload());
+  const req = await signedRequest(payload);
+
+  let errorCommentPosted = false;
+
+  Deno.env.set("DEFAULT_AI_BASE_URL", "https://api.openai.com/v1");
+  Deno.env.set("DEFAULT_AI_API_KEY", "test-key");
+  Deno.env.set("DEFAULT_AI_MODEL", "gpt-4o-mini");
+
+  const restore = mockFetch((url, init) => {
+    if (url.includes("/rest/v1/users_config") && init?.method !== "POST" && !url.includes("rpc")) {
+      return new Response(JSON.stringify(mockUserConfig()), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+    if (url.includes("/rest/v1/rpc/check_rate_limit")) {
+      return new Response(JSON.stringify({ allowed: true, blocked: false, retry_after: 0 }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+    if (url.includes("/rest/v1/rpc/increment_ai_requests")) {
+      return new Response("null", { status: 200, headers: { "Content-Type": "application/json" } });
+    }
+    const host = new URL(url).hostname;
+    if (host === "api.todoist.com") {
+      if (url.includes("/comments") && init?.method === "POST") {
+        const body = init?.body ? JSON.parse(String(init.body)) : {};
+        if (body.content && body.content.includes("AI agent error:")) {
+          errorCommentPosted = true;
+        }
+        return new Response(JSON.stringify({ id: "progress-1" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      if (url.includes("/comments")) {
+        return new Response(JSON.stringify({ results: [] }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      if (url.includes("/tasks/")) {
+        return new Response(JSON.stringify({ content: "Test task", description: "" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+    }
+    // AI API returns 400 error
+    if (host === "api.openai.com") {
+      return new Response(JSON.stringify({ error: { message: "invalid request", type: "invalid_request_error" } }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+    return new Response("{}", { status: 200, headers: { "Content-Type": "application/json" } });
+  });
+
+  try {
+    const res = await handler(req);
+    assertEquals(res.status, 200);
+    await new Promise((r) => setTimeout(r, 100));
+    assertEquals(errorCommentPosted, true, "Error comment should be posted to Todoist when AI API fails");
+  } finally {
+    restore();
+  }
+});
+
 t("webhookHandler: does NOT call increment_ai_requests for non-trigger comments", async () => {
   const payload = JSON.stringify(makePayload({
     event_data: { content: "just a regular comment", item_id: "task-1" },
