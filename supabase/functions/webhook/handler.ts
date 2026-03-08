@@ -115,6 +115,7 @@ async function handleNoteAdded(event: any, user: any): Promise<void> {
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
     console.error("note:added processing failed", { taskId, error: message });
+    await captureException(error);
     try {
       await todoist.updateComment(
         progressCommentId,
