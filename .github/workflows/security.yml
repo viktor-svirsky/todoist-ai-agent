@@ -1,8 +1,6 @@
 name: Security Audit
 
 on:
-  push:
-    branches: [main]
   pull_request:
     branches: [main]
   schedule:
@@ -21,9 +19,7 @@ jobs:
         with:
           node-version: 22
           cache: npm
-
-      - run: npm ci
-      - run: npm audit --omit=dev
+          cache-dependency-path: frontend/package-lock.json
 
       - run: cd frontend && npm ci
       - run: cd frontend && npm audit --omit=dev

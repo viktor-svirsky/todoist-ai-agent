@@ -3,8 +3,6 @@ name: CI
 on:
   pull_request:
     branches: [main]
-  push:
-    branches: [main]
 
 permissions:
   contents: read
@@ -39,5 +37,8 @@ jobs:
 
       - uses: denoland/setup-deno@v2
 
-      - name: Run tests
+      - name: Lint
+        run: deno lint supabase/functions/
+
+      - name: Test
         run: deno test supabase/functions/tests/ --no-check --allow-env --allow-read
