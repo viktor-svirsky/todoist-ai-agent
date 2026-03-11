@@ -16,54 +16,33 @@ import { captureException } from "../_shared/sentry.ts";
 import { uint8ToBase64, verifyHmac, decrypt, decryptIfPresent } from "../_shared/crypto.ts";
 
 // ---------------------------------------------------------------------------
-// Event handler
+// Shared AI processing
 // ---------------------------------------------------------------------------
 
-async function handleNoteAdded(event: any, user: any): Promise<void> {
-  const { event_data } = event;
-  const taskId = event_data.item_id;
-  const content: string = event_data.content ?? "";
-
-  if (!taskId || !content) {
-    console.warn("Missing required fields in note:added event");
-    return;
-  }
-
-  // Ignore bot's own comments
-  if (content.startsWith(AI_INDICATOR) || content.startsWith(ERROR_PREFIX)) {
-    return;
-  }
-
-  // Check trigger word
-  const triggerWord = user.trigger_word || "@ai";
-  const triggerRegex = new RegExp(
-    triggerWord.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
-    "i"
-  );
-  if (!triggerRegex.test(content)) return;
-
-  // Track AI request — all filters passed, this will invoke AI
+async function runAiForTask(
+  taskId: string,
+  user: any,
+  todoistUserId: string,
+): Promise<void> {
   const supabase = createServiceClient();
-  await supabase.rpc("increment_ai_requests", { p_todoist_user_id: String(event.user_id) });
+  await supabase.rpc("increment_ai_requests", { p_todoist_user_id: todoistUserId });
 
   const todoist = new TodoistClient(user.todoist_token);
   const progressCommentId = await todoist.postProgressComment(taskId);
 
   try {
-    // Fetch task and full comment history in parallel
     const [task, comments] = await Promise.all([
       todoist.getTask(taskId),
       todoist.getComments(taskId),
     ]);
 
-    // Build conversation from Todoist comments
+    const triggerWord = user.trigger_word || "@ai";
     const maxMessages = user.max_messages ?? DEFAULT_MAX_MESSAGES;
     let messages = commentsToMessages(comments, triggerWord, progressCommentId);
     if (messages.length > maxMessages) {
       messages = messages.slice(-maxMessages);
     }
 
-    // Get image attachments from comments (parallel downloads)
     const imageComments = comments.filter(
       (c: any) => c.file_attachment?.resource_type === "image"
     );
@@ -78,7 +57,6 @@ async function handleNoteAdded(event: any, user: any): Promise<void> {
       .filter((r): r is PromiseFulfilledResult<{ data: string; mediaType: string }> => r.status === "fulfilled")
       .map((r) => r.value);
 
-    // Build AI config
     const aiConfig = {
       baseUrl: (
         user.custom_ai_base_url ||
@@ -101,7 +79,6 @@ async function handleNoteAdded(event: any, user: any): Promise<void> {
         undefined,
     };
 
-    // Call AI
     const apiMessages = buildMessages(
       task.content,
       task.description,
@@ -114,7 +91,7 @@ async function handleNoteAdded(event: any, user: any): Promise<void> {
     await todoist.updateComment(progressCommentId, response);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
-    console.error("note:added processing failed", { taskId, error: message });
+    console.error("AI processing failed", { taskId, error: message });
     try {
       await todoist.updateComment(
         progressCommentId,
@@ -124,6 +101,74 @@ async function handleNoteAdded(event: any, user: any): Promise<void> {
       console.error("Failed to update progress comment with error", e);
     }
   }
+}
+
+// ---------------------------------------------------------------------------
+// Event handlers
+// ---------------------------------------------------------------------------
+
+async function handleNoteEvent(event: any, user: any): Promise<void> {
+  const { event_data } = event;
+  const taskId = event_data.item_id;
+  const content: string = event_data.content ?? "";
+
+  if (!taskId || !content) {
+    console.warn("Missing required fields in note event");
+    return;
+  }
+
+  // Ignore bot's own comments
+  if (content.startsWith(AI_INDICATOR) || content.startsWith(ERROR_PREFIX)) {
+    return;
+  }
+
+  // Check trigger word
+  const triggerWord = user.trigger_word || "@ai";
+  const triggerRegex = new RegExp(
+    triggerWord.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
+    "i"
+  );
+  if (!triggerRegex.test(content)) return;
+
+  await runAiForTask(taskId, user, String(event.user_id));
+}
+
+async function handleItemEvent(event: any, user: any): Promise<void> {
+  const { event_data } = event;
+  const taskId = event_data.id;
+  const content: string = event_data.content ?? "";
+  const description: string = event_data.description ?? "";
+  const labels: string[] = event_data.labels ?? [];
+
+  if (!taskId) {
+    console.warn("Missing task id in item event");
+    return;
+  }
+
+  // Check trigger in content, description, or labels
+  const triggerWord = user.trigger_word || "@ai";
+  const triggerRegex = new RegExp(
+    triggerWord.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
+    "i"
+  );
+  const labelTrigger = triggerWord.replace(/^@/, "").toLowerCase();
+  const hasTrigger =
+    triggerRegex.test(content) ||
+    triggerRegex.test(description) ||
+    labels.some((l: string) => l.toLowerCase() === labelTrigger);
+
+  if (!hasTrigger) return;
+
+  // For item:updated, skip if AI already responded to avoid re-triggering
+  if (event.event_name === "item:updated") {
+    const todoist = new TodoistClient(user.todoist_token);
+    const comments = await todoist.getComments(taskId);
+    if (comments.some((c: any) => (c.content ?? "").startsWith(AI_INDICATOR))) {
+      return;
+    }
+  }
+
+  await runAiForTask(taskId, user, String(event.user_id));
 }
 
 // ---------------------------------------------------------------------------
@@ -219,10 +264,11 @@ export async function webhookHandler(req: Request): Promise<Response> {
 
   const processPromise = (async () => {
     try {
-      if (event.event_name === "note:added") {
-        await handleNoteAdded(event, decryptedUser);
+      if (event.event_name === "note:added" || event.event_name === "note:updated") {
+        await handleNoteEvent(event, decryptedUser);
+      } else if (event.event_name === "item:added" || event.event_name === "item:updated") {
+        await handleItemEvent(event, decryptedUser);
       }
-      // item:completed no longer needs handling — no DB cleanup required
     } catch (error) {
       console.error("Async webhook processing failed", {
         event_name: event.event_name,
