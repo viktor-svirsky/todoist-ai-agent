@@ -1,4 +1,4 @@
-import { assertEquals } from "jsr:@std/assert";
+import { assertEquals } from "@std/assert";
 import { validateSettings } from "../_shared/validation.ts";
 
 // -- max_messages --

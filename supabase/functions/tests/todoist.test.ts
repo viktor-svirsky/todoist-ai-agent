@@ -1,4 +1,4 @@
-import { assertEquals, assertRejects, assertStringIncludes } from "jsr:@std/assert";
+import { assertEquals, assertRejects, assertStringIncludes } from "@std/assert";
 import { TodoistClient } from "../_shared/todoist.ts";
 import { AI_INDICATOR, PROGRESS_INDICATOR } from "../_shared/constants.ts";
 

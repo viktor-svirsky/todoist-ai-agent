@@ -1,4 +1,4 @@
-import { assertEquals } from "jsr:@std/assert";
+import { assertEquals } from "@std/assert";
 import { withSentry, captureException } from "../_shared/sentry.ts";
 
 Deno.test("withSentry: passes response through when handler succeeds", async () => {

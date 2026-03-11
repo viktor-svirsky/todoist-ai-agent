@@ -1,4 +1,4 @@
-import { assertEquals, assertNotEquals, assertRejects } from "jsr:@std/assert";
+import { assertEquals, assertNotEquals, assertRejects } from "@std/assert";
 import {
   uint8ToBase64,
   verifyHmac,

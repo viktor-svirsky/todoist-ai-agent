@@ -15,7 +15,40 @@ permissions:
   contents: read
 
 jobs:
+  test-frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - run: cd frontend && npm ci
+
+      - name: Lint
+        run: cd frontend && npm run lint
+
+      - name: Test
+        run: cd frontend && npm test
+
+  test-deno:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: denoland/setup-deno@v2
+
+      - name: Lint
+        run: deno lint supabase/functions/
+
+      - name: Test
+        run: deno test supabase/functions/tests/ --no-check --allow-env --allow-read
+
   deploy-functions:
+    needs: [test-deno, test-frontend]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -40,6 +73,7 @@ jobs:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
 
   deploy-frontend:
+    needs: [test-frontend, test-deno]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6

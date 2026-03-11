@@ -1,4 +1,4 @@
-import { assert, assertEquals } from "jsr:@std/assert";
+import { assert } from "@std/assert";
 
 const ROOT = new URL("../../../", import.meta.url).pathname;
 

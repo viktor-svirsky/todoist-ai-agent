@@ -1,4 +1,4 @@
-import { assertEquals, assertStringIncludes, assertRejects } from "jsr:@std/assert";
+import { assertEquals, assertStringIncludes, assertRejects } from "@std/assert";
 import { buildMessages, executePrompt, isAnthropicUrl } from "../_shared/ai.ts";
 
 Deno.test("buildMessages: starts with system message containing task content", () => {
@@ -468,7 +468,7 @@ Deno.test("executePrompt (Anthropic): sends system as top-level param, not in me
 });
 
 Deno.test("executePrompt (Anthropic): batches multiple tool results into single user message", async () => {
-  let capturedBodies: any[] = [];
+  const capturedBodies: any[] = [];
   const originalFetch = globalThis.fetch;
   let callIndex = 0;
   const responses = [
