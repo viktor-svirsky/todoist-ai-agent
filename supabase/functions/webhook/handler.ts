@@ -123,6 +123,7 @@ async function handleNoteAdded(event: any, user: any): Promise<void> {
     } catch (e) {
       console.error("Failed to update progress comment with error", e);
     }
+    await captureException(error);
   }
 }
 
