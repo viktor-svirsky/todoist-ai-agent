@@ -1,4 +1,4 @@
-import * as Sentry from "@sentry/deno";
+import * as Sentry from "npm:@sentry/deno";
 
 let initialized = false;
 
