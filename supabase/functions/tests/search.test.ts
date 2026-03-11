@@ -1,4 +1,4 @@
-import { assertEquals, assertRejects } from "jsr:@std/assert";
+import { assertEquals, assertRejects } from "@std/assert";
 import { braveSearch } from "../_shared/search.ts";
 
 function mockFetch(response: { status: number; body: unknown }): () => void {

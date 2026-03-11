@@ -1,4 +1,4 @@
-import { assertEquals } from "jsr:@std/assert";
+import { assertEquals } from "@std/assert";
 import { commentsToMessages, normalizeBaseUrl, normalizeModel } from "../_shared/messages.ts";
 import { AI_INDICATOR, ERROR_PREFIX, PROGRESS_INDICATOR } from "../_shared/constants.ts";
 

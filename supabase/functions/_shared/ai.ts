@@ -1,6 +1,6 @@
 import { braveSearch } from "./search.ts";
 import { MAX_TOOL_ROUNDS, DEFAULT_MAX_TOKENS } from "./constants.ts";
-import * as Sentry from "npm:@sentry/deno"; // startSpan is a no-op when Sentry is not initialized (no DSN set)
+import * as Sentry from "@sentry/deno"; // startSpan is a no-op when Sentry is not initialized (no DSN set)
 
 interface Message {
   role: "user" | "assistant";
