@@ -65,6 +65,78 @@ async function signedRequest(
   });
 }
 
+function makeItemPayload(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    event_name: "item:added",
+    user_id: "12345",
+    event_data: {
+      id: "task-1",
+      content: "@ai What is 2+2?",
+      description: "",
+      labels: [],
+    },
+    ...overrides,
+  };
+}
+
+function mockFullFlow(options: {
+  onRpc?: () => void;
+  commentsResponse?: unknown[];
+} = {}): () => void {
+  Deno.env.set("DEFAULT_AI_BASE_URL", "https://api.openai.com/v1");
+  Deno.env.set("DEFAULT_AI_API_KEY", "test-key");
+  Deno.env.set("DEFAULT_AI_MODEL", "gpt-4o-mini");
+
+  return mockFetch((url, init) => {
+    if (url.includes("/rest/v1/users_config") && init?.method !== "POST" && !url.includes("rpc")) {
+      return new Response(JSON.stringify(mockUserConfig()), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+    if (url.includes("/rest/v1/rpc/check_rate_limit")) {
+      return new Response(JSON.stringify({ allowed: true, blocked: false, retry_after: 0 }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+    if (url.includes("/rest/v1/rpc/increment_ai_requests")) {
+      options.onRpc?.();
+      return new Response("null", { status: 200, headers: { "Content-Type": "application/json" } });
+    }
+    const host = new URL(url).hostname;
+    if (host === "api.todoist.com") {
+      if (url.includes("/comments") && init?.method === "POST") {
+        return new Response(JSON.stringify({ id: "progress-1" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      if (url.includes("/comments")) {
+        return new Response(JSON.stringify({ results: options.commentsResponse ?? [] }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      if (url.includes("/tasks/")) {
+        return new Response(JSON.stringify({ content: "Test task", description: "" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+    }
+    if (host === "api.openai.com") {
+      return new Response(JSON.stringify({
+        choices: [{ message: { content: "AI response", role: "assistant" } }],
+      }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+    return new Response("{}", { status: 200, headers: { "Content-Type": "application/json" } });
+  });
+}
+
 function mockFetch(
   fn: (url: string, init?: RequestInit) => Response | Promise<Response>,
 ): () => void {
@@ -275,7 +347,7 @@ t("webhookHandler: returns 200 with rate_limited flag when account blocked", asy
 // ============================================================================
 
 t("webhookHandler: accepts valid request and returns 200", async () => {
-  // Use item:updated event to avoid triggering handleNoteAdded
+  // Use item:updated with note-shaped event_data — handleItemEvent bails on missing event_data.id
   const payload = JSON.stringify(makePayload({ event_name: "item:updated" }));
   const req = await signedRequest(payload);
 
@@ -485,6 +557,152 @@ t("webhookHandler: does NOT call increment_ai_requests for non-trigger comments"
     assertEquals(res.status, 200);
     await new Promise((r) => setTimeout(r, 100));
     assertEquals(rpcCalled, false, "increment_ai_requests RPC should NOT be called for non-trigger comments");
+  } finally {
+    restore();
+  }
+});
+
+// ============================================================================
+// note:updated event handling
+// ============================================================================
+
+t("webhookHandler: note:updated triggers AI processing", async () => {
+  const payload = JSON.stringify(makePayload({ event_name: "note:updated" }));
+  const req = await signedRequest(payload);
+
+  let rpcCalled = false;
+  const restore = mockFullFlow({ onRpc: () => { rpcCalled = true; } });
+
+  try {
+    const res = await handler(req);
+    assertEquals(res.status, 200);
+    await new Promise((r) => setTimeout(r, 100));
+    assertEquals(rpcCalled, true, "note:updated with trigger word should invoke AI");
+  } finally {
+    restore();
+  }
+});
+
+t("webhookHandler: note:updated ignores bot comments", async () => {
+  const payload = JSON.stringify(makePayload({
+    event_name: "note:updated",
+    event_data: { content: "\u{1F916} **AI Agent**\n\nSome response", item_id: "task-1" },
+  }));
+  const req = await signedRequest(payload);
+
+  let rpcCalled = false;
+  const restore = mockFullFlow({ onRpc: () => { rpcCalled = true; } });
+
+  try {
+    const res = await handler(req);
+    assertEquals(res.status, 200);
+    await new Promise((r) => setTimeout(r, 100));
+    assertEquals(rpcCalled, false, "note:updated should ignore bot's own comments");
+  } finally {
+    restore();
+  }
+});
+
+// ============================================================================
+// item:added event handling
+// ============================================================================
+
+t("webhookHandler: item:added with trigger in content triggers AI", async () => {
+  const payload = JSON.stringify(makeItemPayload());
+  const req = await signedRequest(payload);
+
+  let rpcCalled = false;
+  const restore = mockFullFlow({ onRpc: () => { rpcCalled = true; } });
+
+  try {
+    const res = await handler(req);
+    assertEquals(res.status, 200);
+    await new Promise((r) => setTimeout(r, 100));
+    assertEquals(rpcCalled, true, "item:added with @ai in content should invoke AI");
+  } finally {
+    restore();
+  }
+});
+
+t("webhookHandler: item:added with trigger in label triggers AI", async () => {
+  const payload = JSON.stringify(makeItemPayload({
+    event_data: { id: "task-1", content: "Buy groceries", description: "", labels: ["ai"] },
+  }));
+  const req = await signedRequest(payload);
+
+  let rpcCalled = false;
+  const restore = mockFullFlow({ onRpc: () => { rpcCalled = true; } });
+
+  try {
+    const res = await handler(req);
+    assertEquals(res.status, 200);
+    await new Promise((r) => setTimeout(r, 100));
+    assertEquals(rpcCalled, true, "item:added with 'ai' label should invoke AI");
+  } finally {
+    restore();
+  }
+});
+
+t("webhookHandler: item:added without trigger word is ignored", async () => {
+  const payload = JSON.stringify(makeItemPayload({
+    event_data: { id: "task-1", content: "Buy groceries", description: "", labels: [] },
+  }));
+  const req = await signedRequest(payload);
+
+  let rpcCalled = false;
+  const restore = mockFullFlow({ onRpc: () => { rpcCalled = true; } });
+
+  try {
+    const res = await handler(req);
+    assertEquals(res.status, 200);
+    await new Promise((r) => setTimeout(r, 100));
+    assertEquals(rpcCalled, false, "item:added without trigger should not invoke AI");
+  } finally {
+    restore();
+  }
+});
+
+// ============================================================================
+// item:updated event handling (with deduplication)
+// ============================================================================
+
+t("webhookHandler: item:updated with trigger and no prior AI comment triggers AI", async () => {
+  const payload = JSON.stringify(makeItemPayload({ event_name: "item:updated" }));
+  const req = await signedRequest(payload);
+
+  let rpcCalled = false;
+  const restore = mockFullFlow({
+    onRpc: () => { rpcCalled = true; },
+    commentsResponse: [],
+  });
+
+  try {
+    const res = await handler(req);
+    assertEquals(res.status, 200);
+    await new Promise((r) => setTimeout(r, 100));
+    assertEquals(rpcCalled, true, "item:updated with trigger and no AI comment should invoke AI");
+  } finally {
+    restore();
+  }
+});
+
+t("webhookHandler: item:updated skips when AI already responded", async () => {
+  const payload = JSON.stringify(makeItemPayload({ event_name: "item:updated" }));
+  const req = await signedRequest(payload);
+
+  let rpcCalled = false;
+  const restore = mockFullFlow({
+    onRpc: () => { rpcCalled = true; },
+    commentsResponse: [
+      { id: "c1", content: "\u{1F916} **AI Agent**\n\nPrevious response", posted_at: "2026-01-01T00:00:00Z" },
+    ],
+  });
+
+  try {
+    const res = await handler(req);
+    assertEquals(res.status, 200);
+    await new Promise((r) => setTimeout(r, 100));
+    assertEquals(rpcCalled, false, "item:updated should skip when AI already commented");
   } finally {
     restore();
   }
