@@ -103,7 +103,7 @@ export async function settingsHandler(req: Request): Promise<Response> {
 
   // ── PUT: Update user settings ──────────────────────────────────────
   if (req.method === "PUT") {
-    let body: any;
+    let body: Record<string, unknown>;
     try {
       body = await req.json();
     } catch {

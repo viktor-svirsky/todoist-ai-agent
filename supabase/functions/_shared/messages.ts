@@ -1,4 +1,5 @@
 import { AI_INDICATOR, ERROR_PREFIX, PROGRESS_INDICATOR } from "./constants.ts";
+import type { TodoistComment } from "./types.ts";
 
 export interface Message {
   role: "user" | "assistant";
@@ -11,7 +12,7 @@ export interface Message {
  *  - In-flight progress comments and error comments are skipped.
  */
 export function commentsToMessages(
-  comments: any[],
+  comments: TodoistComment[],
   triggerWord: string,
   progressCommentId: string
 ): Message[] {

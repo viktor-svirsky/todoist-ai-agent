@@ -128,7 +128,7 @@ export async function authCallbackHandler(req: Request): Promise<Response> {
         // Race condition: another OAuth flow already created this user
         const isEmailExists =
           authError.message?.includes("already been registered") ||
-          (authError as any).status === 422;
+          (authError as unknown as { status?: number }).status === 422;
 
         if (!isEmailExists) {
           console.error("Failed to create auth user:", authError);
@@ -193,7 +193,7 @@ export async function authCallbackHandler(req: Request): Promise<Response> {
           console.error("Could not find existing auth user after email_exists error");
           return errorRedirect("user_creation_failed");
         }
-        const found = users.find((u: any) => u.email === email);
+        const found = users.find((u) => u.email === email);
         if (!found) {
           return errorRedirect("user_creation_failed");
         }

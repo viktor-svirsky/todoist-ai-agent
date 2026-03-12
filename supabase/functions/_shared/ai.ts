@@ -1,6 +1,12 @@
 import { braveSearch } from "./search.ts";
 import { MAX_TOOL_ROUNDS, DEFAULT_MAX_TOKENS } from "./constants.ts";
 import * as Sentry from "@sentry/deno"; // startSpan is a no-op when Sentry is not initialized (no DSN set)
+import type {
+  OpenAiResponse,
+  AnthropicResponse,
+  AnthropicContentBlock,
+  ExtractedToolCall,
+} from "./types.ts";
 
 interface Message {
   role: "user" | "assistant";
@@ -19,6 +25,10 @@ export interface AiConfig {
   timeoutMs: number;
   braveApiKey?: string;
 }
+
+// Provider-specific messages accumulate in this array during the tool loop.
+// The shape varies by provider (OpenAI vs Anthropic), so we use a permissive type.
+type ApiMessage = Record<string, unknown>;
 
 const SYSTEM_PROMPT = [
   "You are an AI assistant embedded in Todoist.",
@@ -74,7 +84,7 @@ export function isAnthropicUrl(baseUrl: string): boolean {
 }
 
 // ---------------------------------------------------------------------------
-// buildMessages (unchanged — produces OpenAI-style messages with system role)
+// buildMessages (produces OpenAI-style messages with system role)
 // ---------------------------------------------------------------------------
 
 export function buildMessages(
@@ -83,7 +93,7 @@ export function buildMessages(
   messages: Message[],
   images?: ImageAttachment[],
   customPrompt?: string | null
-): any[] {
+): ApiMessage[] {
   const taskContext = [
     `Current task: "${taskContent}"`,
     taskDescription ? `Task description: "${taskDescription}"` : "",
@@ -95,7 +105,7 @@ export function buildMessages(
   }
   systemParts.push(taskContext);
 
-  const result: any[] = [
+  const result: ApiMessage[] = [
     { role: "system", content: systemParts.join("\n\n") },
   ];
 
@@ -139,31 +149,32 @@ function openaiHeaders(apiKey: string): Record<string, string> {
   };
 }
 
-function openaiBody(model: string, messages: any[], maxTokens: number, useTools: boolean): any {
-  const body: any = { model, messages, max_tokens: maxTokens };
+function openaiBody(model: string, messages: ApiMessage[], maxTokens: number, useTools: boolean): Record<string, unknown> {
+  const body: Record<string, unknown> = { model, messages, max_tokens: maxTokens };
   if (useTools) body.tools = OPENAI_TOOLS;
   return body;
 }
 
-function openaiExtractContent(data: any): string | null {
+/** Returns text content, null for empty, or undefined to signal tool calls. */
+function openaiExtractContent(data: OpenAiResponse): string | null | undefined {
   const choice = data.choices?.[0];
   if (!choice) return null;
-  if (choice.message.tool_calls && choice.message.tool_calls.length > 0) return undefined as any; // signal: has tool calls
+  if (choice.message.tool_calls && choice.message.tool_calls.length > 0) return undefined;
   return choice.message.content?.trim() || null;
 }
 
-function openaiExtractToolCalls(data: any): Array<{ id: string; name: string; arguments: string }> {
+function openaiExtractToolCalls(data: OpenAiResponse): ExtractedToolCall[] {
   const calls = data.choices?.[0]?.message?.tool_calls || [];
   return calls
-    .filter((tc: any) => tc.type === "function")
-    .map((tc: any) => ({ id: tc.id, name: tc.function.name, arguments: tc.function.arguments }));
+    .filter((tc) => tc.type === "function")
+    .map((tc) => ({ id: tc.id, name: tc.function.name, arguments: tc.function.arguments }));
 }
 
-function openaiAssistantMessage(data: any): any {
-  return data.choices[0].message;
+function openaiAssistantMessage(data: OpenAiResponse): ApiMessage {
+  return data.choices[0].message as unknown as ApiMessage;
 }
 
-function openaiToolResultMessage(toolCallId: string, content: string): any {
+function openaiToolResultMessage(toolCallId: string, content: string): ApiMessage {
   return { role: "tool", tool_call_id: toolCallId, content };
 }
 
@@ -181,22 +192,22 @@ function anthropicHeaders(apiKey: string): Record<string, string> {
   };
 }
 
-function toAnthropicMessages(messages: any[]): { system: string; messages: any[] } {
+function toAnthropicMessages(messages: ApiMessage[]): { system: string; messages: ApiMessage[] } {
   let system = "";
-  const converted: any[] = [];
+  const converted: ApiMessage[] = [];
 
   for (const msg of messages) {
     if (msg.role === "system") {
-      system += (system ? "\n\n" : "") + msg.content;
+      system += (system ? "\n\n" : "") + (msg.content as string);
       continue;
     }
     if (msg.role === "user") {
       if (Array.isArray(msg.content)) {
         // Multimodal content — convert image_url to Anthropic image format
-        const parts = msg.content.map((part: any) => {
+        const parts = (msg.content as Record<string, unknown>[]).map((part) => {
           if (part.type === "image_url") {
-            const url: string = part.image_url.url;
-            const match = url.match(/^data:([^;]+);base64,(.+)$/);
+            const imageUrl = part.image_url as { url: string };
+            const match = imageUrl.url.match(/^data:([^;]+);base64,(.+)$/);
             if (match) {
               return {
                 type: "image",
@@ -226,33 +237,34 @@ function toAnthropicMessages(messages: any[]): { system: string; messages: any[]
   return { system, messages: converted };
 }
 
-function anthropicBody(model: string, messages: any[], maxTokens: number, useTools: boolean): any {
+function anthropicBody(model: string, messages: ApiMessage[], maxTokens: number, useTools: boolean): Record<string, unknown> {
   const { system, messages: converted } = toAnthropicMessages(messages);
-  const body: any = { model, messages: converted, max_tokens: maxTokens };
+  const body: Record<string, unknown> = { model, messages: converted, max_tokens: maxTokens };
   if (system) body.system = system;
   if (useTools) body.tools = ANTHROPIC_TOOLS;
   return body;
 }
 
-function anthropicExtractContent(data: any): string | null {
+/** Returns text content, null for empty, or undefined to signal tool calls. */
+function anthropicExtractContent(data: AnthropicResponse): string | null | undefined {
   if (!data.content || data.content.length === 0) return null;
-  const hasToolUse = data.content.some((b: any) => b.type === "tool_use");
-  if (hasToolUse) return undefined as any; // signal: has tool calls
-  const textBlocks = data.content.filter((b: any) => b.type === "text");
-  return textBlocks.map((b: any) => b.text).join("\n").trim() || null;
+  const hasToolUse = data.content.some((b: AnthropicContentBlock) => b.type === "tool_use");
+  if (hasToolUse) return undefined;
+  const textBlocks = data.content.filter((b: AnthropicContentBlock): b is { type: "text"; text: string } => b.type === "text");
+  return textBlocks.map((b) => b.text).join("\n").trim() || null;
 }
 
-function anthropicExtractToolCalls(data: any): Array<{ id: string; name: string; arguments: string }> {
+function anthropicExtractToolCalls(data: AnthropicResponse): ExtractedToolCall[] {
   return (data.content || [])
-    .filter((b: any) => b.type === "tool_use")
-    .map((b: any) => ({ id: b.id, name: b.name, arguments: JSON.stringify(b.input) }));
+    .filter((b: AnthropicContentBlock): b is { type: "tool_use"; id: string; name: string; input: Record<string, unknown> } => b.type === "tool_use")
+    .map((b) => ({ id: b.id, name: b.name, arguments: JSON.stringify(b.input) }));
 }
 
-function anthropicAssistantMessage(data: any): any {
+function anthropicAssistantMessage(data: AnthropicResponse): ApiMessage {
   return { role: "assistant", content: data.content };
 }
 
-function anthropicToolResultMessage(toolCallId: string, content: string): any {
+function anthropicToolResultMessage(toolCallId: string, content: string): ApiMessage {
   return {
     role: "user",
     content: [{ type: "tool_result", tool_use_id: toolCallId, content }],
@@ -264,7 +276,7 @@ function anthropicToolResultMessage(toolCallId: string, content: string): any {
 // ---------------------------------------------------------------------------
 
 export async function executePrompt(
-  messages: any[],
+  messages: ApiMessage[],
   config: AiConfig
 ): Promise<string> {
   const anthropic = isAnthropicUrl(config.baseUrl);
@@ -320,7 +332,7 @@ export async function executePrompt(
       const toolCalls = extractToolCalls(data);
       if (anthropic) {
         // Anthropic requires all tool results in a single user message
-        const toolResults: any[] = [];
+        const toolResults: { type: string; tool_use_id: string; content: string }[] = [];
         for (const tc of toolCalls) {
           const result = await handleToolCall(tc.name, tc.arguments, config.braveApiKey!);
           toolResults.push({ type: "tool_result", tool_use_id: tc.id, content: result });

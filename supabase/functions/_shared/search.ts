@@ -31,7 +31,7 @@ export async function braveSearch(
     if (!res.ok) throw new Error(`Brave search failed: ${res.status}`);
 
     const data = await res.json();
-    return (data.web?.results || []).map((r: any) => ({
+    return (data.web?.results || []).map((r: Record<string, string>) => ({
       title: r.title,
       url: r.url,
       description: r.description,

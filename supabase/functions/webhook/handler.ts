@@ -14,6 +14,7 @@ import {
 import { commentsToMessages, normalizeModel } from "../_shared/messages.ts";
 import { captureException } from "../_shared/sentry.ts";
 import { uint8ToBase64, verifyHmac, decrypt, decryptIfPresent } from "../_shared/crypto.ts";
+import type { TodoistComment, TodoistWebhookEvent, UserConfig } from "../_shared/types.ts";
 
 // ---------------------------------------------------------------------------
 // Shared AI processing
@@ -31,8 +32,9 @@ function sanitizeErrorForUser(error: unknown): string {
 
 async function runAiForTask(
   taskId: string,
-  user: any,
+  user: UserConfig,
   todoistUserId: string,
+  requestId: string,
 ): Promise<void> {
   const todoist = new TodoistClient(user.todoist_token);
   const progressCommentId = await todoist.postProgressComment(taskId);
@@ -57,16 +59,16 @@ async function runAiForTask(
 
     // Only download images from comments within the message window (#96)
     const windowCommentIds = new Set(
-      comments.slice(-maxMessages).map((c: any) => c.id)
+      comments.slice(-maxMessages).map((c: TodoistComment) => c.id)
     );
     const imageComments = comments.filter(
-      (c: any) =>
+      (c: TodoistComment) =>
         c.file_attachment?.resource_type === "image" &&
         windowCommentIds.has(c.id)
     );
     const imageResults = await Promise.allSettled(
-      imageComments.map(async (c: any) => {
-        const att = c.file_attachment;
+      imageComments.map(async (c: TodoistComment) => {
+        const att = c.file_attachment!;
         const bytes = await todoist.downloadFile(att.file_url);
         return { data: uint8ToBase64(bytes), mediaType: att.file_type || "image/png" };
       })
@@ -111,14 +113,14 @@ async function runAiForTask(
 
     await todoist.updateComment(progressCommentId, response);
   } catch (error) {
-    console.error("AI processing failed", { taskId, error: error instanceof Error ? error.message : String(error) });
+    console.error("AI processing failed", { requestId, taskId, error: error instanceof Error ? error.message : String(error) });
     try {
       await todoist.updateComment(
         progressCommentId,
         `${ERROR_PREFIX} ${sanitizeErrorForUser(error)} Retry by adding a comment.`
       );
     } catch (e) {
-      console.error("Failed to update progress comment with error", e);
+      console.error("Failed to update progress comment with error", { requestId, error: e });
     }
     await captureException(error);
   }
@@ -128,13 +130,13 @@ async function runAiForTask(
 // Event handlers
 // ---------------------------------------------------------------------------
 
-async function handleNoteEvent(event: any, user: any): Promise<void> {
+async function handleNoteEvent(event: TodoistWebhookEvent, user: UserConfig, requestId: string): Promise<void> {
   const { event_data } = event;
-  const taskId = event_data.item_id;
+  const taskId = "item_id" in event_data ? event_data.item_id : undefined;
   const content: string = event_data.content ?? "";
 
   if (!taskId || !content) {
-    console.warn("Missing required fields in note event");
+    console.warn("Missing required fields in note event", { requestId });
     return;
   }
 
@@ -151,18 +153,18 @@ async function handleNoteEvent(event: any, user: any): Promise<void> {
   );
   if (!triggerRegex.test(content)) return;
 
-  await runAiForTask(taskId, user, String(event.user_id));
+  await runAiForTask(taskId, user, String(event.user_id), requestId);
 }
 
-async function handleItemEvent(event: any, user: any): Promise<void> {
+async function handleItemEvent(event: TodoistWebhookEvent, user: UserConfig, requestId: string): Promise<void> {
   const { event_data } = event;
-  const taskId = event_data.id;
+  const taskId = "id" in event_data ? event_data.id : undefined;
   const content: string = event_data.content ?? "";
-  const description: string = event_data.description ?? "";
-  const labels: string[] = event_data.labels ?? [];
+  const description: string = "description" in event_data ? (event_data.description ?? "") : "";
+  const labels: string[] = "labels" in event_data ? (event_data.labels ?? []) : [];
 
   if (!taskId) {
-    console.warn("Missing task id in item event");
+    console.warn("Missing task id in item event", { requestId });
     return;
   }
 
@@ -184,12 +186,12 @@ async function handleItemEvent(event: any, user: any): Promise<void> {
   if (event.event_name === "item:updated") {
     const todoist = new TodoistClient(user.todoist_token);
     const comments = await todoist.getComments(taskId);
-    if (comments.some((c: any) => (c.content ?? "").startsWith(AI_INDICATOR))) {
+    if (comments.some((c: TodoistComment) => (c.content ?? "").startsWith(AI_INDICATOR))) {
       return;
     }
   }
 
-  await runAiForTask(taskId, user, String(event.user_id));
+  await runAiForTask(taskId, user, String(event.user_id), requestId);
 }
 
 // ---------------------------------------------------------------------------
@@ -197,6 +199,8 @@ async function handleItemEvent(event: any, user: any): Promise<void> {
 // ---------------------------------------------------------------------------
 
 export async function webhookHandler(req: Request): Promise<Response> {
+  const requestId = crypto.randomUUID();
+
   if (req.method !== "POST") {
     return new Response(JSON.stringify({ error: "Method not allowed" }), {
       status: 405,
@@ -217,7 +221,7 @@ export async function webhookHandler(req: Request): Promise<Response> {
   // Verify HMAC immediately — before parsing JSON or querying DB
   const clientSecret = Deno.env.get("TODOIST_CLIENT_SECRET");
   if (!clientSecret) {
-    console.error("TODOIST_CLIENT_SECRET is not configured");
+    console.error("TODOIST_CLIENT_SECRET is not configured", { requestId });
     return new Response(JSON.stringify({ error: "Server misconfiguration" }), {
       status: 500,
       headers: { "Content-Type": "application/json" },
@@ -232,7 +236,7 @@ export async function webhookHandler(req: Request): Promise<Response> {
   }
 
   // Parse payload after signature is verified
-  let event: any;
+  let event: TodoistWebhookEvent;
   try {
     event = JSON.parse(rawBody);
   } catch {
@@ -277,7 +281,7 @@ export async function webhookHandler(req: Request): Promise<Response> {
   }
 
   // Idempotency check — prevent duplicate AI responses from concurrent deliveries
-  const entityId = event.event_data?.id ?? event.event_data?.item_id ?? "";
+  const entityId = event.event_data?.id ?? ("item_id" in event.event_data ? event.event_data.item_id : "") ?? "";
   const eventKey = `${userId}:${event.event_name}:${entityId}`;
   if (eventKey && entityId) {
     const { data: claimed } = await supabase.rpc("try_claim_event", { p_event_id: eventKey });
@@ -289,8 +293,8 @@ export async function webhookHandler(req: Request): Promise<Response> {
     }
   }
 
-  const decryptedUser = {
-    ...user,
+  const decryptedUser: UserConfig = {
+    ...user as UserConfig,
     todoist_token: await decrypt(user.todoist_token),
     custom_ai_api_key: await decryptIfPresent(user.custom_ai_api_key),
     custom_brave_key: await decryptIfPresent(user.custom_brave_key),
@@ -299,12 +303,13 @@ export async function webhookHandler(req: Request): Promise<Response> {
   const processPromise = (async () => {
     try {
       if (event.event_name === "note:added" || event.event_name === "note:updated") {
-        await handleNoteEvent(event, decryptedUser);
+        await handleNoteEvent(event, decryptedUser, requestId);
       } else if (event.event_name === "item:added" || event.event_name === "item:updated") {
-        await handleItemEvent(event, decryptedUser);
+        await handleItemEvent(event, decryptedUser, requestId);
       }
     } catch (error) {
       console.error("Async webhook processing failed", {
+        requestId,
         event_name: event.event_name,
         error: error instanceof Error ? error.message : String(error),
       });
@@ -312,14 +317,14 @@ export async function webhookHandler(req: Request): Promise<Response> {
     }
   })();
 
-  const edgeRuntime = (globalThis as any).EdgeRuntime;
+  const edgeRuntime = (globalThis as Record<string, unknown>).EdgeRuntime as { waitUntil?: (p: Promise<void>) => void } | undefined;
   if (edgeRuntime?.waitUntil) {
     edgeRuntime.waitUntil(processPromise);
   } else {
-    processPromise.catch((e) => console.error("Background processing error", e));
+    processPromise.catch((e) => console.error("Background processing error", { requestId, error: e }));
   }
 
-  return new Response(JSON.stringify({ ok: true }), {
+  return new Response(JSON.stringify({ ok: true, request_id: requestId }), {
     status: 200,
     headers: { "Content-Type": "application/json" },
   });
