@@ -6,7 +6,7 @@
   },
   "lint": {
     "rules": {
-      "exclude": ["no-explicit-any", "require-await"]
+      "exclude": ["require-await"]
     }
   }
 }

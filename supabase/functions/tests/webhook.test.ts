@@ -372,6 +372,8 @@ t("webhookHandler: accepts valid request and returns 200", async () => {
     assertEquals(res.status, 200);
     const body = await res.json();
     assertEquals(body.ok, true);
+    assertEquals(typeof body.request_id, "string");
+    assertEquals(body.request_id.length, 36); // UUID format
   } finally {
     restore();
   }

@@ -428,8 +428,8 @@ Deno.test("executePrompt (Anthropic): trims whitespace from response", async () 
 Deno.test("executePrompt (Anthropic): sends x-api-key header, not Bearer", async () => {
   let capturedHeaders: Record<string, string> = {};
   const originalFetch = globalThis.fetch;
-  globalThis.fetch = ((_input: unknown, init?: any) => {
-    capturedHeaders = init?.headers || {};
+  globalThis.fetch = ((_input: unknown, init?: RequestInit) => {
+    capturedHeaders = (init?.headers || {}) as Record<string, string>;
     return Promise.resolve(new Response(JSON.stringify({
       content: [{ type: "text", text: "ok" }],
     }), { status: 200, headers: { "Content-Type": "application/json" } }));
@@ -445,10 +445,10 @@ Deno.test("executePrompt (Anthropic): sends x-api-key header, not Bearer", async
 });
 
 Deno.test("executePrompt (Anthropic): sends system as top-level param, not in messages", async () => {
-  let capturedBody: any = {};
+  let capturedBody: Record<string, unknown> = {};
   const originalFetch = globalThis.fetch;
-  globalThis.fetch = ((_input: unknown, init?: any) => {
-    capturedBody = JSON.parse(init?.body || "{}");
+  globalThis.fetch = ((_input: unknown, init?: RequestInit) => {
+    capturedBody = JSON.parse((init?.body as string) || "{}");
     return Promise.resolve(new Response(JSON.stringify({
       content: [{ type: "text", text: "ok" }],
     }), { status: 200, headers: { "Content-Type": "application/json" } }));
@@ -459,8 +459,8 @@ Deno.test("executePrompt (Anthropic): sends system as top-level param, not in me
       { role: "user", content: "hello" },
     ];
     await executePrompt(messages, ANTHROPIC_CONFIG);
-    assertStringIncludes(capturedBody.system, "You are helpful");
-    const hasSystemMsg = capturedBody.messages.some((m: any) => m.role === "system");
+    assertStringIncludes(capturedBody.system as string, "You are helpful");
+    const hasSystemMsg = (capturedBody.messages as Record<string, unknown>[]).some((m) => m.role === "system");
     assertEquals(hasSystemMsg, false);
   } finally {
     globalThis.fetch = originalFetch;
@@ -468,7 +468,7 @@ Deno.test("executePrompt (Anthropic): sends system as top-level param, not in me
 });
 
 Deno.test("executePrompt (Anthropic): batches multiple tool results into single user message", async () => {
-  const capturedBodies: any[] = [];
+  const capturedBodies: Record<string, unknown>[] = [];
   const originalFetch = globalThis.fetch;
   let callIndex = 0;
   const responses = [
@@ -492,8 +492,8 @@ Deno.test("executePrompt (Anthropic): batches multiple tool results into single 
       body: { content: [{ type: "text", text: "Combined results" }] },
     },
   ];
-  globalThis.fetch = ((_input: unknown, init?: any) => {
-    capturedBodies.push(JSON.parse(init?.body || "{}"));
+  globalThis.fetch = ((_input: unknown, init?: RequestInit) => {
+    capturedBodies.push(JSON.parse((init?.body as string) || "{}"));
     const response = responses[callIndex++] || responses[responses.length - 1];
     return Promise.resolve(new Response(JSON.stringify(response.body), {
       status: response.status,
@@ -506,8 +506,8 @@ Deno.test("executePrompt (Anthropic): batches multiple tool results into single 
     assertEquals(result, "Combined results");
     // Fourth request (2nd AI call) should have tool results batched in a single user message
     const secondBody = capturedBodies[3];
-    const toolResultMsgs = secondBody.messages.filter(
-      (m: any) => m.role === "user" && Array.isArray(m.content) && m.content.some((c: any) => c.type === "tool_result")
+    const toolResultMsgs = (secondBody.messages as Record<string, unknown>[]).filter(
+      (m) => m.role === "user" && Array.isArray(m.content) && (m.content as Record<string, unknown>[]).some((c) => c.type === "tool_result")
     );
     // Should be exactly 1 user message containing both tool results
     assertEquals(toolResultMsgs.length, 1);
@@ -522,7 +522,7 @@ Deno.test("executePrompt (Anthropic): batches multiple tool results into single 
 Deno.test("executePrompt (Anthropic): sends to /v1/messages endpoint", async () => {
   let capturedUrl = "";
   const originalFetch = globalThis.fetch;
-  globalThis.fetch = ((input: unknown, _init?: any) => {
+  globalThis.fetch = ((input: unknown, _init?: RequestInit) => {
     capturedUrl = String(input);
     return Promise.resolve(new Response(JSON.stringify({
       content: [{ type: "text", text: "ok" }],
