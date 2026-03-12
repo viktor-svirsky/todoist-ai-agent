@@ -7,6 +7,8 @@ import {
   encryptIfPresent,
   decryptIfPresent,
   _resetKeyCache,
+  signOAuthState,
+  verifyOAuthState,
 } from "../_shared/crypto.ts";
 
 Deno.test("uint8ToBase64: encodes empty array", () => {
@@ -196,4 +198,77 @@ Deno.test("getEncryptionKey: throws descriptive error when ENCRYPTION_KEY missin
     Error,
     "ENCRYPTION_KEY environment variable is not set"
   );
+});
+
+// ---------------------------------------------------------------------------
+// OAuth state signing / verification
+// ---------------------------------------------------------------------------
+
+const TEST_SECRET = "test-oauth-secret";
+
+Deno.test("signOAuthState: produces nonce.timestamp.signature format", async () => {
+  const state = await signOAuthState(TEST_SECRET);
+  const parts = state.split(".");
+  assertEquals(parts.length, 3);
+  // First part is a UUID
+  assertEquals(/^[0-9a-f-]{36}$/.test(parts[0]), true);
+  // Second part is a unix timestamp
+  assertEquals(Number.isInteger(parseInt(parts[1], 10)), true);
+  // Third part is a non-empty base64 signature
+  assertEquals(parts[2].length > 0, true);
+});
+
+Deno.test("verifyOAuthState: accepts valid state", async () => {
+  const state = await signOAuthState(TEST_SECRET);
+  assertEquals(await verifyOAuthState(TEST_SECRET, state), true);
+});
+
+Deno.test("verifyOAuthState: rejects state signed with wrong secret", async () => {
+  const state = await signOAuthState(TEST_SECRET);
+  assertEquals(await verifyOAuthState("wrong-secret", state), false);
+});
+
+Deno.test("verifyOAuthState: rejects tampered nonce", async () => {
+  const state = await signOAuthState(TEST_SECRET);
+  const parts = state.split(".");
+  parts[0] = "00000000-0000-0000-0000-000000000000";
+  assertEquals(await verifyOAuthState(TEST_SECRET, parts.join(".")), false);
+});
+
+Deno.test("verifyOAuthState: rejects tampered timestamp", async () => {
+  const state = await signOAuthState(TEST_SECRET);
+  const parts = state.split(".");
+  parts[1] = "0";
+  assertEquals(await verifyOAuthState(TEST_SECRET, parts.join(".")), false);
+});
+
+Deno.test("verifyOAuthState: rejects expired state", async () => {
+  // Craft a state with a timestamp 601 seconds in the past
+  const nonce = crypto.randomUUID();
+  const oldTs = Math.floor(Date.now() / 1000) - 601;
+  const payload = `${nonce}.${oldTs}`;
+  // Sign it correctly — it should still be rejected due to age
+  const encoder = new TextEncoder();
+  const key = await crypto.subtle.importKey(
+    "raw", encoder.encode(TEST_SECRET),
+    { name: "HMAC", hash: "SHA-256" }, false, ["sign"],
+  );
+  const sig = await crypto.subtle.sign("HMAC", key, encoder.encode(payload));
+  const signature = btoa(String.fromCharCode(...new Uint8Array(sig)));
+  const state = `${payload}.${signature}`;
+
+  assertEquals(await verifyOAuthState(TEST_SECRET, state), false);
+});
+
+Deno.test("verifyOAuthState: rejects malformed state", async () => {
+  assertEquals(await verifyOAuthState(TEST_SECRET, ""), false);
+  assertEquals(await verifyOAuthState(TEST_SECRET, "only-one-part"), false);
+  assertEquals(await verifyOAuthState(TEST_SECRET, "two.parts"), false);
+  assertEquals(await verifyOAuthState(TEST_SECRET, "a.not-a-number.c"), false);
+});
+
+Deno.test("signOAuthState: produces unique states", async () => {
+  const a = await signOAuthState(TEST_SECRET);
+  const b = await signOAuthState(TEST_SECRET);
+  assertNotEquals(a, b);
 });

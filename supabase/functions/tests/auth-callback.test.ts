@@ -5,15 +5,17 @@ import { assertEquals } from "@std/assert";
 // ---------------------------------------------------------------------------
 
 const FRONTEND_URL = "https://app.example.com";
+const CLIENT_SECRET = "test-client-secret";
 Deno.env.set("SUPABASE_URL", "http://localhost:54321");
 Deno.env.set("SUPABASE_SERVICE_ROLE_KEY", "test-service-key");
 Deno.env.set("SUPABASE_ANON_KEY", "test-anon-key");
 Deno.env.set("FRONTEND_URL", FRONTEND_URL);
 Deno.env.set("TODOIST_CLIENT_ID", "test-client-id");
-Deno.env.set("TODOIST_CLIENT_SECRET", "test-client-secret");
+Deno.env.set("TODOIST_CLIENT_SECRET", CLIENT_SECRET);
 Deno.env.set("ENCRYPTION_KEY", btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(32)))));
 
 const { authCallbackHandler: handler } = await import("../auth-callback/handler.ts");
+const { signOAuthState } = await import("../_shared/crypto.ts");
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -33,8 +35,9 @@ function mockFetch(
   return () => { globalThis.fetch = original; };
 }
 
-function callbackUrl(params: Record<string, string> = {}): string {
-  const merged = { code: "oauth-code", state: "csrf-state", ...params };
+async function callbackUrl(params: Record<string, string> = {}): Promise<string> {
+  const validState = await signOAuthState(CLIENT_SECRET);
+  const merged = { code: "oauth-code", state: validState, ...params };
   return `http://localhost/auth-callback?${new URLSearchParams(merged).toString()}`;
 }
 
@@ -101,6 +104,27 @@ t("authCallbackHandler: missing state redirects with error", async () => {
 });
 
 // ============================================================================
+// State validation (CSRF protection)
+// ============================================================================
+
+t("authCallbackHandler: invalid state (forged) redirects with error", async () => {
+  const req = new Request("http://localhost/auth-callback?code=abc&state=forged-state");
+  const res = await handler(req);
+  assertEquals(res.status, 302);
+  const location = res.headers.get("Location")!;
+  assertEquals(location.includes("error=invalid_state"), true);
+});
+
+t("authCallbackHandler: state signed with wrong secret redirects with error", async () => {
+  const wrongState = await signOAuthState("wrong-secret");
+  const req = new Request(`http://localhost/auth-callback?code=abc&state=${encodeURIComponent(wrongState)}`);
+  const res = await handler(req);
+  assertEquals(res.status, 302);
+  const location = res.headers.get("Location")!;
+  assertEquals(location.includes("error=invalid_state"), true);
+});
+
+// ============================================================================
 // External API failures
 // ============================================================================
 
@@ -112,7 +136,7 @@ t("authCallbackHandler: token exchange failure redirects with error", async () =
     return new Response("{}", { status: 200, headers: { "Content-Type": "application/json" } });
   });
   try {
-    const req = new Request(callbackUrl());
+    const req = new Request(await callbackUrl());
     const res = await handler(req);
     assertEquals(res.status, 302);
     assertEquals(res.headers.get("Location")!.includes("error=token_exchange_failed"), true);
@@ -135,7 +159,7 @@ t("authCallbackHandler: profile fetch failure redirects with error", async () =>
     return new Response("{}", { status: 200, headers: { "Content-Type": "application/json" } });
   });
   try {
-    const req = new Request(callbackUrl());
+    const req = new Request(await callbackUrl());
     const res = await handler(req);
     assertEquals(res.status, 302);
     assertEquals(res.headers.get("Location")!.includes("error=profile_fetch_failed"), true);
@@ -181,13 +205,13 @@ t("authCallbackHandler: existing user updates token and redirects with session",
     },
   ));
   try {
-    const req = new Request(callbackUrl());
+    const req = new Request(await callbackUrl());
     const res = await handler(req);
     assertEquals(res.status, 302);
     const location = res.headers.get("Location")!;
     assertEquals(location.includes(`${FRONTEND_URL}/auth/callback`), true);
     assertEquals(location.includes("#access_token=session-access-token"), true);
-    assertEquals(location.includes("state=csrf-state"), true);
+    assertEquals(location.includes("state="), true);
   } finally {
     restore();
   }
@@ -254,7 +278,7 @@ t("authCallbackHandler: new user creates account and redirects with session", as
     },
   ));
   try {
-    const req = new Request(callbackUrl());
+    const req = new Request(await callbackUrl());
     const res = await handler(req);
     assertEquals(res.status, 302);
     const location = res.headers.get("Location")!;
@@ -274,7 +298,7 @@ t("authCallbackHandler: catches internal errors and redirects", async () => {
     throw new Error("Network failure");
   });
   try {
-    const req = new Request(callbackUrl());
+    const req = new Request(await callbackUrl());
     const res = await handler(req);
     assertEquals(res.status, 302);
     assertEquals(res.headers.get("Location")!.includes("error=auth_failed"), true);

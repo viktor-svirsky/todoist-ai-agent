@@ -99,3 +99,60 @@ export async function verifyHmac(
   }
   return mismatch === 0;
 }
+
+// ---------------------------------------------------------------------------
+// OAuth state signing — HMAC-based self-verifying state tokens
+// Format: nonce.timestamp.signature
+// ---------------------------------------------------------------------------
+
+async function hmacSign(secret: string, data: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const key = await crypto.subtle.importKey(
+    "raw",
+    encoder.encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"]
+  );
+  const sig = await crypto.subtle.sign("HMAC", key, encoder.encode(data));
+  return btoa(String.fromCharCode(...new Uint8Array(sig)));
+}
+
+function hmacEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let mismatch = 0;
+  for (let i = 0; i < a.length; i++) {
+    mismatch |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  }
+  return mismatch === 0;
+}
+
+export async function signOAuthState(secret: string): Promise<string> {
+  const nonce = crypto.randomUUID();
+  const ts = Math.floor(Date.now() / 1000);
+  const payload = `${nonce}.${ts}`;
+  const signature = await hmacSign(secret, payload);
+  return `${payload}.${signature}`;
+}
+
+export async function verifyOAuthState(
+  secret: string,
+  state: string,
+  maxAgeSeconds = 600,
+): Promise<boolean> {
+  const parts = state.split(".");
+  if (parts.length !== 3) return false;
+
+  const [, tsStr, signature] = parts;
+  const ts = parseInt(tsStr, 10);
+  if (isNaN(ts)) return false;
+
+  // Reject expired states
+  const now = Math.floor(Date.now() / 1000);
+  if (now - ts > maxAgeSeconds) return false;
+
+  // Verify HMAC signature
+  const payload = `${parts[0]}.${tsStr}`;
+  const computed = await hmacSign(secret, payload);
+  return hmacEqual(computed, signature);
+}

@@ -129,7 +129,7 @@ todoist-ai-agent/
 │       ├── _shared/
 │       │   ├── ai.ts               # Chat completions + tool loop
 │       │   ├── constants.ts        # API URLs, defaults, limits
-│       │   ├── crypto.ts           # AES-256-GCM encryption + HMAC verification
+│       │   ├── crypto.ts           # AES-256-GCM encryption, HMAC verification, OAuth state signing
 │       │   ├── messages.ts         # Comment → message parsing
 │       │   ├── rate-limit.ts       # Per-user rate limiting + account blocking
 │       │   ├── search.ts           # Brave Search client
@@ -137,7 +137,8 @@ todoist-ai-agent/
 │       │   ├── supabase.ts         # Supabase client factories
 │       │   ├── todoist.ts          # Todoist REST API client
 │       │   └── validation.ts       # Input validation
-│       ├── auth-callback/          # OAuth flow handler
+│       ├── auth-start/             # OAuth initiation (CSRF-protected)
+│       ├── auth-callback/          # OAuth completion handler
 │       ├── webhook/                # Todoist webhook processor
 │       ├── settings/               # User config CRUD
 │       └── tests/                  # Deno test suite
@@ -202,7 +203,6 @@ Create **`frontend/.env.local`**:
 ```env
 VITE_SUPABASE_URL=http://127.0.0.1:54321
 VITE_SUPABASE_ANON_KEY=<anon key from supabase start output>
-VITE_TODOIST_CLIENT_ID=your_client_id
 ```
 
 ### 4. Run locally
@@ -255,20 +255,22 @@ deno test supabase/functions/tests/crypto.test.ts --no-check --allow-env --allow
 
 ### Test Coverage
 
-195 tests covering all shared modules and handlers:
+231 tests covering all shared modules and handlers:
 
 | Module | Tests | What's covered |
 |--------|-------|----------------|
 | **ai.ts** | 41 | `buildMessages` (custom prompts, images, edge cases), `executePrompt` (OpenAI + Anthropic providers, tool calls, multi-tool batching) |
+| **validation.ts** | 33 | All settings fields: type checks, boundaries, nulls, multi-field errors, SSRF prevention |
 | **messages.ts** | 30 | Comment parsing, trigger word stripping, special chars, normalize helpers |
 | **rate-limit.ts** | 29 | Config parsing, env overrides, rate limit checks, account blocking |
-| **validation.ts** | 25 | All settings fields: type checks, boundaries, nulls, multi-field errors |
+| **crypto.ts** | 21 | AES-256-GCM encrypt/decrypt round-trips, HMAC verification, OAuth state signing/verification |
+| **webhook** | 21 | HMAC verification, rate limiting, idempotency, request validation |
 | **todoist.ts** | 15 | All TodoistClient methods: API calls, auth headers, error handling, trusted domains |
-| **crypto.ts** | 13 | AES-256-GCM encrypt/decrypt round-trips, HMAC verification, key errors |
 | **settings** | 13 | CRUD operations, auth, rate limiting, field validation |
-| **webhook** | 11 | HMAC verification, rate limiting, request validation |
-| **auth-callback** | 8 | OAuth flow, token exchange, error handling |
+| **auth-callback** | 10 | OAuth flow, token exchange, CSRF state verification, error handling |
 | **search.ts** | 6 | Brave Search: result mapping, params, headers, empty/error responses |
+| **auth-start** | 4 | OAuth initiation, CORS, state signing, error handling |
+| **release-config** | 4 | Release configuration validation |
 | **sentry.ts** | 4 | `withSentry` wrapper, error handling, `captureException` no-op |
 
 ### Linting
@@ -293,6 +295,9 @@ deno lint supabase/functions/   # Deno lint for Edge Functions
 | Measure | Implementation |
 |---------|---------------|
 | **Webhook verification** | HMAC-SHA256 signature on every Todoist webhook |
+| **OAuth CSRF protection** | HMAC-signed state tokens with nonce and expiry |
+| **SSRF prevention** | Private hostname blocking + HTTPS-only for custom AI URLs |
+| **Webhook idempotency** | Atomic event deduplication prevents duplicate AI responses |
 | **Data encryption** | AES-256-GCM for sensitive DB columns (tokens, API keys) |
 | **Data isolation** | PostgreSQL Row Level Security per user |
 | **Authentication** | JWT-based via Supabase Auth |

@@ -1,5 +1,5 @@
 import { assertEquals } from "@std/assert";
-import { validateSettings } from "../_shared/validation.ts";
+import { validateSettings, isPrivateHostname } from "../_shared/validation.ts";
 
 // -- max_messages --
 
@@ -53,11 +53,66 @@ Deno.test("validateSettings: trigger_word too long", () => {
   assertEquals(errors[0].field, "trigger_word");
 });
 
+// -- isPrivateHostname --
+
+Deno.test("isPrivateHostname: detects localhost", () => {
+  assertEquals(isPrivateHostname("localhost"), true);
+  assertEquals(isPrivateHostname("::1"), true);
+});
+
+Deno.test("isPrivateHostname: detects private IPv4 ranges", () => {
+  assertEquals(isPrivateHostname("10.0.0.1"), true);
+  assertEquals(isPrivateHostname("10.255.255.255"), true);
+  assertEquals(isPrivateHostname("172.16.0.1"), true);
+  assertEquals(isPrivateHostname("172.31.255.255"), true);
+  assertEquals(isPrivateHostname("192.168.0.1"), true);
+  assertEquals(isPrivateHostname("192.168.255.255"), true);
+  assertEquals(isPrivateHostname("127.0.0.1"), true);
+  assertEquals(isPrivateHostname("127.0.0.2"), true);
+  assertEquals(isPrivateHostname("0.0.0.0"), true);
+});
+
+Deno.test("isPrivateHostname: detects link-local / AWS metadata", () => {
+  assertEquals(isPrivateHostname("169.254.169.254"), true);
+  assertEquals(isPrivateHostname("169.254.0.1"), true);
+});
+
+Deno.test("isPrivateHostname: detects cloud metadata hostnames", () => {
+  assertEquals(isPrivateHostname("metadata.google.internal"), true);
+  assertEquals(isPrivateHostname("metadata.goog"), true);
+});
+
+Deno.test("isPrivateHostname: allows public hostnames", () => {
+  assertEquals(isPrivateHostname("api.openai.com"), false);
+  assertEquals(isPrivateHostname("api.anthropic.com"), false);
+  assertEquals(isPrivateHostname("8.8.8.8"), false);
+  assertEquals(isPrivateHostname("172.15.0.1"), false); // just outside 172.16/12
+  assertEquals(isPrivateHostname("172.32.0.1"), false); // just outside 172.16/12
+});
+
 // -- custom_ai_base_url --
 
-Deno.test("validateSettings: valid URLs", () => {
+Deno.test("validateSettings: valid HTTPS URLs", () => {
   assertEquals(validateSettings({ custom_ai_base_url: "https://api.openai.com/v1" }), []);
-  assertEquals(validateSettings({ custom_ai_base_url: "http://localhost:8080" }), []);
+  assertEquals(validateSettings({ custom_ai_base_url: "https://api.anthropic.com/v1" }), []);
+});
+
+Deno.test("validateSettings: HTTP URLs rejected", () => {
+  const errors = validateSettings({ custom_ai_base_url: "http://api.openai.com/v1" });
+  assertEquals(errors.length, 1);
+  assertEquals(errors[0].message, "Must use HTTPS protocol");
+});
+
+Deno.test("validateSettings: localhost URLs rejected", () => {
+  const errors = validateSettings({ custom_ai_base_url: "https://localhost:8080" });
+  assertEquals(errors.length, 1);
+  assertEquals(errors[0].message, "Private or internal URLs are not allowed");
+});
+
+Deno.test("validateSettings: private IP URLs rejected", () => {
+  assertEquals(validateSettings({ custom_ai_base_url: "https://10.0.0.1/v1" }).length, 1);
+  assertEquals(validateSettings({ custom_ai_base_url: "https://192.168.1.1/v1" }).length, 1);
+  assertEquals(validateSettings({ custom_ai_base_url: "https://169.254.169.254" }).length, 1);
 });
 
 Deno.test("validateSettings: null URL allowed", () => {

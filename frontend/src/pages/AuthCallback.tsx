@@ -6,28 +6,38 @@ export default function AuthCallback() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    // Verify OAuth state to prevent CSRF
-    const params = new URLSearchParams(window.location.search);
-    const returnedState = params.get("state");
-    const savedState = sessionStorage.getItem("oauth_state");
-    sessionStorage.removeItem("oauth_state");
+    // Verify that the user initiated the OAuth flow from this browser
+    const pending = sessionStorage.getItem("oauth_pending");
+    sessionStorage.removeItem("oauth_pending");
 
-    if (!returnedState || returnedState !== savedState) {
+    if (!pending) {
       navigate("/?error=state_mismatch");
       return;
     }
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (session && (event === 'SIGNED_IN' || event === 'USER_UPDATED')) {
-        navigate("/settings");
-      }
-    });
+    // Manually parse session from URL hash (detectSessionInUrl is disabled)
+    const hash = window.location.hash.substring(1);
+    const params = new URLSearchParams(hash);
+    const accessToken = params.get("access_token");
+    const refreshToken = params.get("refresh_token");
+
+    if (!accessToken || !refreshToken) {
+      navigate("/?error=missing_session");
+      return;
+    }
+
+    supabase.auth
+      .setSession({ access_token: accessToken, refresh_token: refreshToken })
+      .then(({ error }) => {
+        if (error) {
+          navigate("/?error=session_failed");
+        } else {
+          navigate("/settings");
+        }
+      });
 
     const timeout = setTimeout(() => navigate("/?error=timeout"), 10_000);
-    return () => {
-      subscription.unsubscribe();
-      clearTimeout(timeout);
-    };
+    return () => clearTimeout(timeout);
   }, [navigate]);
 
   return (
