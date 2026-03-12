@@ -25,7 +25,7 @@ Todoist AI Agent — a multi-tenant SaaS that adds AI-powered conversations to T
 ### Key Modules (`supabase/functions/_shared/`)
 
 - `ai.ts` — Dual-provider AI client (Anthropic native + OpenAI-compatible). Auto-detects provider by URL. Handles tool call loop.
-- `crypto.ts` — AES-256-GCM encryption/decryption + HMAC verification for webhook signatures.
+- `crypto.ts` — AES-256-GCM encryption/decryption, HMAC verification for webhook signatures, OAuth state signing/verification.
 - `messages.ts` — Converts Todoist comments to AI conversation messages.
 - `todoist.ts` — Todoist REST API client (comments, tasks, projects, file downloads).
 - `rate-limit.ts` — Per-user rate limiting with account blocking via PostgreSQL function.
@@ -36,7 +36,8 @@ Todoist AI Agent — a multi-tenant SaaS that adds AI-powered conversations to T
 | Function | JWT | Purpose |
 |----------|-----|---------|
 | `webhook` | No | Receives Todoist webhooks, triggers AI responses |
-| `auth-callback` | No | Handles Todoist OAuth token exchange |
+| `auth-start` | No | Initiates Todoist OAuth with HMAC-signed CSRF state |
+| `auth-callback` | No | Handles Todoist OAuth token exchange, verifies CSRF state |
 | `settings` | No* | CRUD for user preferences (validates auth header manually) |
 
 *Settings validates the Authorization header via Supabase user client, not Edge Function JWT verification.

@@ -18,17 +18,9 @@ export default function Landing() {
 
   const handleConnect = () => {
     setConnecting(true);
-    const clientId = import.meta.env.VITE_TODOIST_CLIENT_ID;
-    const state = crypto.randomUUID();
-    sessionStorage.setItem("oauth_state", state);
-
-    const params = new URLSearchParams({
-      client_id: clientId,
-      scope: "data:read_write",
-      state,
-    });
-
-    window.location.href = `https://todoist.com/oauth/authorize?${params}`;
+    sessionStorage.setItem("oauth_pending", "true");
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+    window.location.href = `${supabaseUrl}/functions/v1/auth-start`;
   };
 
   return (

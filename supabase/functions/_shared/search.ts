@@ -4,6 +4,8 @@ interface SearchResult {
   description: string;
 }
 
+const BRAVE_SEARCH_TIMEOUT_MS = 15_000;
+
 export async function braveSearch(
   apiKey: string,
   query: string,
@@ -13,20 +15,28 @@ export async function braveSearch(
   url.searchParams.set("q", query);
   url.searchParams.set("count", String(count));
 
-  const res = await fetch(url.toString(), {
-    headers: {
-      Accept: "application/json",
-      "Accept-Encoding": "gzip",
-      "X-Subscription-Token": apiKey,
-    },
-  });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), BRAVE_SEARCH_TIMEOUT_MS);
 
-  if (!res.ok) throw new Error(`Brave search failed: ${res.status}`);
+  try {
+    const res = await fetch(url.toString(), {
+      headers: {
+        Accept: "application/json",
+        "Accept-Encoding": "gzip",
+        "X-Subscription-Token": apiKey,
+      },
+      signal: controller.signal,
+    });
 
-  const data = await res.json();
-  return (data.web?.results || []).map((r: any) => ({
-    title: r.title,
-    url: r.url,
-    description: r.description,
-  }));
+    if (!res.ok) throw new Error(`Brave search failed: ${res.status}`);
+
+    const data = await res.json();
+    return (data.web?.results || []).map((r: any) => ({
+      title: r.title,
+      url: r.url,
+      description: r.description,
+    }));
+  } finally {
+    clearTimeout(timeout);
+  }
 }

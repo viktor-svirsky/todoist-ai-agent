@@ -19,14 +19,21 @@ import { uint8ToBase64, verifyHmac, decrypt, decryptIfPresent } from "../_shared
 // Shared AI processing
 // ---------------------------------------------------------------------------
 
+function sanitizeErrorForUser(error: unknown): string {
+  if (error instanceof Error) {
+    const msg = error.message;
+    if (msg.includes("Custom AI URL requires")) return msg;
+    if (msg.includes("AbortError") || msg.includes("abort")) return "Request timed out.";
+    if (/AI API error \d+/.test(msg)) return "AI service returned an error. Check your API key and model settings.";
+  }
+  return "Something went wrong while processing your request.";
+}
+
 async function runAiForTask(
   taskId: string,
   user: any,
   todoistUserId: string,
 ): Promise<void> {
-  const supabase = createServiceClient();
-  await supabase.rpc("increment_ai_requests", { p_todoist_user_id: todoistUserId });
-
   const todoist = new TodoistClient(user.todoist_token);
   const progressCommentId = await todoist.postProgressComment(taskId);
 
@@ -36,6 +43,11 @@ async function runAiForTask(
       todoist.getComments(taskId),
     ]);
 
+    // Never send the default API key to a custom URL (SSRF protection)
+    if (user.custom_ai_base_url && !user.custom_ai_api_key) {
+      throw new Error("Custom AI URL requires a custom API key. Please add your API key in Settings.");
+    }
+
     const triggerWord = user.trigger_word || "@ai";
     const maxMessages = user.max_messages ?? DEFAULT_MAX_MESSAGES;
     let messages = commentsToMessages(comments, triggerWord, progressCommentId);
@@ -43,8 +55,14 @@ async function runAiForTask(
       messages = messages.slice(-maxMessages);
     }
 
+    // Only download images from comments within the message window (#96)
+    const windowCommentIds = new Set(
+      comments.slice(-maxMessages).map((c: any) => c.id)
+    );
     const imageComments = comments.filter(
-      (c: any) => c.file_attachment?.resource_type === "image"
+      (c: any) =>
+        c.file_attachment?.resource_type === "image" &&
+        windowCommentIds.has(c.id)
     );
     const imageResults = await Promise.allSettled(
       imageComments.map(async (c: any) => {
@@ -63,10 +81,9 @@ async function runAiForTask(
         Deno.env.get("DEFAULT_AI_BASE_URL") ||
         "https://api.anthropic.com/v1"
       ).trim().replace(/\/$/, ""),
-      apiKey:
-        user.custom_ai_api_key ||
-        Deno.env.get("DEFAULT_AI_API_KEY") ||
-        "",
+      apiKey: user.custom_ai_base_url
+        ? user.custom_ai_api_key!
+        : (user.custom_ai_api_key || Deno.env.get("DEFAULT_AI_API_KEY") || ""),
       model: normalizeModel(
         user.custom_ai_model ||
         Deno.env.get("DEFAULT_AI_MODEL") ||
@@ -88,14 +105,17 @@ async function runAiForTask(
     );
     const response = await executePrompt(apiMessages, aiConfig);
 
+    // Increment AI request counter only after successful processing (#99)
+    const supabase = createServiceClient();
+    await supabase.rpc("increment_ai_requests", { p_todoist_user_id: todoistUserId });
+
     await todoist.updateComment(progressCommentId, response);
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown error";
-    console.error("AI processing failed", { taskId, error: message });
+    console.error("AI processing failed", { taskId, error: error instanceof Error ? error.message : String(error) });
     try {
       await todoist.updateComment(
         progressCommentId,
-        `${ERROR_PREFIX} ${message}. Retry by adding a comment.`
+        `${ERROR_PREFIX} ${sanitizeErrorForUser(error)} Retry by adding a comment.`
       );
     } catch (e) {
       console.error("Failed to update progress comment with error", e);
@@ -254,6 +274,19 @@ export async function webhookHandler(req: Request): Promise<Response> {
       status: 200,
       headers: { "Content-Type": "application/json" },
     });
+  }
+
+  // Idempotency check — prevent duplicate AI responses from concurrent deliveries
+  const entityId = event.event_data?.id ?? event.event_data?.item_id ?? "";
+  const eventKey = `${userId}:${event.event_name}:${entityId}`;
+  if (eventKey && entityId) {
+    const { data: claimed } = await supabase.rpc("try_claim_event", { p_event_id: eventKey });
+    if (claimed === false) {
+      return new Response(JSON.stringify({ ok: true, deduplicated: true }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
   }
 
   const decryptedUser = {

@@ -281,7 +281,7 @@ export async function executePrompt(
   const assistantMsg = anthropic ? anthropicAssistantMessage : openaiAssistantMessage;
   const toolResultMsg = anthropic ? anthropicToolResultMessage : openaiToolResultMessage;
 
-  for (let round = 0; round <= MAX_TOOL_ROUNDS; round++) {
+  for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
     const body = buildBody(config.model, runMessages, DEFAULT_MAX_TOKENS, useTools);
 
     const controller = new AbortController();
@@ -373,17 +373,22 @@ async function handleToolCall(
   braveApiKey: string
 ): Promise<string> {
   try {
-    const args = JSON.parse(argsJson);
-
-    if (name === "web_search" || name === "proxy_web_search") {
-      const results = await braveSearch(braveApiKey, args.query, args.count || 5);
-      if (results.length === 0) return "No results found.";
-      return results
-        .map((r) => `**${r.title}**\n${r.url}\n${r.description}`)
-        .join("\n\n");
+    if (name !== "web_search") {
+      return `Unknown tool: ${name}`;
     }
 
-    return `Unknown tool: ${name}`;
+    const args = JSON.parse(argsJson);
+    const query = typeof args.query === "string" ? args.query.slice(0, 500) : "";
+    if (!query) return "Error: search query is required.";
+    const count = typeof args.count === "number"
+      ? Math.min(Math.max(Math.round(args.count), 1), 10)
+      : 5;
+
+    const results = await braveSearch(braveApiKey, query, count);
+    if (results.length === 0) return "No results found.";
+    return results
+      .map((r) => `**${r.title}**\n${r.url}\n${r.description}`)
+      .join("\n\n");
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
     return `Tool error: ${message}`;

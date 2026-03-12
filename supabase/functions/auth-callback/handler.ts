@@ -1,7 +1,7 @@
 import { createServiceClient } from "../_shared/supabase.ts";
 import { TODOIST_TOKEN_URL, TODOIST_SYNC_URL, TODOIST_USER_URL } from "../_shared/constants.ts";
 import { captureException } from "../_shared/sentry.ts";
-import { encrypt } from "../_shared/crypto.ts";
+import { encrypt, verifyOAuthState } from "../_shared/crypto.ts";
 
 function getFrontendUrl(): string {
   const url = Deno.env.get("FRONTEND_URL");
@@ -49,6 +49,12 @@ export async function authCallbackHandler(req: Request): Promise<Response> {
 
     if (!state) {
       return errorRedirect("missing_state");
+    }
+
+    // Verify HMAC-signed state to prevent CSRF
+    const clientSecret = Deno.env.get("TODOIST_CLIENT_SECRET");
+    if (!clientSecret || !(await verifyOAuthState(clientSecret, state))) {
+      return errorRedirect("invalid_state");
     }
 
     // 1. Exchange code for access token
@@ -229,14 +235,11 @@ export async function authCallbackHandler(req: Request): Promise<Response> {
         // Continue anyway — webhook can be re-registered later
       }
 
-      // 7. Generate webhook secret and insert users_config row
-      const webhookSecret = crypto.randomUUID();
-
+      // 7. Insert users_config row
       const { error: insertError } = await supabase.from("users_config").insert({
         id: userId,
         todoist_token: await encrypt(access_token),
         todoist_user_id: todoistUserId,
-        webhook_secret: await encrypt(webhookSecret),
       });
 
       if (insertError) {

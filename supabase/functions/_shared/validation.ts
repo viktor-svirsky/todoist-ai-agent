@@ -3,6 +3,28 @@ export interface ValidationError {
   message: string;
 }
 
+export function isPrivateHostname(hostname: string): boolean {
+  if (hostname === "localhost" || hostname === "::1") return true;
+
+  // IPv4 private/reserved ranges
+  const ipv4Match = hostname.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+  if (ipv4Match) {
+    const [a, b] = [Number(ipv4Match[1]), Number(ipv4Match[2])];
+    if (a === 0) return true;                          // 0.0.0.0/8
+    if (a === 10) return true;                         // 10.0.0.0/8
+    if (a === 127) return true;                        // 127.0.0.0/8
+    if (a === 169 && b === 254) return true;           // 169.254.0.0/16 (link-local / AWS metadata)
+    if (a === 172 && b >= 16 && b <= 31) return true;  // 172.16.0.0/12
+    if (a === 192 && b === 168) return true;           // 192.168.0.0/16
+  }
+
+  // Cloud metadata hostnames
+  const blocked = ["metadata.google.internal", "metadata.goog"];
+  if (blocked.includes(hostname.toLowerCase())) return true;
+
+  return false;
+}
+
 export function validateSettings(
   updates: Record<string, unknown>
 ): ValidationError[] {
@@ -29,8 +51,10 @@ export function validateSettings(
     } else {
       try {
         const url = new URL(v);
-        if (url.protocol !== "http:" && url.protocol !== "https:") {
-          errors.push({ field: "custom_ai_base_url", message: "Must use http or https protocol" });
+        if (url.protocol !== "https:") {
+          errors.push({ field: "custom_ai_base_url", message: "Must use HTTPS protocol" });
+        } else if (isPrivateHostname(url.hostname)) {
+          errors.push({ field: "custom_ai_base_url", message: "Private or internal URLs are not allowed" });
         }
       } catch {
         errors.push({ field: "custom_ai_base_url", message: "Must be a valid URL" });
