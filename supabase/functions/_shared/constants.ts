@@ -16,5 +16,9 @@ export const DEFAULT_MAX_TOKENS = 2048;
 export const MAX_IMAGE_SIZE_BYTES = 4 * 1024 * 1024; // 4 MB
 export const TODOIST_API_TIMEOUT_MS = 30_000; // 30 seconds
 
+export const RETRY_MAX_RETRIES = 2;
+export const RETRY_BASE_DELAY_MS = 500;
+export const RETRY_MAX_DELAY_MS = 5000;
+
 export const RATE_LIMIT_MAX_REQUESTS = 10;
 export const RATE_LIMIT_WINDOW_SECONDS = 120;
