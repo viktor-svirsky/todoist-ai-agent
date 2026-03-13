@@ -7,10 +7,11 @@ function initSentry(): void {
   const dsn = getEnv("SENTRY_DSN");
   if (!dsn) return;
   initialized = true;
+  const environment = getEnv("ENVIRONMENT") ?? "production";
   Sentry.init({
     dsn,
-    tracesSampleRate: 1.0,
-    environment: getEnv("ENVIRONMENT") ?? "production",
+    tracesSampleRate: getTracesSampleRate(environment),
+    environment,
     // Disable fetch instrumentation — it patches globalThis.fetch and can
     // corrupt outgoing request bodies on Deno Deploy (Supabase Edge Functions).
     integrations: (defaults) =>
@@ -18,6 +19,10 @@ function initSentry(): void {
     // Don't inject sentry-trace / baggage headers into outgoing requests.
     tracePropagationTargets: [],
   });
+}
+
+export function getTracesSampleRate(environment: string): number {
+  return environment === "production" ? 0.1 : 1.0;
 }
 
 function getEnv(key: string): string | undefined {
