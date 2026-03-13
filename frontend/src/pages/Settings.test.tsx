@@ -66,10 +66,19 @@ beforeEach(() => {
 // ============================================================================
 
 describe("Settings: loading state", () => {
-  it("shows loading text initially", () => {
+  it("shows loading skeleton initially", () => {
     mockGetSession.mockReturnValue(new Promise(() => {})); // never resolves
     renderSettings();
-    expect(screen.getByText("Loading...")).toBeInTheDocument();
+    expect(screen.getByLabelText("Loading settings")).toBeInTheDocument();
+  });
+
+  it("skeleton has aria-busy attribute", () => {
+    mockGetSession.mockReturnValue(new Promise(() => {}));
+    renderSettings();
+    expect(screen.getByLabelText("Loading settings")).toHaveAttribute(
+      "aria-busy",
+      "true",
+    );
   });
 
   it("redirects to / when no session", async () => {
@@ -86,10 +95,22 @@ describe("Settings: loading state", () => {
 describe("Settings: display", () => {
   it("renders settings form after loading", async () => {
     renderSettings();
-    await waitFor(() => expect(screen.getByText("Settings")).toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.getByText("Settings")).toBeInTheDocument(),
+    );
     expect(screen.getByDisplayValue("@ai")).toBeInTheDocument();
     expect(screen.getByText("Save Settings")).toBeInTheDocument();
-    expect(screen.getByText("Disconnect & Delete Account")).toBeInTheDocument();
+    expect(
+      screen.getByText("Disconnect & Delete Account"),
+    ).toBeInTheDocument();
+  });
+
+  it("renders Sign Out button", async () => {
+    renderSettings();
+    await waitFor(() =>
+      expect(screen.getByText("Settings")).toBeInTheDocument(),
+    );
+    expect(screen.getByText("Sign Out")).toBeInTheDocument();
   });
 
   it("populates fields from loaded settings", async () => {
@@ -108,8 +129,12 @@ describe("Settings: display", () => {
     } as Response);
 
     renderSettings();
-    await waitFor(() => expect(screen.getByDisplayValue("@bot")).toBeInTheDocument());
-    expect(screen.getByDisplayValue("https://api.openai.com/v1")).toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.getByDisplayValue("@bot")).toBeInTheDocument(),
+    );
+    expect(
+      screen.getByDisplayValue("https://api.openai.com/v1"),
+    ).toBeInTheDocument();
     expect(screen.getByDisplayValue("gpt-4o")).toBeInTheDocument();
     expect(screen.getByDisplayValue("Be concise")).toBeInTheDocument();
   });
@@ -118,12 +143,15 @@ describe("Settings: display", () => {
     vi.mocked(fetch).mockResolvedValue({
       ok: true,
       status: 200,
-      json: () => Promise.resolve({ ...mockSettings, has_custom_ai_key: true }),
+      json: () =>
+        Promise.resolve({ ...mockSettings, has_custom_ai_key: true }),
       headers: new Headers(),
     } as Response);
 
     renderSettings();
-    await waitFor(() => expect(screen.getByText("Settings")).toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.getByText("Settings")).toBeInTheDocument(),
+    );
     const aiKeyInput = screen.getByPlaceholderText(/key set/);
     expect(aiKeyInput).toBeInTheDocument();
   });
@@ -144,8 +172,25 @@ describe("Settings: error handling", () => {
 
     renderSettings();
     await waitFor(() =>
-      expect(screen.getByText("Failed to load settings.")).toBeInTheDocument(),
+      expect(
+        screen.getByText("Failed to load settings."),
+      ).toBeInTheDocument(),
     );
+  });
+
+  it("error message has role=alert for screen readers", async () => {
+    vi.mocked(fetch).mockResolvedValue({
+      ok: false,
+      status: 500,
+      json: () => Promise.resolve({ error: "Server error" }),
+      headers: new Headers(),
+    } as Response);
+
+    renderSettings();
+    await waitFor(() => {
+      const errorEl = screen.getByText("Failed to load settings.");
+      expect(errorEl).toHaveAttribute("role", "alert");
+    });
   });
 
   it("shows network error on fetch exception", async () => {
@@ -154,7 +199,9 @@ describe("Settings: error handling", () => {
     renderSettings();
     await waitFor(() =>
       expect(
-        screen.getByText("Network error. Please check your connection and refresh."),
+        screen.getByText(
+          "Network error. Please check your connection and refresh.",
+        ),
       ).toBeInTheDocument(),
     );
   });
@@ -170,7 +217,9 @@ describe("Settings: error handling", () => {
     renderSettings();
     await waitFor(() =>
       expect(
-        screen.getByText("Too many requests. Please try again in 30 seconds."),
+        screen.getByText(
+          "Too many requests. Please try again in 30 seconds.",
+        ),
       ).toBeInTheDocument(),
     );
   });
@@ -186,9 +235,145 @@ describe("Settings: error handling", () => {
     renderSettings();
     await waitFor(() =>
       expect(
-        screen.getByText("Your account has been disabled. Please contact support."),
+        screen.getByText(
+          "Your account has been disabled. Please contact support.",
+        ),
       ).toBeInTheDocument(),
     );
+  });
+});
+
+// ============================================================================
+// Sign Out
+// ============================================================================
+
+describe("Settings: sign out", () => {
+  it("calls signOut and navigates to / on Sign Out click", async () => {
+    const user = userEvent.setup();
+    mockSignOut.mockResolvedValue(undefined);
+    renderSettings();
+    await waitFor(() =>
+      expect(screen.getByText("Settings")).toBeInTheDocument(),
+    );
+
+    await user.click(screen.getByText("Sign Out"));
+    await waitFor(() => {
+      expect(mockSignOut).toHaveBeenCalled();
+      expect(mockNavigate).toHaveBeenCalledWith("/");
+    });
+  });
+});
+
+// ============================================================================
+// Delete account modal
+// ============================================================================
+
+describe("Settings: delete account modal", () => {
+  it("opens confirmation modal on disconnect click", async () => {
+    const user = userEvent.setup();
+    renderSettings();
+    await waitFor(() =>
+      expect(screen.getByText("Settings")).toBeInTheDocument(),
+    );
+
+    await user.click(screen.getByText("Disconnect & Delete Account"));
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(
+      screen.getByText(/permanently delete your account/),
+    ).toBeInTheDocument();
+  });
+
+  it("closes modal on Cancel", async () => {
+    const user = userEvent.setup();
+    renderSettings();
+    await waitFor(() =>
+      expect(screen.getByText("Settings")).toBeInTheDocument(),
+    );
+
+    await user.click(screen.getByText("Disconnect & Delete Account"));
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+
+    await user.click(screen.getByText("Cancel"));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("closes modal on Escape key", async () => {
+    const user = userEvent.setup();
+    renderSettings();
+    await waitFor(() =>
+      expect(screen.getByText("Settings")).toBeInTheDocument(),
+    );
+
+    await user.click(screen.getByText("Disconnect & Delete Account"));
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("modal has correct ARIA attributes", async () => {
+    const user = userEvent.setup();
+    renderSettings();
+    await waitFor(() =>
+      expect(screen.getByText("Settings")).toBeInTheDocument(),
+    );
+
+    await user.click(screen.getByText("Disconnect & Delete Account"));
+    const dialog = screen.getByRole("dialog");
+    expect(dialog).toHaveAttribute("aria-modal", "true");
+    expect(dialog).toHaveAttribute("aria-labelledby", "confirm-modal-title");
+  });
+
+  it("proceeds with deletion on confirm", async () => {
+    const user = userEvent.setup();
+    mockSignOut.mockResolvedValue(undefined);
+    renderSettings();
+    await waitFor(() =>
+      expect(screen.getByText("Settings")).toBeInTheDocument(),
+    );
+
+    vi.mocked(fetch).mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve({}),
+      headers: new Headers(),
+    } as Response);
+
+    await user.click(screen.getByText("Disconnect & Delete Account"));
+    // Click the confirm button in the modal (not the trigger button)
+    const confirmBtn = screen.getByRole("button", { name: "Delete Account" });
+    await user.click(confirmBtn);
+
+    await waitFor(() => {
+      expect(mockSignOut).toHaveBeenCalled();
+      expect(mockNavigate).toHaveBeenCalledWith("/");
+    });
+  });
+});
+
+// ============================================================================
+// Password visibility toggle
+// ============================================================================
+
+describe("Settings: password visibility toggle", () => {
+  it("toggles AI API key visibility", async () => {
+    const user = userEvent.setup();
+    renderSettings();
+    await waitFor(() =>
+      expect(screen.getByText("Settings")).toBeInTheDocument(),
+    );
+
+    const aiKeyInput = screen.getByLabelText("AI provider API key");
+    expect(aiKeyInput).toHaveAttribute("type", "password");
+
+    // Get the toggle button closest to the AI key input
+    const toggleBtns = screen.getAllByLabelText("Show password");
+    await user.click(toggleBtns[0]);
+    expect(aiKeyInput).toHaveAttribute("type", "text");
+
+    const hideBtns = screen.getAllByLabelText("Hide password");
+    await user.click(hideBtns[0]);
+    expect(aiKeyInput).toHaveAttribute("type", "password");
   });
 });
 
@@ -200,7 +385,9 @@ describe("Settings: save", () => {
   it("shows success message on save", async () => {
     const user = userEvent.setup();
     renderSettings();
-    await waitFor(() => expect(screen.getByText("Settings")).toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.getByText("Settings")).toBeInTheDocument(),
+    );
 
     // fetch is called once for load, then for save, then reload
     vi.mocked(fetch).mockResolvedValue({
@@ -219,7 +406,9 @@ describe("Settings: save", () => {
   it("shows rate limit message on 429 during save", async () => {
     const user = userEvent.setup();
     renderSettings();
-    await waitFor(() => expect(screen.getByText("Settings")).toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.getByText("Settings")).toBeInTheDocument(),
+    );
 
     vi.mocked(fetch).mockResolvedValue({
       ok: false,
@@ -231,7 +420,9 @@ describe("Settings: save", () => {
     await user.click(screen.getByText("Save Settings"));
     await waitFor(() =>
       expect(
-        screen.getByText("Too many requests. Please try again in 45 seconds."),
+        screen.getByText(
+          "Too many requests. Please try again in 45 seconds.",
+        ),
       ).toBeInTheDocument(),
     );
   });
@@ -239,7 +430,9 @@ describe("Settings: save", () => {
   it("shows disabled message on 403 during save", async () => {
     const user = userEvent.setup();
     renderSettings();
-    await waitFor(() => expect(screen.getByText("Settings")).toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.getByText("Settings")).toBeInTheDocument(),
+    );
 
     vi.mocked(fetch).mockResolvedValue({
       ok: false,
@@ -261,7 +454,9 @@ describe("Settings: save", () => {
   it("shows generic failure on other save errors", async () => {
     const user = userEvent.setup();
     renderSettings();
-    await waitFor(() => expect(screen.getByText("Settings")).toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.getByText("Settings")).toBeInTheDocument(),
+    );
 
     vi.mocked(fetch).mockResolvedValue({
       ok: false,
@@ -272,20 +467,40 @@ describe("Settings: save", () => {
 
     await user.click(screen.getByText("Save Settings"));
     await waitFor(() =>
-      expect(screen.getByText("Failed to save settings.")).toBeInTheDocument(),
+      expect(
+        screen.getByText("Failed to save settings."),
+      ).toBeInTheDocument(),
     );
   });
 
   it("shows Saving... while request is in flight", async () => {
     const user = userEvent.setup();
     renderSettings();
-    await waitFor(() => expect(screen.getByText("Settings")).toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.getByText("Settings")).toBeInTheDocument(),
+    );
 
     // Make save hang
     vi.mocked(fetch).mockReturnValue(new Promise(() => {}));
 
     await user.click(screen.getByText("Save Settings"));
     expect(screen.getByText("Saving...")).toBeInTheDocument();
+  });
+
+  it("save button has aria-busy while saving", async () => {
+    const user = userEvent.setup();
+    renderSettings();
+    await waitFor(() =>
+      expect(screen.getByText("Settings")).toBeInTheDocument(),
+    );
+
+    vi.mocked(fetch).mockReturnValue(new Promise(() => {}));
+
+    await user.click(screen.getByText("Save Settings"));
+    expect(screen.getByText("Saving...").closest("button")).toHaveAttribute(
+      "aria-busy",
+      "true",
+    );
   });
 });
 
@@ -297,7 +512,9 @@ describe("Settings: form interactions", () => {
   it("updates trigger word on input", async () => {
     const user = userEvent.setup();
     renderSettings();
-    await waitFor(() => expect(screen.getByText("Settings")).toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.getByText("Settings")).toBeInTheDocument(),
+    );
 
     const input = screen.getByDisplayValue("@ai");
     await user.clear(input);
@@ -307,18 +524,90 @@ describe("Settings: form interactions", () => {
 
   it("shows character count for custom prompt", async () => {
     renderSettings();
-    await waitFor(() => expect(screen.getByText("Settings")).toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.getByText("Settings")).toBeInTheDocument(),
+    );
     expect(screen.getByText("0/2000")).toBeInTheDocument();
   });
 
   it("updates character count on custom prompt input", async () => {
     const user = userEvent.setup();
     renderSettings();
-    await waitFor(() => expect(screen.getByText("Settings")).toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.getByText("Settings")).toBeInTheDocument(),
+    );
 
     const textarea = screen.getByPlaceholderText(/I live in Berlin/);
     await user.type(textarea, "Hello");
     expect(screen.getByText("5/2000")).toBeInTheDocument();
+  });
+});
+
+// ============================================================================
+// Accessibility
+// ============================================================================
+
+describe("Settings: accessibility", () => {
+  it("has main landmark with aria-labelledby", async () => {
+    renderSettings();
+    await waitFor(() =>
+      expect(screen.getByText("Settings")).toBeInTheDocument(),
+    );
+    const main = screen.getByRole("main");
+    expect(main).toHaveAttribute("aria-labelledby", "settings-heading");
+  });
+
+  it("form inputs have associated labels via htmlFor", async () => {
+    renderSettings();
+    await waitFor(() =>
+      expect(screen.getByText("Settings")).toBeInTheDocument(),
+    );
+    expect(screen.getByLabelText("Trigger word")).toBeInTheDocument();
+    expect(screen.getByLabelText("Custom Instructions")).toBeInTheDocument();
+    expect(screen.getByLabelText("Base URL")).toBeInTheDocument();
+    expect(screen.getByLabelText("Model")).toBeInTheDocument();
+  });
+
+  it("trigger word input has aria-describedby", async () => {
+    renderSettings();
+    await waitFor(() =>
+      expect(screen.getByText("Settings")).toBeInTheDocument(),
+    );
+    const input = screen.getByLabelText("Trigger word");
+    expect(input).toHaveAttribute("aria-describedby", "trigger-word-desc");
+  });
+
+  it("status message has aria-live=polite", async () => {
+    const user = userEvent.setup();
+    renderSettings();
+    await waitFor(() =>
+      expect(screen.getByText("Settings")).toBeInTheDocument(),
+    );
+
+    vi.mocked(fetch).mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve(mockSettings),
+      headers: new Headers(),
+    } as Response);
+
+    await user.click(screen.getByText("Save Settings"));
+    await waitFor(() => {
+      const msg = screen.getByText("Settings saved.");
+      expect(msg.closest("[aria-live]")).toHaveAttribute(
+        "aria-live",
+        "polite",
+      );
+    });
+  });
+
+  it("fieldsets have screen-reader-only legends", async () => {
+    renderSettings();
+    await waitFor(() =>
+      expect(screen.getByText("Settings")).toBeInTheDocument(),
+    );
+    expect(screen.getByText("AI Provider Settings")).toBeInTheDocument();
+    expect(screen.getByText("Web Search Settings")).toBeInTheDocument();
   });
 });
 
@@ -330,7 +619,9 @@ describe("Settings: message styling", () => {
   it("success message has green styling", async () => {
     const user = userEvent.setup();
     renderSettings();
-    await waitFor(() => expect(screen.getByText("Settings")).toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.getByText("Settings")).toBeInTheDocument(),
+    );
 
     vi.mocked(fetch).mockResolvedValue({
       ok: true,
@@ -349,7 +640,9 @@ describe("Settings: message styling", () => {
   it("error message has red styling", async () => {
     const user = userEvent.setup();
     renderSettings();
-    await waitFor(() => expect(screen.getByText("Settings")).toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.getByText("Settings")).toBeInTheDocument(),
+    );
 
     vi.mocked(fetch).mockResolvedValue({
       ok: false,
