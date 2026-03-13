@@ -13,8 +13,8 @@ jobs:
   release:
     runs-on: ubuntu-latest
     outputs:
-      pr_number: ${{ steps.pr_number.outputs.value }}
-      pr_sha: ${{ steps.pr_sha.outputs.value }}
+      pr_number: ${{ steps.find_pr.outputs.pr_number }}
+      pr_sha: ${{ steps.find_pr.outputs.pr_sha }}
     steps:
       - uses: googleapis/release-please-action@v4
         id: release
@@ -22,23 +22,25 @@ jobs:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
 
-      - name: Export PR metadata
-        id: pr_number
-        if: steps.release.outputs.pr
-        env:
-          PR_JSON: ${{ steps.release.outputs.pr }}
-        run: echo "value=$(echo "$PR_JSON" | jq -r '.number')" >> "$GITHUB_OUTPUT"
-
-      - name: Export PR head SHA
-        id: pr_sha
-        if: steps.release.outputs.pr
+      - name: Find release PR
+        id: find_pr
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PR_JSON: ${{ steps.release.outputs.pr }}
+          RP_PR: ${{ steps.release.outputs.pr }}
         run: |
-          PR_NUMBER=$(echo "$PR_JSON" | jq -r '.number')
-          SHA=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" --jq '.head.sha')
-          echo "value=$SHA" >> "$GITHUB_OUTPUT"
+          if [ -n "$RP_PR" ]; then
+            # release-please created or updated a PR
+            PR_NUMBER=$(echo "$RP_PR" | jq -r '.number')
+          else
+            # PR unchanged — look for an existing open release-please PR
+            PR_NUMBER=$(gh pr list --repo "$GITHUB_REPOSITORY" --head "release-please" \
+              --state open --json number --jq '.[0].number // empty')
+          fi
+          if [ -n "$PR_NUMBER" ]; then
+            SHA=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" --jq '.head.sha')
+            echo "pr_number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
+            echo "pr_sha=$SHA" >> "$GITHUB_OUTPUT"
+          fi
 
   # GITHUB_TOKEN pushes don't trigger pull_request workflows on release-please
   # PRs. Run CI here and report status checks on the PR head SHA so branch
