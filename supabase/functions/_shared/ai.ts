@@ -275,7 +275,8 @@ function anthropicToolResultMessage(toolCallId: string, content: string): ApiMes
 // Response parsing with size limit
 // ---------------------------------------------------------------------------
 
-async function parseAiResponse(res: Response): Promise<Record<string, unknown>> {
+// deno-lint-ignore no-explicit-any
+async function parseAiResponse(res: Response): Promise<any> {
   const text = await res.text();
   if (text.length > MAX_AI_RESPONSE_BYTES) {
     throw new Error(`AI response too large: ${text.length} bytes (limit ${MAX_AI_RESPONSE_BYTES})`);
