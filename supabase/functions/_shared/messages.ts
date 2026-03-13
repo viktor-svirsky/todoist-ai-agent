@@ -11,17 +11,23 @@ export interface Message {
  *  - User comments → user (strips trigger word)
  *  - In-flight progress comments and error comments are skipped.
  */
+export interface CommentsToMessagesResult {
+  messages: Message[];
+  commentIds: string[];
+}
+
 export function commentsToMessages(
   comments: TodoistComment[],
   triggerWord: string,
   progressCommentId: string
-): Message[] {
+): CommentsToMessagesResult {
   const triggerRegex = new RegExp(
     triggerWord.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
     "gi"
   );
 
   const messages: Message[] = [];
+  const commentIds: string[] = [];
 
   for (const comment of comments) {
     if (comment.id === progressCommentId) continue;
@@ -32,16 +38,22 @@ export function commentsToMessages(
     if (content.startsWith(AI_INDICATOR)) {
       if (content === PROGRESS_INDICATOR) continue;
       const stripped = content.slice(AI_INDICATOR.length).replace(/^\n+/, "").trim();
-      if (stripped) messages.push({ role: "assistant", content: stripped });
+      if (stripped) {
+        messages.push({ role: "assistant", content: stripped });
+        commentIds.push(comment.id);
+      }
     } else if (content.startsWith(ERROR_PREFIX)) {
       continue;
     } else {
       const stripped = content.replace(triggerRegex, "").replace(/\s+/g, " ").trim();
-      if (stripped) messages.push({ role: "user", content: stripped });
+      if (stripped) {
+        messages.push({ role: "user", content: stripped });
+        commentIds.push(comment.id);
+      }
     }
   }
 
-  return messages;
+  return { messages, commentIds };
 }
 
 /** Normalize an AI base URL: strip surrounding whitespace and trailing slash. */

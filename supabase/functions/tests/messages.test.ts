@@ -9,49 +9,53 @@ import { AI_INDICATOR, ERROR_PREFIX, PROGRESS_INDICATOR } from "../_shared/const
 Deno.test("user comment: strips trigger word and returns user role", () => {
   const comments = [{ id: "1", content: "@ai help me with this task" }];
   const result = commentsToMessages(comments, "@ai", "progress-id");
-  assertEquals(result, [{ role: "user", content: "help me with this task" }]);
+  assertEquals(result.messages, [{ role: "user", content: "help me with this task" }]);
+  assertEquals(result.commentIds, ["1"]);
 });
 
 Deno.test("user comment: trigger word stripped case-insensitively", () => {
   const comments = [{ id: "1", content: "@AI What is 2+2?" }];
   const result = commentsToMessages(comments, "@ai", "progress-id");
-  assertEquals(result, [{ role: "user", content: "What is 2+2?" }]);
+  assertEquals(result.messages, [{ role: "user", content: "What is 2+2?" }]);
 });
 
 Deno.test("AI comment: strips AI_INDICATOR prefix and returns assistant role", () => {
   const comments = [{ id: "1", content: `${AI_INDICATOR}\n\nThe answer is 42.` }];
   const result = commentsToMessages(comments, "@ai", "progress-id");
-  assertEquals(result, [{ role: "assistant", content: "The answer is 42." }]);
+  assertEquals(result.messages, [{ role: "assistant", content: "The answer is 42." }]);
+  assertEquals(result.commentIds, ["1"]);
 });
 
 Deno.test("progress indicator comment: skipped", () => {
   const comments = [{ id: "1", content: PROGRESS_INDICATOR }];
   const result = commentsToMessages(comments, "@ai", "progress-id");
-  assertEquals(result, []);
+  assertEquals(result.messages, []);
+  assertEquals(result.commentIds, []);
 });
 
 Deno.test("progress comment ID: skipped regardless of content", () => {
   const comments = [{ id: "progress-id", content: "@ai hello" }];
   const result = commentsToMessages(comments, "@ai", "progress-id");
-  assertEquals(result, []);
+  assertEquals(result.messages, []);
 });
 
 Deno.test("error prefix comment: skipped", () => {
   const comments = [{ id: "1", content: `${ERROR_PREFIX} something went wrong` }];
   const result = commentsToMessages(comments, "@ai", "progress-id");
-  assertEquals(result, []);
+  assertEquals(result.messages, []);
+  assertEquals(result.commentIds, []);
 });
 
 Deno.test("empty content: skipped", () => {
   const comments = [{ id: "1", content: "   " }];
   const result = commentsToMessages(comments, "@ai", "progress-id");
-  assertEquals(result, []);
+  assertEquals(result.messages, []);
 });
 
 Deno.test("null content: skipped", () => {
   const comments = [{ id: "1", content: null }];
   const result = commentsToMessages(comments, "@ai", "progress-id");
-  assertEquals(result, []);
+  assertEquals(result.messages, []);
 });
 
 Deno.test("multi-turn conversation: preserves order with correct roles", () => {
@@ -61,23 +65,24 @@ Deno.test("multi-turn conversation: preserves order with correct roles", () => {
     { id: "3", content: "@ai can I use it in Deno?" },
   ];
   const result = commentsToMessages(comments, "@ai", "none");
-  assertEquals(result, [
+  assertEquals(result.messages, [
     { role: "user", content: "what is TypeScript?" },
     { role: "assistant", content: "TypeScript is a typed superset of JavaScript." },
     { role: "user", content: "can I use it in Deno?" },
   ]);
+  assertEquals(result.commentIds, ["1", "2", "3"]);
 });
 
 Deno.test("user comment with no text after trigger: excluded (empty after strip)", () => {
   const comments = [{ id: "1", content: "@ai" }];
   const result = commentsToMessages(comments, "@ai", "none");
-  assertEquals(result, []);
+  assertEquals(result.messages, []);
 });
 
 Deno.test("AI comment with only whitespace after stripping prefix: excluded", () => {
   const comments = [{ id: "1", content: `${AI_INDICATOR}\n\n   ` }];
   const result = commentsToMessages(comments, "@ai", "none");
-  assertEquals(result, []);
+  assertEquals(result.messages, []);
 });
 
 Deno.test("error comment stored via updateComment: appears as assistant with error content", () => {
@@ -85,7 +90,7 @@ Deno.test("error comment stored via updateComment: appears as assistant with err
   const errorContent = `${AI_INDICATOR}\n\n${ERROR_PREFIX} timeout. Retry by adding a comment.`;
   const comments = [{ id: "1", content: errorContent }];
   const result = commentsToMessages(comments, "@ai", "none");
-  assertEquals(result, [{
+  assertEquals(result.messages, [{
     role: "assistant",
     content: `${ERROR_PREFIX} timeout. Retry by adding a comment.`,
   }]);
@@ -94,7 +99,7 @@ Deno.test("error comment stored via updateComment: appears as assistant with err
 Deno.test("standalone ERROR_PREFIX comment (not wrapped in AI_INDICATOR): skipped", () => {
   const comments = [{ id: "1", content: `${ERROR_PREFIX} something went wrong` }];
   const result = commentsToMessages(comments, "@ai", "progress-id");
-  assertEquals(result, []);
+  assertEquals(result.messages, []);
 });
 
 Deno.test("multi-turn with error in history: error preserved as assistant turn", () => {
@@ -105,40 +110,42 @@ Deno.test("multi-turn with error in history: error preserved as assistant turn",
     { id: "3", content: "@ai try again" },
   ];
   const result = commentsToMessages(comments, "@ai", "none");
-  assertEquals(result, [
+  assertEquals(result.messages, [
     { role: "user", content: "help" },
     { role: "assistant", content: `${ERROR_PREFIX} network error. Retry by adding a comment.` },
     { role: "user", content: "try again" },
   ]);
+  assertEquals(result.commentIds, ["1", "2", "3"]);
 });
 
 Deno.test("trigger word with regex special chars (e.g. $ai): stripped correctly", () => {
   const comments = [{ id: "1", content: "$ai help me" }];
   const result = commentsToMessages(comments, "$ai", "none");
-  assertEquals(result, [{ role: "user", content: "help me" }]);
+  assertEquals(result.messages, [{ role: "user", content: "help me" }]);
 });
 
 Deno.test("trigger word with dot (e.g. .ai): stripped correctly", () => {
   const comments = [{ id: "1", content: ".ai what is this?" }];
   const result = commentsToMessages(comments, ".ai", "none");
-  assertEquals(result, [{ role: "user", content: "what is this?" }]);
+  assertEquals(result.messages, [{ role: "user", content: "what is this?" }]);
 });
 
 Deno.test("multiple trigger words in one comment: all stripped", () => {
   const comments = [{ id: "1", content: "@ai tell @ai me" }];
   const result = commentsToMessages(comments, "@ai", "none");
-  assertEquals(result, [{ role: "user", content: "tell me" }]);
+  assertEquals(result.messages, [{ role: "user", content: "tell me" }]);
 });
 
 Deno.test("comment with undefined content: skipped", () => {
   const comments = [{ id: "1", content: undefined }];
   const result = commentsToMessages(comments, "@ai", "none");
-  assertEquals(result, []);
+  assertEquals(result.messages, []);
 });
 
 Deno.test("empty comments array: returns empty", () => {
   const result = commentsToMessages([], "@ai", "none");
-  assertEquals(result, []);
+  assertEquals(result.messages, []);
+  assertEquals(result.commentIds, []);
 });
 
 // ---------------------------------------------------------------------------

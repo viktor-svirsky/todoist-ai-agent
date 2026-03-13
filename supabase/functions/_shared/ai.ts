@@ -1,5 +1,5 @@
 import { braveSearch } from "./search.ts";
-import { MAX_TOOL_ROUNDS, DEFAULT_MAX_TOKENS } from "./constants.ts";
+import { MAX_TOOL_ROUNDS, DEFAULT_MAX_TOKENS, MAX_AI_RESPONSE_BYTES } from "./constants.ts";
 import * as Sentry from "@sentry/deno"; // startSpan is a no-op when Sentry is not initialized (no DSN set)
 import type {
   OpenAiResponse,
@@ -272,6 +272,19 @@ function anthropicToolResultMessage(toolCallId: string, content: string): ApiMes
 }
 
 // ---------------------------------------------------------------------------
+// Response parsing with size limit
+// ---------------------------------------------------------------------------
+
+// deno-lint-ignore no-explicit-any
+async function parseAiResponse(res: Response): Promise<any> {
+  const text = await res.text();
+  if (text.length > MAX_AI_RESPONSE_BYTES) {
+    throw new Error(`AI response too large: ${text.length} bytes (limit ${MAX_AI_RESPONSE_BYTES})`);
+  }
+  return JSON.parse(text);
+}
+
+// ---------------------------------------------------------------------------
 // Unified executePrompt
 // ---------------------------------------------------------------------------
 
@@ -320,28 +333,35 @@ export async function executePrompt(
         throw new Error(`AI API error ${res.status}: ${text}`);
       }
 
-      const data = await res.json();
+      const data = await parseAiResponse(res);
       const content = extractContent(data);
       if (content !== undefined) {
         return content || "(no response)";
       }
 
-      // Has tool calls — process them
+      // Has tool calls — process them in parallel
       runMessages.push(assistantMsg(data));
 
       const toolCalls = extractToolCalls(data);
+      const toolResults = await Promise.all(
+        toolCalls.map(async (tc) => ({
+          id: tc.id,
+          result: await handleToolCall(tc.name, tc.arguments, config.braveApiKey!),
+        }))
+      );
       if (anthropic) {
         // Anthropic requires all tool results in a single user message
-        const toolResults: { type: string; tool_use_id: string; content: string }[] = [];
-        for (const tc of toolCalls) {
-          const result = await handleToolCall(tc.name, tc.arguments, config.braveApiKey!);
-          toolResults.push({ type: "tool_result", tool_use_id: tc.id, content: result });
-        }
-        runMessages.push({ role: "user", content: toolResults });
+        runMessages.push({
+          role: "user",
+          content: toolResults.map((tr) => ({
+            type: "tool_result",
+            tool_use_id: tr.id,
+            content: tr.result,
+          })),
+        });
       } else {
-        for (const tc of toolCalls) {
-          const result = await handleToolCall(tc.name, tc.arguments, config.braveApiKey!);
-          runMessages.push(toolResultMsg(tc.id, result));
+        for (const tr of toolResults) {
+          runMessages.push(toolResultMsg(tr.id, tr.result));
         }
       }
     } finally {
@@ -371,7 +391,7 @@ export async function executePrompt(
       throw new Error(`AI API error ${res.status}: ${text}`);
     }
 
-    const data = await res.json();
+    const data = await parseAiResponse(res);
     const content = anthropic ? anthropicExtractContent(data) : openaiExtractContent(data);
     return content || "(no response)";
   } finally {
@@ -403,6 +423,7 @@ async function handleToolCall(
       .join("\n\n");
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
+    console.error("Tool call failed", { tool: name, error: message });
     return `Tool error: ${message}`;
   }
 }

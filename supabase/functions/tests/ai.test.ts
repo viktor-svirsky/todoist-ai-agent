@@ -172,6 +172,27 @@ const BASE_CONFIG = {
   timeoutMs: 5000,
 };
 
+Deno.test("executePrompt: throws when AI response exceeds size limit", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = ((_input: unknown, _init?: unknown) => {
+    // Return a response body larger than MAX_AI_RESPONSE_BYTES (10 MB)
+    const oversized = "x".repeat(10 * 1024 * 1024 + 1);
+    return Promise.resolve(new Response(oversized, {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    }));
+  }) as typeof fetch;
+  try {
+    await assertRejects(
+      () => executePrompt([{ role: "system", content: "test" }], BASE_CONFIG),
+      Error,
+      "AI response too large"
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 Deno.test("executePrompt: returns content from simple response", async () => {
   const restore = mockFetch([{
     status: 200,
@@ -272,6 +293,64 @@ Deno.test("executePrompt: handles tool call and returns final response", async (
     assertEquals(result, "Here's what I found");
   } finally {
     restore();
+  }
+});
+
+Deno.test("executePrompt: handles multiple tool calls and returns combined result", async () => {
+  const searchQueries: string[] = [];
+  const originalFetch = globalThis.fetch;
+  let callIndex = 0;
+  const responses = [
+    // 1st fetch: AI call — model requests two tool calls
+    {
+      status: 200,
+      body: {
+        choices: [{
+          message: {
+            content: null,
+            tool_calls: [
+              { id: "call_1", type: "function", function: { name: "web_search", arguments: '{"query":"first"}' } },
+              { id: "call_2", type: "function", function: { name: "web_search", arguments: '{"query":"second"}' } },
+            ],
+          },
+        }],
+      },
+    },
+    // 2nd fetch: Brave Search result for one of the calls
+    { status: 200, body: { web: { results: [{ title: "R1", url: "https://r1.com", description: "d1" }] } } },
+    // 3rd fetch: Brave Search result for the other call
+    { status: 200, body: { web: { results: [{ title: "R2", url: "https://r2.com", description: "d2" }] } } },
+    // 4th fetch: AI returns final answer
+    {
+      status: 200,
+      body: { choices: [{ message: { content: "Combined answer" } }] },
+    },
+  ];
+  globalThis.fetch = ((input: unknown, _init?: RequestInit) => {
+    const url = String(input);
+    const host = new URL(url).hostname;
+    if (host === "api.search.brave.com") {
+      const q = new URL(url).searchParams.get("q") || "";
+      searchQueries.push(q);
+    }
+    if (callIndex >= responses.length) {
+      throw new Error(`Unexpected fetch call #${callIndex + 1}: ${url}`);
+    }
+    const response = responses[callIndex++];
+    return Promise.resolve(new Response(JSON.stringify(response.body), {
+      status: response.status,
+      headers: { "Content-Type": "application/json" },
+    }));
+  }) as typeof fetch;
+  try {
+    const config = { ...BASE_CONFIG, braveApiKey: "brave-test-key" };
+    const result = await executePrompt([{ role: "system", content: "test" }], config);
+    assertEquals(result, "Combined answer");
+    // Both search calls were made with correct queries
+    assertEquals(searchQueries.length, 2);
+    assertEquals(searchQueries.sort(), ["first", "second"]);
+  } finally {
+    globalThis.fetch = originalFetch;
   }
 });
 

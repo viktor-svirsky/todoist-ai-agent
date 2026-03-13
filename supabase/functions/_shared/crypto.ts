@@ -124,7 +124,7 @@ async function hmacSign(secret: string, data: string): Promise<string> {
   return btoa(String.fromCharCode(...new Uint8Array(sig)));
 }
 
-function hmacEqual(a: string, b: string): boolean {
+export function hmacEqual(a: string, b: string): boolean {
   const maxLen = Math.max(a.length, b.length);
   let mismatch = a.length ^ b.length;
   for (let i = 0; i < maxLen; i++) {
@@ -153,9 +153,10 @@ export async function verifyOAuthState(
   const ts = parseInt(tsStr, 10);
   if (isNaN(ts)) return false;
 
-  // Reject expired states
+  // Reject expired or future-dated states (allow 60s clock skew)
   const now = Math.floor(Date.now() / 1000);
   if (now - ts > maxAgeSeconds) return false;
+  if (ts > now + 60) return false;
 
   // Verify HMAC signature
   const payload = `${parts[0]}.${tsStr}`;

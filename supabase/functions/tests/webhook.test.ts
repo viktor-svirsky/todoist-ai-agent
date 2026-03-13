@@ -43,6 +43,7 @@ function makePayload(overrides: Record<string, unknown> = {}): Record<string, un
     event_name: "note:added",
     user_id: "12345",
     event_data: {
+      id: "comment-1",
       content: "@ai What is 2+2?",
       item_id: "task-1",
     },
@@ -93,6 +94,9 @@ function mockFullFlow(options: {
         status: 200,
         headers: { "Content-Type": "application/json" },
       });
+    }
+    if (url.includes("/rest/v1/rpc/try_claim_event")) {
+      return new Response("true", { status: 200, headers: { "Content-Type": "application/json" } });
     }
     if (url.includes("/rest/v1/rpc/check_rate_limit")) {
       return new Response(JSON.stringify({ allowed: true, blocked: false, retry_after: 0 }), {
@@ -225,6 +229,20 @@ t("webhookHandler: rejects with 500 when TODOIST_CLIENT_SECRET missing", async (
 });
 
 // ============================================================================
+// Body size limit
+// ============================================================================
+
+t("webhookHandler: rejects oversized payload with 413", async () => {
+  // Create a body larger than 1 MB
+  const largeBody = "x".repeat(1024 * 1024 + 1);
+  const req = await signedRequest(largeBody);
+  const res = await handler(req);
+  assertEquals(res.status, 413);
+  const body = await res.json();
+  assertEquals(body.error, "Payload too large");
+});
+
+// ============================================================================
 // JSON parsing
 // ============================================================================
 
@@ -293,6 +311,9 @@ t("webhookHandler: returns 200 with rate_limited flag when rate limited", async 
         headers: { "Content-Type": "application/json" },
       });
     }
+    if (url.includes("/rest/v1/rpc/try_claim_event")) {
+      return new Response("true", { status: 200, headers: { "Content-Type": "application/json" } });
+    }
     if (url.includes("/rest/v1/rpc/check_rate_limit")) {
       return new Response(JSON.stringify({ allowed: false, blocked: false, retry_after: 45 }), {
         status: 200,
@@ -323,6 +344,9 @@ t("webhookHandler: returns 200 with rate_limited flag when account blocked", asy
         headers: { "Content-Type": "application/json" },
       });
     }
+    if (url.includes("/rest/v1/rpc/try_claim_event")) {
+      return new Response("true", { status: 200, headers: { "Content-Type": "application/json" } });
+    }
     if (url.includes("/rest/v1/rpc/check_rate_limit")) {
       return new Response(JSON.stringify({ allowed: false, blocked: true, retry_after: 0 }), {
         status: 200,
@@ -347,8 +371,7 @@ t("webhookHandler: returns 200 with rate_limited flag when account blocked", asy
 // ============================================================================
 
 t("webhookHandler: accepts valid request and returns 200", async () => {
-  // Use item:updated with note-shaped event_data — handleItemEvent bails on missing event_data.id
-  const payload = JSON.stringify(makePayload({ event_name: "item:updated" }));
+  const payload = JSON.stringify(makePayload());
   const req = await signedRequest(payload);
 
   const restore = mockFetch((url, init) => {
@@ -357,6 +380,9 @@ t("webhookHandler: accepts valid request and returns 200", async () => {
         status: 200,
         headers: { "Content-Type": "application/json" },
       });
+    }
+    if (url.includes("/rest/v1/rpc/try_claim_event")) {
+      return new Response("true", { status: 200, headers: { "Content-Type": "application/json" } });
     }
     if (url.includes("/rest/v1/rpc/check_rate_limit")) {
       return new Response(JSON.stringify({ allowed: true, blocked: false, retry_after: 0 }), {
@@ -399,6 +425,9 @@ t("webhookHandler: calls increment_ai_requests RPC for note:added with trigger w
         status: 200,
         headers: { "Content-Type": "application/json" },
       });
+    }
+    if (url.includes("/rest/v1/rpc/try_claim_event")) {
+      return new Response("true", { status: 200, headers: { "Content-Type": "application/json" } });
     }
     if (url.includes("/rest/v1/rpc/check_rate_limit")) {
       return new Response(JSON.stringify({ allowed: true, blocked: false, retry_after: 0 }), {
@@ -472,6 +501,9 @@ t("webhookHandler: posts error comment to Todoist when AI API fails", async () =
         headers: { "Content-Type": "application/json" },
       });
     }
+    if (url.includes("/rest/v1/rpc/try_claim_event")) {
+      return new Response("true", { status: 200, headers: { "Content-Type": "application/json" } });
+    }
     if (url.includes("/rest/v1/rpc/check_rate_limit")) {
       return new Response(JSON.stringify({ allowed: true, blocked: false, retry_after: 0 }), {
         status: 200,
@@ -528,7 +560,7 @@ t("webhookHandler: posts error comment to Todoist when AI API fails", async () =
 
 t("webhookHandler: does NOT call increment_ai_requests for non-trigger comments", async () => {
   const payload = JSON.stringify(makePayload({
-    event_data: { content: "just a regular comment", item_id: "task-1" },
+    event_data: { id: "comment-2", content: "just a regular comment", item_id: "task-1" },
   }));
   const req = await signedRequest(payload);
 
@@ -540,6 +572,9 @@ t("webhookHandler: does NOT call increment_ai_requests for non-trigger comments"
         status: 200,
         headers: { "Content-Type": "application/json" },
       });
+    }
+    if (url.includes("/rest/v1/rpc/try_claim_event")) {
+      return new Response("true", { status: 200, headers: { "Content-Type": "application/json" } });
     }
     if (url.includes("/rest/v1/rpc/check_rate_limit")) {
       return new Response(JSON.stringify({ allowed: true, blocked: false, retry_after: 0 }), {
@@ -588,7 +623,7 @@ t("webhookHandler: note:updated triggers AI processing", async () => {
 t("webhookHandler: note:updated ignores bot comments", async () => {
   const payload = JSON.stringify(makePayload({
     event_name: "note:updated",
-    event_data: { content: "\u{1F916} **AI Agent**\n\nSome response", item_id: "task-1" },
+    event_data: { id: "comment-3", content: "\u{1F916} **AI Agent**\n\nSome response", item_id: "task-1" },
   }));
   const req = await signedRequest(payload);
 

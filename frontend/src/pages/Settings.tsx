@@ -331,8 +331,23 @@ export default function Settings() {
         className="min-h-screen bg-gray-100 flex items-center justify-center px-4 sm:px-6"
         role="main"
       >
-        <div className="bg-white rounded-2xl shadow-xl p-8 sm:p-10">
+        <div className="bg-white rounded-2xl shadow-xl p-8 sm:p-10 space-y-4 text-center">
           <p className="text-red-600" role="alert">{error}</p>
+          <button
+            onClick={() => {
+              setError(null);
+              supabase.auth.getSession().then(({ data: { session } }) => {
+                if (!session) {
+                  navigate("/");
+                  return;
+                }
+                loadSettings(session.access_token);
+              });
+            }}
+            className="py-2 px-4 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-xl transition-colors cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
+          >
+            Retry
+          </button>
         </div>
       </main>
     );
@@ -435,6 +450,24 @@ export default function Settings() {
               placeholder={settings.has_custom_ai_key ? "••••••••  (key set)" : "sk-..."}
               ariaLabel="AI provider API key"
             />
+            {settings.has_custom_ai_key && !aiApiKey && (
+              <button
+                type="button"
+                onClick={async () => {
+                  const { data: { session } } = await supabase.auth.getSession();
+                  if (!session) return;
+                  await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/settings`, {
+                    method: "PUT",
+                    headers: { Authorization: `Bearer ${session.access_token}`, "Content-Type": "application/json" },
+                    body: JSON.stringify({ custom_ai_api_key: null }),
+                  });
+                  await loadSettings(session.access_token);
+                }}
+                className="mt-1 text-xs text-red-500 hover:text-red-700 transition-colors cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-500 rounded"
+              >
+                Clear saved key
+              </button>
+            )}
           </div>
 
           <div>
@@ -470,6 +503,24 @@ export default function Settings() {
               placeholder={settings.has_custom_brave_key ? "••••••••  (key set)" : "BSA..."}
               ariaLabel="Brave Search API key"
             />
+            {settings.has_custom_brave_key && !braveKey && (
+              <button
+                type="button"
+                onClick={async () => {
+                  const { data: { session } } = await supabase.auth.getSession();
+                  if (!session) return;
+                  await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/settings`, {
+                    method: "PUT",
+                    headers: { Authorization: `Bearer ${session.access_token}`, "Content-Type": "application/json" },
+                    body: JSON.stringify({ custom_brave_key: null }),
+                  });
+                  await loadSettings(session.access_token);
+                }}
+                className="mt-1 text-xs text-red-500 hover:text-red-700 transition-colors cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-500 rounded"
+              >
+                Clear saved key
+              </button>
+            )}
           </div>
         </fieldset>
 

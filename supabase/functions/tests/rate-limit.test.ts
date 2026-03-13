@@ -234,7 +234,7 @@ Deno.test("checkRateLimitByTodoistId: rate limited with retry_after", async () =
   assertEquals(result.retry_after, 45);
 });
 
-Deno.test("checkRateLimitByTodoistId: RPC error returns not allowed", async () => {
+Deno.test("checkRateLimitByTodoistId: RPC error fails open (allowed)", async () => {
   const mockSupabase = {
     rpc: async () => ({ data: null, error: { message: "db down" } }),
   };
@@ -243,12 +243,12 @@ Deno.test("checkRateLimitByTodoistId: RPC error returns not allowed", async () =
     "123",
     { maxRequests: 5, windowSeconds: 60 },
   );
-  assertEquals(result.allowed, false);
+  assertEquals(result.allowed, true);
   assertEquals(result.blocked, false);
-  assertEquals(result.retry_after, 60);
+  assertEquals(result.retry_after, 0);
 });
 
-Deno.test("checkRateLimitByTodoistId: null data returns not allowed", async () => {
+Deno.test("checkRateLimitByTodoistId: null data fails open (allowed)", async () => {
   const mockSupabase = {
     rpc: async () => ({ data: null, error: null }),
   };
@@ -257,9 +257,9 @@ Deno.test("checkRateLimitByTodoistId: null data returns not allowed", async () =
     "123",
     { maxRequests: 5, windowSeconds: 60 },
   );
-  assertEquals(result.allowed, false);
+  assertEquals(result.allowed, true);
   assertEquals(result.blocked, false);
-  assertEquals(result.retry_after, 60);
+  assertEquals(result.retry_after, 0);
 });
 
 Deno.test("checkRateLimitByTodoistId: parses string JSON data", async () => {
@@ -338,7 +338,7 @@ Deno.test("checkRateLimitByUuid: allowed when RPC returns allowed=true", async (
   assertEquals(result.blocked, false);
 });
 
-Deno.test("checkRateLimitByUuid: RPC error returns not allowed", async () => {
+Deno.test("checkRateLimitByUuid: RPC error fails open (allowed)", async () => {
   const mockSupabase = {
     rpc: async () => ({ data: null, error: { message: "fail" } }),
   };
@@ -347,9 +347,9 @@ Deno.test("checkRateLimitByUuid: RPC error returns not allowed", async () => {
     "uuid-abc",
     { maxRequests: 30, windowSeconds: 60 },
   );
-  assertEquals(result.allowed, false);
+  assertEquals(result.allowed, true);
   assertEquals(result.blocked, false);
-  assertEquals(result.retry_after, 60);
+  assertEquals(result.retry_after, 0);
 });
 
 Deno.test("checkRateLimitByUuid: passes correct params to RPC", async () => {

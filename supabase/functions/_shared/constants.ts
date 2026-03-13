@@ -22,3 +22,6 @@ export const RETRY_MAX_DELAY_MS = 5000;
 
 export const RATE_LIMIT_MAX_REQUESTS = 10;
 export const RATE_LIMIT_WINDOW_SECONDS = 120;
+
+export const MAX_WEBHOOK_BODY_BYTES = 1024 * 1024; // 1 MB
+export const MAX_AI_RESPONSE_BYTES = 10 * 1024 * 1024; // 10 MB
