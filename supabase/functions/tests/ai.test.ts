@@ -328,9 +328,10 @@ Deno.test("executePrompt: handles multiple tool calls and returns combined resul
   ];
   globalThis.fetch = ((input: unknown, _init?: RequestInit) => {
     const url = String(input);
-    if (url.includes("api.search.brave.com")) {
-      const body = new URL(url).searchParams.get("q") || "";
-      searchQueries.push(body);
+    const host = new URL(url).hostname;
+    if (host === "api.search.brave.com") {
+      const q = new URL(url).searchParams.get("q") || "";
+      searchQueries.push(q);
     }
     if (callIndex >= responses.length) {
       throw new Error(`Unexpected fetch call #${callIndex + 1}: ${url}`);
