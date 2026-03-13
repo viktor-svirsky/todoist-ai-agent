@@ -98,7 +98,10 @@ export async function settingsHandler(req: Request): Promise<Response> {
       has_custom_brave_key: !!fullConfig?.custom_brave_key,
       max_messages: data.max_messages,
       custom_prompt: data.custom_prompt,
-    }, 200, CORS_HEADERS);
+    }, 200, {
+      ...CORS_HEADERS,
+      "Cache-Control": "no-store, no-cache, must-revalidate",
+    });
   }
 
   // ── PUT: Update user settings ──────────────────────────────────────

@@ -211,7 +211,8 @@ t("authCallbackHandler: existing user updates token and redirects with session",
     const location = res.headers.get("Location")!;
     assertEquals(location.includes(`${FRONTEND_URL}/auth/callback`), true);
     assertEquals(location.includes("#access_token=session-access-token"), true);
-    assertEquals(location.includes("state="), true);
+    // OAuth state should NOT be in redirect URL (#158 — prevents CSRF token leakage)
+    assertEquals(location.includes("state="), false);
   } finally {
     restore();
   }

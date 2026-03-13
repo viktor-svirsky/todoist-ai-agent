@@ -1,5 +1,5 @@
 import { assertEquals } from "@std/assert";
-import { validateSettings, isPrivateHostname } from "../_shared/validation.ts";
+import { validateSettings, isPrivateHostname, sanitizeImageMediaType } from "../_shared/validation.ts";
 
 // -- max_messages --
 
@@ -278,4 +278,27 @@ Deno.test("validateSettings: multiple invalid fields return all errors", () => {
 
 Deno.test("validateSettings: empty updates return no errors", () => {
   assertEquals(validateSettings({}), []);
+});
+
+// -- sanitizeImageMediaType --
+
+Deno.test("sanitizeImageMediaType: allows standard image types", () => {
+  assertEquals(sanitizeImageMediaType("image/png"), "image/png");
+  assertEquals(sanitizeImageMediaType("image/jpeg"), "image/jpeg");
+  assertEquals(sanitizeImageMediaType("image/gif"), "image/gif");
+  assertEquals(sanitizeImageMediaType("image/webp"), "image/webp");
+});
+
+Deno.test("sanitizeImageMediaType: rejects non-image types", () => {
+  assertEquals(sanitizeImageMediaType("text/html"), "image/png");
+  assertEquals(sanitizeImageMediaType("application/pdf"), "image/png");
+  assertEquals(sanitizeImageMediaType("image/svg+xml"), "image/png");
+});
+
+Deno.test("sanitizeImageMediaType: handles undefined", () => {
+  assertEquals(sanitizeImageMediaType(undefined), "image/png");
+});
+
+Deno.test("sanitizeImageMediaType: handles empty string", () => {
+  assertEquals(sanitizeImageMediaType(""), "image/png");
 });

@@ -30,6 +30,55 @@ function errorRedirect(message = "auth_failed"): Response {
   });
 }
 
+async function createSessionRedirect(
+  email: string,
+  corsHeaders: Record<string, string>,
+): Promise<Response> {
+  const supabase = createServiceClient();
+  const FRONTEND_URL = getFrontendUrl();
+
+  const { data: linkData, error: linkError } = await supabase.auth.admin.generateLink({
+    type: "magiclink",
+    email,
+  });
+
+  if (linkError || !linkData) {
+    console.error("Failed to generate magic link:", linkError);
+    return errorRedirect("session_failed");
+  }
+
+  const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+  const anonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
+
+  const verifyRes = await fetch(`${supabaseUrl}/auth/v1/verify`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", apikey: anonKey },
+    body: JSON.stringify({ token_hash: linkData.properties.hashed_token, type: "magiclink" }),
+  });
+
+  if (!verifyRes.ok) {
+    const errText = await verifyRes.text();
+    console.error("OTP verification failed:", verifyRes.status, errText);
+    return errorRedirect("session_failed");
+  }
+
+  const session = await verifyRes.json();
+
+  // Do not include OAuth state in redirect — it leaks the CSRF token (#158)
+  const params = new URLSearchParams({
+    access_token: session.access_token,
+    refresh_token: session.refresh_token,
+    expires_in: String(session.expires_in),
+    token_type: session.token_type || "bearer",
+    type: "magiclink",
+  });
+
+  return new Response(null, {
+    status: 302,
+    headers: { ...corsHeaders, Location: `${FRONTEND_URL}/auth/callback#${params.toString()}` },
+  });
+}
+
 export async function authCallbackHandler(req: Request): Promise<Response> {
   const corsHeaders = getCorsHeaders();
 
@@ -99,7 +148,6 @@ export async function authCallbackHandler(req: Request): Promise<Response> {
       .maybeSingle();
 
     let userId: string;
-    const FRONTEND_URL = getFrontendUrl();
 
     if (existingUser) {
       // 4. Existing user — update their token
@@ -152,37 +200,8 @@ export async function authCallbackHandler(req: Request): Promise<Response> {
             console.error("Failed to update token (race path):", raceUpdateError);
             return errorRedirect("update_failed");
           }
-          // Skip webhook + insert — jump straight to magic link
-          const { data: linkData, error: linkError } = await supabase.auth.admin.generateLink({
-            type: "magiclink",
-            email,
-          });
-          if (linkError || !linkData) {
-            console.error("Failed to generate magic link (race path):", linkError);
-            return errorRedirect("session_failed");
-          }
-          const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-          const anonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
-          const verifyRes = await fetch(`${supabaseUrl}/auth/v1/verify`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json", apikey: anonKey },
-            body: JSON.stringify({ token_hash: linkData.properties.hashed_token, type: "magiclink" }),
-          });
-          if (!verifyRes.ok) {
-            return errorRedirect("session_failed");
-          }
-          const session = await verifyRes.json();
-          const params = new URLSearchParams({
-            access_token: session.access_token,
-            refresh_token: session.refresh_token,
-            expires_in: String(session.expires_in),
-            token_type: session.token_type || "bearer",
-            type: "magiclink",
-          });
-          return new Response(null, {
-            status: 302,
-            headers: { ...corsHeaders, Location: `${FRONTEND_URL}/auth/callback?state=${encodeURIComponent(state)}#${params.toString()}` },
-          });
+          // Skip webhook + insert — jump straight to session redirect
+          return createSessionRedirect(email, corsHeaders);
         }
 
         // Auth user exists but users_config doesn't — find auth user by email
@@ -232,7 +251,9 @@ export async function authCallbackHandler(req: Request): Promise<Response> {
       });
 
       if (!webhookRes.ok) {
-        console.error("Webhook registration failed:", webhookRes.status, await webhookRes.text());
+        const webhookErrText = await webhookRes.text();
+        console.error("Webhook registration failed:", webhookRes.status, webhookErrText);
+        await captureException(new Error(`Webhook registration failed: ${webhookRes.status} ${webhookErrText}`));
         // Continue anyway — webhook can be re-registered later
       }
 
@@ -249,56 +270,8 @@ export async function authCallbackHandler(req: Request): Promise<Response> {
       }
     }
 
-    // 8. Generate a magic link and verify it server-side to get real session tokens
-    const { data: linkData, error: linkError } = await supabase.auth.admin.generateLink({
-      type: "magiclink",
-      email,
-    });
-
-    if (linkError || !linkData) {
-      console.error("Failed to generate magic link:", linkError);
-      return errorRedirect("session_failed");
-    }
-
-    const tokenHash = linkData.properties.hashed_token;
-
-    // 9. Verify the OTP server-side to get real session tokens
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const anonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
-
-    const verifyRes = await fetch(`${supabaseUrl}/auth/v1/verify`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        apikey: anonKey,
-      },
-      body: JSON.stringify({ token_hash: tokenHash, type: "magiclink" }),
-    });
-
-    if (!verifyRes.ok) {
-      const errText = await verifyRes.text();
-      console.error("OTP verification failed:", verifyRes.status, errText);
-      return errorRedirect("session_failed");
-    }
-
-    const session = await verifyRes.json();
-
-    // 10. Redirect to frontend with real session tokens in URL fragment
-    const params = new URLSearchParams({
-      access_token: session.access_token,
-      refresh_token: session.refresh_token,
-      expires_in: String(session.expires_in),
-      token_type: session.token_type || "bearer",
-      type: "magiclink",
-    });
-
-    return new Response(null, {
-      status: 302,
-      headers: {
-        ...corsHeaders,
-        Location: `${FRONTEND_URL}/auth/callback?state=${encodeURIComponent(state)}#${params.toString()}`,
-      },
-    });
+    // 8. Generate session and redirect to frontend
+    return await createSessionRedirect(email, corsHeaders);
   } catch (error) {
     console.error("Auth callback error:", error);
     await captureException(error);

@@ -1,5 +1,6 @@
 import { createServiceClient } from "../_shared/supabase.ts";
 import { captureException } from "../_shared/sentry.ts";
+import { hmacEqual } from "../_shared/crypto.ts";
 
 const REQUIRED_ENV_VARS = [
   "SUPABASE_URL",
@@ -20,7 +21,7 @@ export async function healthHandler(req: Request): Promise<Response> {
   const healthToken = Deno.env.get("HEALTH_TOKEN");
   if (healthToken) {
     const provided = new URL(req.url).searchParams.get("token");
-    if (provided !== healthToken) {
+    if (!provided || !hmacEqual(provided, healthToken)) {
       return new Response(JSON.stringify({ status: "unauthorized" }), {
         status: 401,
         headers: { "Content-Type": "application/json" },

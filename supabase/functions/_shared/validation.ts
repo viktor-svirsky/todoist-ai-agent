@@ -111,3 +111,15 @@ export function validateSettings(
 
   return errors;
 }
+
+const ALLOWED_IMAGE_TYPES = new Set([
+  "image/png",
+  "image/jpeg",
+  "image/gif",
+  "image/webp",
+]);
+
+export function sanitizeImageMediaType(fileType: string | undefined): string {
+  if (fileType && ALLOWED_IMAGE_TYPES.has(fileType)) return fileType;
+  return "image/png";
+}

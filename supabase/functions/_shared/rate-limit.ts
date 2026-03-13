@@ -107,7 +107,11 @@ export async function checkRateLimitByTodoistId(
   });
 
   if (error || !data) {
-    return { allowed: false, blocked: false, retry_after: config.windowSeconds };
+    console.error("Rate limit RPC failed, failing open", {
+      userId,
+      error: error instanceof Object && "message" in error ? (error as { message: string }).message : String(error ?? "no data returned"),
+    });
+    return { allowed: true, blocked: false, retry_after: 0 };
   }
 
   const result = typeof data === "string" ? JSON.parse(data) : data;
@@ -130,7 +134,11 @@ export async function checkRateLimitByUuid(
   });
 
   if (error || !data) {
-    return { allowed: false, blocked: false, retry_after: config.windowSeconds };
+    console.error("Rate limit RPC failed, failing open", {
+      userId,
+      error: error instanceof Object && "message" in error ? (error as { message: string }).message : String(error ?? "no data returned"),
+    });
+    return { allowed: true, blocked: false, retry_after: 0 };
   }
 
   const result = typeof data === "string" ? JSON.parse(data) : data;

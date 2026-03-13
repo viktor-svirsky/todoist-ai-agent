@@ -6,6 +6,7 @@ import {
   ERROR_PREFIX,
   DEFAULT_AI_MODEL,
   DEFAULT_MAX_MESSAGES,
+  MAX_WEBHOOK_BODY_BYTES,
 } from "../_shared/constants.ts";
 import {
   getRateLimitConfig,
@@ -14,6 +15,7 @@ import {
 import { commentsToMessages, normalizeModel } from "../_shared/messages.ts";
 import { captureException } from "../_shared/sentry.ts";
 import { uint8ToBase64, verifyHmac, decrypt, decryptIfPresent } from "../_shared/crypto.ts";
+import { sanitizeImageMediaType, isPrivateHostname } from "../_shared/validation.ts";
 import type { TodoistComment, TodoistWebhookEvent, UserConfig } from "../_shared/types.ts";
 
 // ---------------------------------------------------------------------------
@@ -53,17 +55,32 @@ async function runAiForTask(
       throw new Error("Custom AI URL requires a custom API key. Please add your API key in Settings.");
     }
 
+    // Re-validate custom URL at request time to catch DNS rebinding / SSRF (#153)
+    if (user.custom_ai_base_url) {
+      try {
+        const parsed = new URL(user.custom_ai_base_url);
+        if (parsed.protocol !== "https:" || isPrivateHostname(parsed.hostname)) {
+          throw new Error("Custom AI URL must use HTTPS and cannot target private networks.");
+        }
+      } catch (e) {
+        if (e instanceof Error && e.message.includes("Custom AI URL")) throw e;
+        throw new Error("Custom AI URL is invalid.");
+      }
+    }
+
     const triggerWord = user.trigger_word || "@ai";
     const maxMessages = user.max_messages ?? DEFAULT_MAX_MESSAGES;
-    let messages = commentsToMessages(comments, triggerWord, progressCommentId);
+    const result = commentsToMessages(comments, triggerWord, progressCommentId);
+    let { messages } = result;
+    let windowCommentIds: Set<string>;
     if (messages.length > maxMessages) {
       messages = messages.slice(-maxMessages);
+      windowCommentIds = new Set(result.commentIds.slice(-maxMessages));
+    } else {
+      windowCommentIds = new Set(result.commentIds);
     }
 
     // Only download images from comments within the message window (#96)
-    const windowCommentIds = new Set(
-      comments.slice(-maxMessages).map((c: TodoistComment) => c.id)
-    );
     const imageComments = comments.filter(
       (c: TodoistComment) =>
         c.file_attachment?.resource_type === "image" &&
@@ -73,9 +90,23 @@ async function runAiForTask(
       imageComments.map(async (c: TodoistComment) => {
         const att = c.file_attachment!;
         const bytes = await todoist.downloadFile(att.file_url);
-        return { data: uint8ToBase64(bytes), mediaType: att.file_type || "image/png" };
+        return { data: uint8ToBase64(bytes), mediaType: sanitizeImageMediaType(att.file_type) };
       })
     );
+    // Log image download failures (#151)
+    const rejectedImages = imageResults.filter((r) => r.status === "rejected");
+    if (rejectedImages.length > 0) {
+      console.warn("Some image downloads failed", {
+        requestId,
+        taskId,
+        failedCount: rejectedImages.length,
+        errors: rejectedImages.map((r) =>
+          (r as PromiseRejectedResult).reason instanceof Error
+            ? (r as PromiseRejectedResult).reason.message
+            : String((r as PromiseRejectedResult).reason)
+        ),
+      });
+    }
     const images = imageResults
       .filter((r): r is PromiseFulfilledResult<{ data: string; mediaType: string }> => r.status === "fulfilled")
       .map((r) => r.value);
@@ -215,7 +246,22 @@ export async function webhookHandler(req: Request): Promise<Response> {
     });
   }
 
+  // Reject oversized payloads before reading body into memory (#141)
+  const contentLength = req.headers.get("content-length");
+  if (contentLength && parseInt(contentLength, 10) > MAX_WEBHOOK_BODY_BYTES) {
+    return new Response(JSON.stringify({ error: "Payload too large" }), {
+      status: 413,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
   const rawBody = await req.text();
+  if (rawBody.length > MAX_WEBHOOK_BODY_BYTES) {
+    return new Response(JSON.stringify({ error: "Payload too large" }), {
+      status: 413,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
   const signature = req.headers.get("x-todoist-hmac-sha256");
 
   if (!signature) {
@@ -276,6 +322,20 @@ export async function webhookHandler(req: Request): Promise<Response> {
     });
   }
 
+  // Idempotency check — prevent duplicate AI responses from concurrent deliveries (#159: before rate limit)
+  // For note events, use comment ID (event_data.id); for item events, use task ID (#140)
+  const entityId = String(event.event_data?.id ?? "");
+  if (entityId) {
+    const eventKey = `${userId}:${event.event_name}:${entityId}`;
+    const { data: claimed } = await supabase.rpc("try_claim_event", { p_event_id: eventKey });
+    if (claimed === false) {
+      return new Response(JSON.stringify({ ok: true, deduplicated: true }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+  }
+
   // Rate limit check — before any processing or decryption
   const rlConfig = getRateLimitConfig();
   const rlResult = await checkRateLimitByTodoistId(supabase, userId, rlConfig);
@@ -285,19 +345,6 @@ export async function webhookHandler(req: Request): Promise<Response> {
       status: 200,
       headers: { "Content-Type": "application/json" },
     });
-  }
-
-  // Idempotency check — prevent duplicate AI responses from concurrent deliveries
-  const entityId = event.event_data?.id ?? ("item_id" in event.event_data ? event.event_data.item_id : "") ?? "";
-  const eventKey = `${userId}:${event.event_name}:${entityId}`;
-  if (eventKey && entityId) {
-    const { data: claimed } = await supabase.rpc("try_claim_event", { p_event_id: eventKey });
-    if (claimed === false) {
-      return new Response(JSON.stringify({ ok: true, deduplicated: true }), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      });
-    }
   }
 
   const decryptedUser: UserConfig = {
@@ -328,6 +375,7 @@ export async function webhookHandler(req: Request): Promise<Response> {
   if (edgeRuntime?.waitUntil) {
     edgeRuntime.waitUntil(processPromise);
   } else {
+    console.warn("EdgeRuntime.waitUntil not available, processing in detached promise", { requestId });
     processPromise.catch((e) => console.error("Background processing error", { requestId, error: e }));
   }
 
