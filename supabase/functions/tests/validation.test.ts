@@ -53,6 +53,37 @@ Deno.test("validateSettings: trigger_word too long", () => {
   assertEquals(errors[0].field, "trigger_word");
 });
 
+Deno.test("validateSettings: trigger_word with valid characters", () => {
+  assertEquals(validateSettings({ trigger_word: "@ai" }), []);
+  assertEquals(validateSettings({ trigger_word: "#help" }), []);
+  assertEquals(validateSettings({ trigger_word: "my-bot" }), []);
+  assertEquals(validateSettings({ trigger_word: "bot.ai" }), []);
+  assertEquals(validateSettings({ trigger_word: "ask AI" }), []);
+  assertEquals(validateSettings({ trigger_word: "$ai" }), []);
+  assertEquals(validateSettings({ trigger_word: "ai!" }), []);
+  assertEquals(validateSettings({ trigger_word: "(bot)" }), []);
+});
+
+Deno.test("validateSettings: trigger_word with XSS characters rejected", () => {
+  const errors1 = validateSettings({ trigger_word: "ai<script>" });
+  assertEquals(errors1.length, 1);
+  assertEquals(errors1[0].field, "trigger_word");
+
+  const errors2 = validateSettings({ trigger_word: "ai&bot" });
+  assertEquals(errors2.length, 1);
+  assertEquals(errors2[0].field, "trigger_word");
+
+  const errors3 = validateSettings({ trigger_word: "ai>bot" });
+  assertEquals(errors3.length, 1);
+  assertEquals(errors3[0].field, "trigger_word");
+});
+
+Deno.test("validateSettings: trigger_word with control characters rejected", () => {
+  const errors = validateSettings({ trigger_word: "ai\x00bot" });
+  assertEquals(errors.length, 1);
+  assertEquals(errors[0].field, "trigger_word");
+});
+
 // -- isPrivateHostname --
 
 Deno.test("isPrivateHostname: detects localhost", () => {
@@ -80,6 +111,37 @@ Deno.test("isPrivateHostname: detects link-local / AWS metadata", () => {
 Deno.test("isPrivateHostname: detects cloud metadata hostnames", () => {
   assertEquals(isPrivateHostname("metadata.google.internal"), true);
   assertEquals(isPrivateHostname("metadata.goog"), true);
+});
+
+Deno.test("isPrivateHostname: detects IPv6 private ranges", () => {
+  assertEquals(isPrivateHostname("::"), true);              // unspecified
+  assertEquals(isPrivateHostname("fe80::1"), true);          // link-local
+  assertEquals(isPrivateHostname("fe90::1"), true);          // link-local (fe80::/10)
+  assertEquals(isPrivateHostname("fea0::1"), true);          // link-local (fe80::/10)
+  assertEquals(isPrivateHostname("febf::1"), true);          // link-local (fe80::/10 upper bound)
+  assertEquals(isPrivateHostname("fd00::1"), true);          // unique local
+  assertEquals(isPrivateHostname("fc00::1"), true);          // unique local
+});
+
+Deno.test("isPrivateHostname: allows non-link-local fe addresses", () => {
+  assertEquals(isPrivateHostname("fec0::1"), false);         // just outside fe80::/10
+  assertEquals(isPrivateHostname("feff::1"), false);         // outside fe80::/10
+});
+
+Deno.test("isPrivateHostname: detects IPv4-mapped IPv6", () => {
+  assertEquals(isPrivateHostname("::ffff:127.0.0.1"), true);
+  assertEquals(isPrivateHostname("::ffff:10.0.0.1"), true);
+  assertEquals(isPrivateHostname("::ffff:169.254.169.254"), true);
+  assertEquals(isPrivateHostname("::ffff:192.168.1.1"), true);
+  // Public IPv4-mapped should be allowed
+  assertEquals(isPrivateHostname("::ffff:8.8.8.8"), false);
+});
+
+Deno.test("isPrivateHostname: allows public hostnames starting with fc/fd", () => {
+  assertEquals(isPrivateHostname("facebook.com"), false);
+  assertEquals(isPrivateHostname("fdroid.org"), false);
+  assertEquals(isPrivateHostname("fcc.gov"), false);
+  assertEquals(isPrivateHostname("fcm.googleapis.com"), false);
 });
 
 Deno.test("isPrivateHostname: allows public hostnames", () => {

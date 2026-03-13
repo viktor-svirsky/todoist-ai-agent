@@ -77,25 +77,38 @@ export async function decryptIfPresent(
   return decrypt(value);
 }
 
+const _hmacKeyCache = new Map<string, CryptoKey>();
+
+export function _resetHmacKeyCache(): void {
+  _hmacKeyCache.clear();
+}
+
+async function getHmacKey(secret: string): Promise<CryptoKey> {
+  const cached = _hmacKeyCache.get(secret);
+  if (cached) return cached;
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"]
+  );
+  _hmacKeyCache.set(secret, key);
+  return key;
+}
+
 export async function verifyHmac(
   secret: string,
   rawBody: string,
   signatureHeader: string
 ): Promise<boolean> {
-  const encoder = new TextEncoder();
-  const key = await crypto.subtle.importKey(
-    "raw",
-    encoder.encode(secret),
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign"]
-  );
-  const sig = await crypto.subtle.sign("HMAC", key, encoder.encode(rawBody));
+  const key = await getHmacKey(secret);
+  const sig = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(rawBody));
   const computed = btoa(String.fromCharCode(...new Uint8Array(sig)));
-  if (computed.length !== signatureHeader.length) return false;
-  let mismatch = 0;
-  for (let i = 0; i < computed.length; i++) {
-    mismatch |= computed.charCodeAt(i) ^ signatureHeader.charCodeAt(i);
+  const maxLen = Math.max(computed.length, signatureHeader.length);
+  let mismatch = computed.length ^ signatureHeader.length;
+  for (let i = 0; i < maxLen; i++) {
+    mismatch |= (computed.charCodeAt(i) || 0) ^ (signatureHeader.charCodeAt(i) || 0);
   }
   return mismatch === 0;
 }
@@ -106,23 +119,16 @@ export async function verifyHmac(
 // ---------------------------------------------------------------------------
 
 async function hmacSign(secret: string, data: string): Promise<string> {
-  const encoder = new TextEncoder();
-  const key = await crypto.subtle.importKey(
-    "raw",
-    encoder.encode(secret),
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign"]
-  );
-  const sig = await crypto.subtle.sign("HMAC", key, encoder.encode(data));
+  const key = await getHmacKey(secret);
+  const sig = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(data));
   return btoa(String.fromCharCode(...new Uint8Array(sig)));
 }
 
 function hmacEqual(a: string, b: string): boolean {
-  if (a.length !== b.length) return false;
-  let mismatch = 0;
-  for (let i = 0; i < a.length; i++) {
-    mismatch |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  const maxLen = Math.max(a.length, b.length);
+  let mismatch = a.length ^ b.length;
+  for (let i = 0; i < maxLen; i++) {
+    mismatch |= (a.charCodeAt(i) || 0) ^ (b.charCodeAt(i) || 0);
   }
   return mismatch === 0;
 }

@@ -35,15 +35,18 @@ async function runAiForTask(
   user: UserConfig,
   todoistUserId: string,
   requestId: string,
+  prefetchedComments?: TodoistComment[],
 ): Promise<void> {
   const todoist = new TodoistClient(user.todoist_token);
-  const progressCommentId = await todoist.postProgressComment(taskId);
+  let progressCommentId: string | undefined;
 
   try {
-    const [task, comments] = await Promise.all([
+    const [progressId, task, comments] = await Promise.all([
+      todoist.postProgressComment(taskId),
       todoist.getTask(taskId),
-      todoist.getComments(taskId),
+      prefetchedComments ?? todoist.getComments(taskId),
     ]);
+    progressCommentId = progressId;
 
     // Never send the default API key to a custom URL (SSRF protection)
     if (user.custom_ai_base_url && !user.custom_ai_api_key) {
@@ -114,13 +117,15 @@ async function runAiForTask(
     await todoist.updateComment(progressCommentId, response);
   } catch (error) {
     console.error("AI processing failed", { requestId, taskId, error: error instanceof Error ? error.message : String(error) });
-    try {
-      await todoist.updateComment(
-        progressCommentId,
-        `${ERROR_PREFIX} ${sanitizeErrorForUser(error)} Retry by adding a comment.`
-      );
-    } catch (e) {
-      console.error("Failed to update progress comment with error", { requestId, error: e });
+    if (progressCommentId) {
+      try {
+        await todoist.updateComment(
+          progressCommentId,
+          `${ERROR_PREFIX} ${sanitizeErrorForUser(error)} Retry by adding a comment.`
+        );
+      } catch (e) {
+        console.error("Failed to update progress comment with error", { requestId, error: e });
+      }
     }
     await captureException(error);
   }
@@ -189,6 +194,8 @@ async function handleItemEvent(event: TodoistWebhookEvent, user: UserConfig, req
     if (comments.some((c: TodoistComment) => (c.content ?? "").startsWith(AI_INDICATOR))) {
       return;
     }
+    await runAiForTask(taskId, user, String(event.user_id), requestId, comments);
+    return;
   }
 
   await runAiForTask(taskId, user, String(event.user_id), requestId);

@@ -65,8 +65,8 @@ t("healthHandler: returns 200 when all checks pass", async () => {
     assertEquals(res.status, 200);
     const body = await res.json();
     assertEquals(body.status, "healthy");
-    assertEquals(body.checks.env.ok, true);
-    assertEquals(body.checks.database.ok, true);
+    // Per-check details are no longer exposed externally
+    assertEquals(body.checks, undefined);
   } finally {
     restore();
   }
@@ -94,8 +94,8 @@ t("healthHandler: returns 503 when env var missing", async () => {
     assertEquals(res.status, 503);
     const body = await res.json();
     assertEquals(body.status, "unhealthy");
-    assertEquals(body.checks.env.ok, false);
-    // Error details are logged server-side, not exposed in response
+    // Per-check details are no longer exposed externally
+    assertEquals(body.checks, undefined);
   } finally {
     restore();
     Deno.env.set("TODOIST_CLIENT_SECRET", original!);
@@ -122,8 +122,58 @@ t("healthHandler: returns 503 when database check fails", async () => {
     assertEquals(res.status, 503);
     const body = await res.json();
     assertEquals(body.status, "unhealthy");
-    assertEquals(body.checks.database.ok, false);
+    assertEquals(body.checks, undefined);
   } finally {
     restore();
+  }
+});
+
+// ============================================================================
+// HEALTH_TOKEN authentication
+// ============================================================================
+
+t("healthHandler: returns 401 when HEALTH_TOKEN is set but not provided", async () => {
+  Deno.env.set("HEALTH_TOKEN", "my-secret-token");
+  const restore = mockFetch(() => new Response("{}", { status: 200, headers: { "Content-Type": "application/json" } }));
+  try {
+    const req = new Request("http://localhost/health", { method: "GET" });
+    const res = await handler(req);
+    assertEquals(res.status, 401);
+  } finally {
+    restore();
+    Deno.env.delete("HEALTH_TOKEN");
+  }
+});
+
+t("healthHandler: returns 401 when HEALTH_TOKEN is wrong", async () => {
+  Deno.env.set("HEALTH_TOKEN", "my-secret-token");
+  const restore = mockFetch(() => new Response("{}", { status: 200, headers: { "Content-Type": "application/json" } }));
+  try {
+    const req = new Request("http://localhost/health?token=wrong", { method: "GET" });
+    const res = await handler(req);
+    assertEquals(res.status, 401);
+  } finally {
+    restore();
+    Deno.env.delete("HEALTH_TOKEN");
+  }
+});
+
+t("healthHandler: returns 200 when correct HEALTH_TOKEN provided", async () => {
+  Deno.env.set("HEALTH_TOKEN", "my-secret-token");
+  const restore = mockFetch((url) => {
+    if (url.includes("/rest/v1/users_config")) {
+      return new Response(JSON.stringify([]), { status: 200, headers: { "Content-Type": "application/json" } });
+    }
+    return new Response("{}", { status: 200, headers: { "Content-Type": "application/json" } });
+  });
+  try {
+    const req = new Request("http://localhost/health?token=my-secret-token", { method: "GET" });
+    const res = await handler(req);
+    assertEquals(res.status, 200);
+    const body = await res.json();
+    assertEquals(body.status, "healthy");
+  } finally {
+    restore();
+    Deno.env.delete("HEALTH_TOKEN");
   }
 });

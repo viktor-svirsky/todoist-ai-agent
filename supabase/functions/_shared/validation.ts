@@ -4,7 +4,16 @@ export interface ValidationError {
 }
 
 export function isPrivateHostname(hostname: string): boolean {
-  if (hostname === "localhost" || hostname === "::1") return true;
+  const lower = hostname.toLowerCase();
+  if (lower === "localhost") return true;
+
+  // IPv6 private/reserved ranges (must contain ":" to avoid matching regular hostnames)
+  if (lower === "::1" || lower === "::") return true;                    // loopback / unspecified
+  if (/^fe[89ab][0-9a-f]:/.test(lower)) return true;                       // link-local (fe80::/10)
+  if (lower.includes(":") && (lower.startsWith("fc") || lower.startsWith("fd"))) return true; // unique local (fc00::/7)
+  if (lower.startsWith("::ffff:")) {                                     // IPv4-mapped IPv6
+    return isPrivateHostname(lower.slice(7));
+  }
 
   // IPv4 private/reserved ranges
   const ipv4Match = hostname.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
@@ -20,8 +29,16 @@ export function isPrivateHostname(hostname: string): boolean {
 
   // Cloud metadata hostnames
   const blocked = ["metadata.google.internal", "metadata.goog"];
-  if (blocked.includes(hostname.toLowerCase())) return true;
+  if (blocked.includes(lower)) return true;
 
+  return false;
+}
+
+function hasControlChars(s: string): boolean {
+  for (let i = 0; i < s.length; i++) {
+    const code = s.charCodeAt(i);
+    if (code <= 0x1f || code === 0x7f) return true;
+  }
   return false;
 }
 
@@ -41,6 +58,8 @@ export function validateSettings(
     const v = updates.trigger_word;
     if (typeof v !== "string" || v.length < 1 || v.length > 50) {
       errors.push({ field: "trigger_word", message: "Must be a string between 1 and 50 characters" });
+    } else if (/[<>&]/.test(v) || hasControlChars(v)) {
+      errors.push({ field: "trigger_word", message: "Must not contain <, >, &, or control characters" });
     }
   }
 

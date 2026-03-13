@@ -256,13 +256,15 @@ Deno.test("TodoistClient.downloadFile: sends auth header for trusted domains", a
   }
 });
 
-Deno.test("TodoistClient.downloadFile: no auth header for untrusted domains", async () => {
-  const { restore, calls } = capturingFetch({ status: 200, body: {} });
+Deno.test("TodoistClient.downloadFile: rejects untrusted domains", async () => {
+  const restore = mockFetch({ status: 200, body: {} });
   try {
     const client = new TodoistClient("my-token");
-    try { await client.downloadFile("https://external-cdn.example.com/file.png"); } catch { /* ignore */ }
-    const headers = calls[0].init.headers as Record<string, string>;
-    assertEquals(Object.keys(headers).length, 0);
+    await assertRejects(
+      () => client.downloadFile("https://external-cdn.example.com/file.png"),
+      Error,
+      "File URL is not from a trusted Todoist domain"
+    );
   } finally {
     restore();
   }

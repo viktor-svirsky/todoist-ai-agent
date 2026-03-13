@@ -16,9 +16,21 @@ export async function healthHandler(req: Request): Promise<Response> {
     });
   }
 
+  // Authenticate with HEALTH_TOKEN if configured
+  const healthToken = Deno.env.get("HEALTH_TOKEN");
+  if (healthToken) {
+    const provided = new URL(req.url).searchParams.get("token");
+    if (provided !== healthToken) {
+      return new Response(JSON.stringify({ status: "unauthorized" }), {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+  }
+
   const checks: Record<string, { ok: boolean }> = {};
 
-  // Check critical env vars
+  // Check critical env vars (only log details server-side)
   const missingVars: string[] = [];
   for (const key of REQUIRED_ENV_VARS) {
     const value = Deno.env.get(key);
@@ -49,7 +61,7 @@ export async function healthHandler(req: Request): Promise<Response> {
   const healthy = Object.values(checks).every((c) => c.ok);
 
   return new Response(
-    JSON.stringify({ status: healthy ? "healthy" : "unhealthy", checks }),
+    JSON.stringify({ status: healthy ? "healthy" : "unhealthy" }),
     {
       status: healthy ? 200 : 503,
       headers: { "Content-Type": "application/json" },

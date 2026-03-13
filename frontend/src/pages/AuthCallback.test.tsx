@@ -198,4 +198,36 @@ describe("AuthCallback: timeout", () => {
     // Timeout should have been cleared on unmount
     expect(mockNavigate).not.toHaveBeenCalledWith("/?error=timeout");
   });
+
+  it("clears timeout when setSession resolves successfully", async () => {
+    sessionStorage.setItem("oauth_pending", "true");
+    mockSetSession.mockResolvedValue({ error: null });
+    renderCallback(
+      "#access_token=test-access&refresh_token=test-refresh",
+    );
+
+    await vi.waitFor(() =>
+      expect(mockNavigate).toHaveBeenCalledWith("/settings"),
+    );
+
+    // Advance past the 10s timeout — it should NOT fire
+    vi.advanceTimersByTime(10_000);
+    expect(mockNavigate).not.toHaveBeenCalledWith("/?error=timeout");
+  });
+
+  it("clears timeout when setSession resolves with error", async () => {
+    sessionStorage.setItem("oauth_pending", "true");
+    mockSetSession.mockResolvedValue({ error: new Error("fail") });
+    renderCallback(
+      "#access_token=bad&refresh_token=bad",
+    );
+
+    await vi.waitFor(() =>
+      expect(mockNavigate).toHaveBeenCalledWith("/?error=session_failed"),
+    );
+
+    // Advance past the 10s timeout — it should NOT fire
+    vi.advanceTimersByTime(10_000);
+    expect(mockNavigate).not.toHaveBeenCalledWith("/?error=timeout");
+  });
 });
