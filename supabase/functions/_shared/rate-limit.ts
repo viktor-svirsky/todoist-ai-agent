@@ -96,7 +96,7 @@ export function accountBlockedResponse(
 // ---------------------------------------------------------------------------
 
 export async function checkRateLimitByTodoistId(
-  supabase: { rpc: (fn: string, params: Record<string, unknown>) => Promise<{ data: unknown; error: unknown }> },
+  supabase: { rpc: (fn: string, params: Record<string, unknown>) => PromiseLike<{ data: unknown; error: unknown }> },
   userId: string,
   config: RateLimitConfig,
 ): Promise<RateLimitResult> {
@@ -119,7 +119,7 @@ export async function checkRateLimitByTodoistId(
 }
 
 export async function checkRateLimitByUuid(
-  supabase: { rpc: (fn: string, params: Record<string, unknown>) => Promise<{ data: unknown; error: unknown }> },
+  supabase: { rpc: (fn: string, params: Record<string, unknown>) => PromiseLike<{ data: unknown; error: unknown }> },
   userId: string,
   config: RateLimitConfig,
 ): Promise<RateLimitResult> {

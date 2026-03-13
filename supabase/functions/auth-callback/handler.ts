@@ -186,9 +186,10 @@ export async function authCallbackHandler(req: Request): Promise<Response> {
         }
 
         // Auth user exists but users_config doesn't — find auth user by email
-        const { data: { users }, error: listError } = await supabase.auth.admin.listUsers({
-          filter: email,
-        });
+        // Supabase supports filter at runtime but the type definition doesn't include it
+        const { data: { users }, error: listError } = await supabase.auth.admin.listUsers(
+          { filter: email } as Parameters<typeof supabase.auth.admin.listUsers>[0],
+        );
         if (listError || !users?.length) {
           console.error("Could not find existing auth user after email_exists error");
           return errorRedirect("user_creation_failed");
