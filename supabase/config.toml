@@ -399,3 +399,6 @@ verify_jwt = false
 
 [functions.settings]
 verify_jwt = false
+
+[functions.health]
+verify_jwt = false

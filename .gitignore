@@ -6,3 +6,5 @@ dist/
 coverage/
 *.plist
 !*.plist.example
+playwright-report/
+test-results/

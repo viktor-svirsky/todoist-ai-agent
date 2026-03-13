@@ -1,5 +1,5 @@
 import { assertEquals } from "@std/assert";
-import { withSentry, captureException } from "../_shared/sentry.ts";
+import { withSentry, captureException, getTracesSampleRate } from "../_shared/sentry.ts";
 
 Deno.test("withSentry: passes response through when handler succeeds", async () => {
   const handler = async (_req: Request) =>
@@ -34,4 +34,14 @@ Deno.test("withSentry: OPTIONS request passes through", async () => {
 Deno.test("captureException: no-ops when SENTRY_DSN not set", async () => {
   // Should not throw even without Sentry initialized
   await captureException(new Error("test error"));
+});
+
+Deno.test("getTracesSampleRate: returns 0.1 for production", () => {
+  assertEquals(getTracesSampleRate("production"), 0.1);
+});
+
+Deno.test("getTracesSampleRate: returns 1.0 for non-production environments", () => {
+  assertEquals(getTracesSampleRate("development"), 1.0);
+  assertEquals(getTracesSampleRate("staging"), 1.0);
+  assertEquals(getTracesSampleRate("local"), 1.0);
 });

@@ -23,3 +23,53 @@ jobs:
 
       - run: cd frontend && npm ci
       - run: cd frontend && npm audit --omit=dev
+
+  deno-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: denoland/setup-deno@v2
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+
+      - name: Type-check Edge Function entry points
+        run: |
+          deno check supabase/functions/webhook/index.ts
+          deno check supabase/functions/auth-start/index.ts
+          deno check supabase/functions/auth-callback/index.ts
+          deno check supabase/functions/settings/index.ts
+          deno check supabase/functions/health/index.ts
+
+      - name: Verify deno.lock integrity
+        run: deno install --frozen
+
+      - name: Audit npm dependencies used by Deno
+        run: |
+          # Extract npm: specifiers from deno.json and create a temp package.json
+          node -e "
+            const deno = require('./deno.json');
+            const deps = {};
+            for (const [name, specifier] of Object.entries(deno.imports || {})) {
+              if (specifier.startsWith('npm:')) {
+                const pkg = specifier.replace('npm:', '');
+                const atIdx = pkg.lastIndexOf('@');
+                if (atIdx > 0) {
+                  deps[pkg.substring(0, atIdx)] = pkg.substring(atIdx + 1);
+                }
+              }
+            }
+            if (Object.keys(deps).length > 0) {
+              require('fs').writeFileSync('/tmp/package.json',
+                JSON.stringify({ name: 'deno-audit', dependencies: deps }, null, 2));
+              console.log('Auditing:', JSON.stringify(deps));
+            } else {
+              console.log('No npm dependencies found in deno.json');
+              process.exit(0);
+            }
+          "
+          if [ -f /tmp/package.json ]; then
+            cd /tmp && npm audit
+          fi
