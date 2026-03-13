@@ -71,5 +71,5 @@ jobs:
             }
           "
           if [ -f /tmp/package.json ]; then
-            cd /tmp && npm audit
+            cd /tmp && npm i --package-lock-only && npm audit
           fi
