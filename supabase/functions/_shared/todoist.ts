@@ -80,9 +80,18 @@ export class TodoistClient {
   }
 
   async downloadFile(url: string): Promise<Uint8Array> {
-    const headers = this.isTrustedDomain(url) ? this.headers() : {};
-    const res = await fetchWithRetry(url, { headers });
+    if (!this.isTrustedDomain(url)) {
+      throw new Error("File URL is not from a trusted Todoist domain");
+    }
+    const res = await fetchWithRetry(url, { headers: this.headers() });
     if (!res.ok) throw new Error(`Download failed: ${res.status}`);
+
+    const contentLength = res.headers.get("content-length");
+    if (contentLength && Number(contentLength) > MAX_IMAGE_SIZE_BYTES) {
+      throw new Error(
+        `File exceeds maximum size of ${MAX_IMAGE_SIZE_BYTES / (1024 * 1024)} MB`,
+      );
+    }
 
     if (!res.body) {
       return new Uint8Array(await res.arrayBuffer());

@@ -212,7 +212,7 @@ export default function Settings() {
         setAiModel(data.custom_ai_model || "");
         setCustomPrompt(data.custom_prompt || "");
       } else if (res.status === 429) {
-        const retryAfter = res.headers.get("Retry-After") || "60";
+        const retryAfter = parseInt(res.headers.get("Retry-After") ?? "60", 10) || 60;
         setError(`Too many requests. Please try again in ${retryAfter} seconds.`);
       } else if (res.status === 403) {
         setError("Your account has been disabled. Please contact support.");
@@ -270,9 +270,9 @@ export default function Settings() {
         setMessage("Settings saved.");
         setAiApiKey("");
         setBraveKey("");
-        loadSettings(session.access_token);
+        await loadSettings(session.access_token);
       } else if (res.status === 429) {
-        const retryAfter = res.headers.get("Retry-After") || "60";
+        const retryAfter = parseInt(res.headers.get("Retry-After") ?? "60", 10) || 60;
         setMessage(`Too many requests. Please try again in ${retryAfter} seconds.`);
       } else if (res.status === 403) {
         setMessage("Your account has been disabled. Please contact support.");
@@ -308,7 +308,7 @@ export default function Settings() {
 
       if (!res.ok) {
         if (res.status === 429) {
-          const retryAfter = res.headers.get("Retry-After") || "60";
+          const retryAfter = parseInt(res.headers.get("Retry-After") ?? "60", 10) || 60;
           setMessage(`Too many requests. Please try again in ${retryAfter} seconds.`);
         } else if (res.status === 403) {
           setMessage("Your account has been disabled. Please contact support.");

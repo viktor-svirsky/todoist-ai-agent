@@ -7,6 +7,7 @@ import {
   encryptIfPresent,
   decryptIfPresent,
   _resetKeyCache,
+  _resetHmacKeyCache,
   signOAuthState,
   verifyOAuthState,
 } from "../_shared/crypto.ts";
@@ -41,10 +42,18 @@ Deno.test("verifyHmac: returns true for valid signature", async () => {
 });
 
 Deno.test("verifyHmac: returns false for invalid signature", async () => {
+  _resetHmacKeyCache();
   assertEquals(
     await verifyHmac("secret", '{"event":"test"}', "invalid-signature"),
     false
   );
+});
+
+Deno.test("verifyHmac: returns false for different-length signature (constant-time)", async () => {
+  _resetHmacKeyCache();
+  assertEquals(await verifyHmac("secret", '{"event":"test"}', "short"), false);
+  assertEquals(await verifyHmac("secret", '{"event":"test"}', ""), false);
+  assertEquals(await verifyHmac("secret", '{"event":"test"}', "a".repeat(100)), false);
 });
 
 Deno.test("verifyHmac: returns false for tampered body", async () => {

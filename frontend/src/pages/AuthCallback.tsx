@@ -26,9 +26,12 @@ export default function AuthCallback() {
       return;
     }
 
+    const timeout = setTimeout(() => navigate("/?error=timeout"), 10_000);
+
     supabase.auth
       .setSession({ access_token: accessToken, refresh_token: refreshToken })
       .then(({ error }) => {
+        clearTimeout(timeout);
         if (error) {
           navigate("/?error=session_failed");
         } else {
@@ -36,7 +39,6 @@ export default function AuthCallback() {
         }
       });
 
-    const timeout = setTimeout(() => navigate("/?error=timeout"), 10_000);
     return () => clearTimeout(timeout);
   }, [navigate]);
 
