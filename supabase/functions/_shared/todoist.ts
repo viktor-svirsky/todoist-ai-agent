@@ -3,20 +3,8 @@ import {
   AI_INDICATOR,
   PROGRESS_INDICATOR,
   MAX_IMAGE_SIZE_BYTES,
-  TODOIST_API_TIMEOUT_MS,
 } from "./constants.ts";
-
-function fetchWithTimeout(
-  url: string,
-  init?: RequestInit,
-  timeoutMs = TODOIST_API_TIMEOUT_MS,
-): Promise<Response> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  return fetch(url, { ...init, signal: controller.signal }).finally(() =>
-    clearTimeout(timer)
-  );
-}
+import { fetchWithRetry } from "./retry.ts";
 
 export class TodoistClient {
   constructor(private token: string) {}
@@ -26,7 +14,7 @@ export class TodoistClient {
   }
 
   async getTask(taskId: string) {
-    const res = await fetchWithTimeout(`${TODOIST_API_URL}/tasks/${taskId}`, {
+    const res = await fetchWithRetry(`${TODOIST_API_URL}/tasks/${taskId}`, {
       headers: this.headers(),
     });
     if (!res.ok) throw new Error(`Todoist getTask failed: ${res.status}`);
@@ -34,7 +22,7 @@ export class TodoistClient {
   }
 
   async getComments(taskId: string) {
-    const res = await fetchWithTimeout(
+    const res = await fetchWithRetry(
       `${TODOIST_API_URL}/comments?task_id=${taskId}`,
       { headers: this.headers() },
     );
@@ -44,7 +32,7 @@ export class TodoistClient {
   }
 
   async postComment(taskId: string, content: string): Promise<string> {
-    const res = await fetchWithTimeout(`${TODOIST_API_URL}/comments`, {
+    const res = await fetchWithRetry(`${TODOIST_API_URL}/comments`, {
       method: "POST",
       headers: { ...this.headers(), "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -58,7 +46,7 @@ export class TodoistClient {
   }
 
   async postProgressComment(taskId: string): Promise<string> {
-    const res = await fetchWithTimeout(`${TODOIST_API_URL}/comments`, {
+    const res = await fetchWithRetry(`${TODOIST_API_URL}/comments`, {
       method: "POST",
       headers: { ...this.headers(), "Content-Type": "application/json" },
       body: JSON.stringify({ task_id: taskId, content: PROGRESS_INDICATOR }),
@@ -70,7 +58,7 @@ export class TodoistClient {
   }
 
   async updateComment(commentId: string, content: string): Promise<void> {
-    const res = await fetchWithTimeout(
+    const res = await fetchWithRetry(
       `${TODOIST_API_URL}/comments/${commentId}`,
       {
         method: "POST",
@@ -93,7 +81,7 @@ export class TodoistClient {
 
   async downloadFile(url: string): Promise<Uint8Array> {
     const headers = this.isTrustedDomain(url) ? this.headers() : {};
-    const res = await fetchWithTimeout(url, { headers });
+    const res = await fetchWithRetry(url, { headers });
     if (!res.ok) throw new Error(`Download failed: ${res.status}`);
 
     if (!res.body) {
