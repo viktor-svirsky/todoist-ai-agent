@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.3.0](https://github.com/viktor-svirsky/todoist-ai-agent/compare/todoist-ai-agent-v1.2.0...todoist-ai-agent-v1.3.0) (2026-03-13)
+
+
+### Features
+
+* add type safety, env validation, and request tracing ([#100](https://github.com/viktor-svirsky/todoist-ai-agent/issues/100), [#101](https://github.com/viktor-svirsky/todoist-ai-agent/issues/101), [#102](https://github.com/viktor-svirsky/todoist-ai-agent/issues/102)) ([#117](https://github.com/viktor-svirsky/todoist-ai-agent/issues/117)) ([f25b305](https://github.com/viktor-svirsky/todoist-ai-agent/commit/f25b305d12819baa39b9c5b00eff8bb5ea7fb30b))
+* frontend UX improvements and accessibility ([#118](https://github.com/viktor-svirsky/todoist-ai-agent/issues/118)) ([c90c0b4](https://github.com/viktor-svirsky/todoist-ai-agent/commit/c90c0b4f8bfef5beeaf2b57ad35021640ad1de28))
+
+
+### Bug Fixes
+
+* add functions-level deno.json for Supabase deploy ([#88](https://github.com/viktor-svirsky/todoist-ai-agent/issues/88)) ([06ee247](https://github.com/viktor-svirsky/todoist-ai-agent/commit/06ee247bedc2b7f3e543a690bddc42ccaab4f2ce))
+* make Sentry capture errors on Deno Deploy ([#79](https://github.com/viktor-svirsky/todoist-ai-agent/issues/79)) ([7e2df78](https://github.com/viktor-svirsky/todoist-ai-agent/commit/7e2df78314d7b46a36eaa5e448b8585bc5f04e47))
+
 ## [1.2.0](https://github.com/viktor-svirsky/todoist-ai-agent/compare/todoist-ai-agent-v1.1.0...todoist-ai-agent-v1.2.0) (2026-03-07)
 
 
