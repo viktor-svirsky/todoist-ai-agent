@@ -388,6 +388,9 @@ s3_access_key = "env(S3_ACCESS_KEY)"
 s3_secret_key = "env(S3_SECRET_KEY)"
 
 # Edge Functions – disable JWT verification for externally-called endpoints
+[functions.auth-start]
+verify_jwt = false
+
 [functions.auth-callback]
 verify_jwt = false
 
