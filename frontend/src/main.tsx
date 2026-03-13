@@ -4,6 +4,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import Landing from "./pages/Landing";
 import Settings from "./pages/Settings";
 import AuthCallback from "./pages/AuthCallback";
+import NotFound from "./pages/NotFound";
 import "./index.css";
 
 class ErrorBoundary extends React.Component<
@@ -26,11 +27,11 @@ class ErrorBoundary extends React.Component<
   render() {
     if (this.state.hasError) {
       return (
-        <div className="min-h-screen bg-gray-100 flex items-center justify-center px-4 sm:px-6">
+        <main className="min-h-screen bg-gray-100 flex items-center justify-center px-4 sm:px-6" role="main">
           <div className="bg-white rounded-2xl shadow-xl p-8 sm:p-10 text-center">
-            <p className="text-gray-600">Something went wrong. Please refresh the page.</p>
+            <p className="text-gray-600" role="alert">Something went wrong. Please refresh the page.</p>
           </div>
-        </div>
+        </main>
       );
     }
     return this.props.children;
@@ -45,6 +46,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
           <Route path="/" element={<Landing />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="/auth/callback" element={<AuthCallback />} />
+          <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>
     </ErrorBoundary>

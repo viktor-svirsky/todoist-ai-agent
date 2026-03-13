@@ -66,6 +66,7 @@ sequenceDiagram
 | **Image support** | Attach images to comments for multimodal AI analysis |
 | **Data isolation** | Row Level Security ensures complete tenant separation |
 | **Error tracking** | Optional Sentry integration for monitoring |
+| **Accessible UI** | ARIA labels, focus management, keyboard navigation, screen reader support |
 
 ## Architecture
 

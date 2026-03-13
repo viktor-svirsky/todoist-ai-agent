@@ -24,10 +24,17 @@ export default function Landing() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-100 flex flex-col items-center justify-center px-4 sm:px-6">
+    <main
+      className="min-h-screen bg-gray-100 flex flex-col items-center justify-center px-4 sm:px-6"
+      role="main"
+      aria-labelledby="landing-heading"
+    >
       <div className="max-w-lg w-full bg-white rounded-2xl shadow-xl p-8 sm:p-10 space-y-8">
         <div className="text-center">
-          <h1 className="text-4xl sm:text-5xl font-extrabold tracking-tight bg-gradient-to-r from-red-500 to-violet-600 bg-clip-text text-transparent">
+          <h1
+            id="landing-heading"
+            className="text-4xl sm:text-5xl font-extrabold tracking-tight bg-gradient-to-r from-red-500 to-violet-600 bg-clip-text text-transparent"
+          >
             Todoist AI Agent
           </h1>
           <p className="mt-4 text-gray-500 text-base leading-relaxed">
@@ -36,23 +43,23 @@ export default function Landing() {
           </p>
         </div>
 
-        <div className="space-y-3">
-          <div className="flex items-center gap-4 p-3 rounded-xl bg-gray-50">
-            <span className="text-xl shrink-0">💬</span>
+        <ul className="space-y-3" aria-label="Features">
+          <li className="flex items-center gap-4 p-3 rounded-xl bg-gray-50">
+            <span className="text-xl shrink-0" aria-hidden="true">💬</span>
             <p className="text-sm text-gray-600">Comment <code className="bg-gray-200 px-1.5 py-0.5 rounded text-gray-800 font-mono text-xs">@ai</code> on any task to get help</p>
-          </div>
-          <div className="flex items-center gap-4 p-3 rounded-xl bg-gray-50">
-            <span className="text-xl shrink-0">🔍</span>
+          </li>
+          <li className="flex items-center gap-4 p-3 rounded-xl bg-gray-50">
+            <span className="text-xl shrink-0" aria-hidden="true">🔍</span>
             <p className="text-sm text-gray-600">Web search included for current information</p>
-          </div>
-          <div className="flex items-center gap-4 p-3 rounded-xl bg-gray-50">
-            <span className="text-xl shrink-0">🔑</span>
+          </li>
+          <li className="flex items-center gap-4 p-3 rounded-xl bg-gray-50">
+            <span className="text-xl shrink-0" aria-hidden="true">🔑</span>
             <p className="text-sm text-gray-600">Bring your own AI key or use the shared default</p>
-          </div>
-        </div>
+          </li>
+        </ul>
 
         {error && (
-          <div className="p-3 rounded-xl bg-red-50 text-red-600 text-sm text-center">
+          <div className="p-3 rounded-xl bg-red-50 text-red-600 text-sm text-center" role="alert">
             {error}
           </div>
         )}
@@ -60,7 +67,8 @@ export default function Landing() {
         <button
           onClick={handleConnect}
           disabled={connecting}
-          className="w-full py-3.5 px-4 bg-red-500 hover:bg-red-600 disabled:bg-red-300 text-white font-semibold rounded-xl shadow-sm hover:shadow-md transition-all cursor-pointer disabled:cursor-not-allowed"
+          className="w-full py-3.5 px-4 bg-red-500 hover:bg-red-600 disabled:bg-red-300 text-white font-semibold rounded-xl shadow-sm hover:shadow-md transition-all cursor-pointer disabled:cursor-not-allowed focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-500"
+          aria-busy={connecting}
         >
           {connecting ? "Redirecting..." : "Connect Todoist"}
         </button>
@@ -72,6 +80,6 @@ export default function Landing() {
           <a href="https://github.com/viktor-svirsky/todoist-ai-agent/issues" target="_blank" rel="noopener noreferrer" className="hover:text-gray-600 transition-colors">GitHub issue</a>.
         </p>
       </div>
-    </div>
+    </main>
   );
 }
