@@ -33,8 +33,9 @@ jobs:
             PR_NUMBER=$(echo "$RP_PR" | jq -r '.number')
           else
             # PR unchanged — look for an existing open release-please PR
-            PR_NUMBER=$(gh pr list --repo "$GITHUB_REPOSITORY" --head "release-please" \
-              --state open --json number --jq '.[0].number // empty')
+            PR_NUMBER=$(gh pr list --repo "$GITHUB_REPOSITORY" \
+              --state open --json number,headRefName \
+              --jq '[.[] | select(.headRefName | startswith("release-please"))][0].number // empty')
           fi
           if [ -n "$PR_NUMBER" ]; then
             SHA=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" --jq '.head.sha')
