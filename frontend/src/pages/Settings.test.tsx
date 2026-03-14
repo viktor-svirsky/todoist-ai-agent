@@ -810,3 +810,300 @@ describe("Settings: message styling", () => {
     });
   });
 });
+
+// ============================================================================
+// Reset AI Settings
+// ============================================================================
+
+describe("Settings: Reset AI Settings button", () => {
+  it("shows Reset AI Settings when server has a saved key", async () => {
+    vi.mocked(fetch).mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: () =>
+        Promise.resolve({ ...mockSettings, has_custom_ai_key: true }),
+      headers: new Headers(),
+    } as Response);
+
+    renderSettings();
+    await waitFor(() =>
+      expect(screen.getByText("Reset AI Settings")).toBeInTheDocument(),
+    );
+  });
+
+  it("shows Reset AI Settings when local AI fields have values", async () => {
+    const user = userEvent.setup();
+    renderSettings();
+    await waitFor(() =>
+      expect(screen.getByText("Settings")).toBeInTheDocument(),
+    );
+
+    await user.type(screen.getByLabelText("Base URL"), "https://example.com");
+    expect(screen.getByText("Reset AI Settings")).toBeInTheDocument();
+  });
+
+  it("hides Reset AI Settings when no saved key and no local values", async () => {
+    renderSettings();
+    await waitFor(() =>
+      expect(screen.getByText("Settings")).toBeInTheDocument(),
+    );
+    expect(screen.queryByText("Reset AI Settings")).not.toBeInTheDocument();
+  });
+
+  it("clears all AI fields on click and sends PUT with nulls", async () => {
+    const user = userEvent.setup();
+    vi.mocked(fetch).mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: () =>
+        Promise.resolve({
+          ...mockSettings,
+          has_custom_ai_key: true,
+          custom_ai_base_url: "https://api.openai.com/v1",
+          custom_ai_model: "gpt-4o",
+        }),
+      headers: new Headers(),
+    } as Response);
+
+    renderSettings();
+    await waitFor(() =>
+      expect(
+        screen.getByDisplayValue("https://api.openai.com/v1"),
+      ).toBeInTheDocument(),
+    );
+
+    vi.mocked(fetch).mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve(mockSettings),
+      headers: new Headers(),
+    } as Response);
+
+    await user.click(screen.getByText("Reset AI Settings"));
+
+    await waitFor(() => {
+      const calls = vi.mocked(fetch).mock.calls;
+      const putCall = calls.find(
+        (c) => c[1] && (c[1] as RequestInit).method === "PUT",
+      );
+      expect(putCall).toBeDefined();
+      const body = JSON.parse((putCall![1] as RequestInit).body as string);
+      expect(body).toEqual({
+        custom_ai_base_url: null,
+        custom_ai_api_key: null,
+        custom_ai_model: null,
+      });
+    });
+  });
+
+  it("shows error message when reset fails", async () => {
+    const user = userEvent.setup();
+    vi.mocked(fetch).mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: () =>
+        Promise.resolve({ ...mockSettings, has_custom_ai_key: true }),
+      headers: new Headers(),
+    } as Response);
+
+    renderSettings();
+    await waitFor(() =>
+      expect(screen.getByText("Reset AI Settings")).toBeInTheDocument(),
+    );
+
+    vi.mocked(fetch).mockResolvedValueOnce({
+      ok: false,
+      status: 500,
+      json: () => Promise.resolve({}),
+      headers: new Headers(),
+    } as Response);
+
+    await user.click(screen.getByText("Reset AI Settings"));
+    await waitFor(() =>
+      expect(
+        screen.getByText("Failed to reset AI settings. Please try again."),
+      ).toBeInTheDocument(),
+    );
+  });
+
+  it("resets testing state when aborting in-flight test", async () => {
+    const user = userEvent.setup();
+    renderSettings();
+    await waitFor(() =>
+      expect(screen.getByText("Settings")).toBeInTheDocument(),
+    );
+
+    await user.type(screen.getByLabelText("Base URL"), "https://api.openai.com/v1");
+    await user.type(screen.getByLabelText("AI provider API key"), "sk-test");
+    await user.type(screen.getByLabelText("Model"), "gpt-4o");
+
+    // Start a test that hangs
+    vi.mocked(fetch).mockReturnValueOnce(new Promise(() => {}));
+    await user.click(screen.getByText("Test Connection"));
+    expect(screen.getByText("Testing...")).toBeInTheDocument();
+
+    // Mock the PUT reset call and reload
+    vi.mocked(fetch).mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve(mockSettings),
+      headers: new Headers(),
+    } as Response);
+
+    await user.click(screen.getByText("Reset AI Settings"));
+    await waitFor(() =>
+      expect(screen.queryByText("Testing...")).not.toBeInTheDocument(),
+    );
+  });
+
+  it("clears test result on reset", async () => {
+    const user = userEvent.setup();
+    renderSettings();
+    await waitFor(() =>
+      expect(screen.getByText("Settings")).toBeInTheDocument(),
+    );
+
+    await user.type(screen.getByLabelText("Base URL"), "https://api.openai.com/v1");
+    await user.type(screen.getByLabelText("AI provider API key"), "sk-test");
+    await user.type(screen.getByLabelText("Model"), "gpt-4o");
+
+    vi.mocked(fetch).mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve({ valid: true }),
+      headers: new Headers(),
+    } as Response);
+
+    await user.click(screen.getByText("Test Connection"));
+    await waitFor(() =>
+      expect(screen.getByText(/Connection successful/)).toBeInTheDocument(),
+    );
+
+    vi.mocked(fetch).mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve(mockSettings),
+      headers: new Headers(),
+    } as Response);
+
+    await user.click(screen.getByText("Reset AI Settings"));
+    await waitFor(() =>
+      expect(
+        screen.queryByText(/Connection successful/),
+      ).not.toBeInTheDocument(),
+    );
+  });
+});
+
+// ============================================================================
+// Reset Search Key
+// ============================================================================
+
+describe("Settings: Reset Search Key button", () => {
+  it("shows Reset Search Key when server has a saved Brave key", async () => {
+    vi.mocked(fetch).mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: () =>
+        Promise.resolve({ ...mockSettings, has_custom_brave_key: true }),
+      headers: new Headers(),
+    } as Response);
+
+    renderSettings();
+    await waitFor(() =>
+      expect(screen.getByText("Reset Search Key")).toBeInTheDocument(),
+    );
+  });
+
+  it("hides Reset Search Key when no saved Brave key", async () => {
+    renderSettings();
+    await waitFor(() =>
+      expect(screen.getByText("Settings")).toBeInTheDocument(),
+    );
+    expect(screen.queryByText("Reset Search Key")).not.toBeInTheDocument();
+  });
+
+  it("hides Reset Search Key when user is typing a new key", async () => {
+    const user = userEvent.setup();
+    vi.mocked(fetch).mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: () =>
+        Promise.resolve({ ...mockSettings, has_custom_brave_key: true }),
+      headers: new Headers(),
+    } as Response);
+
+    renderSettings();
+    await waitFor(() =>
+      expect(screen.getByText("Reset Search Key")).toBeInTheDocument(),
+    );
+
+    await user.type(screen.getByLabelText("Brave Search API key"), "BSA-new");
+    expect(screen.queryByText("Reset Search Key")).not.toBeInTheDocument();
+  });
+
+  it("sends PUT with null brave key on click", async () => {
+    const user = userEvent.setup();
+    vi.mocked(fetch).mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: () =>
+        Promise.resolve({ ...mockSettings, has_custom_brave_key: true }),
+      headers: new Headers(),
+    } as Response);
+
+    renderSettings();
+    await waitFor(() =>
+      expect(screen.getByText("Reset Search Key")).toBeInTheDocument(),
+    );
+
+    vi.mocked(fetch).mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve(mockSettings),
+      headers: new Headers(),
+    } as Response);
+
+    await user.click(screen.getByText("Reset Search Key"));
+
+    await waitFor(() => {
+      const calls = vi.mocked(fetch).mock.calls;
+      const putCall = calls.find(
+        (c) => c[1] && (c[1] as RequestInit).method === "PUT",
+      );
+      expect(putCall).toBeDefined();
+      const body = JSON.parse((putCall![1] as RequestInit).body as string);
+      expect(body).toEqual({ custom_brave_key: null });
+    });
+  });
+
+  it("shows error message when reset fails", async () => {
+    const user = userEvent.setup();
+    vi.mocked(fetch).mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: () =>
+        Promise.resolve({ ...mockSettings, has_custom_brave_key: true }),
+      headers: new Headers(),
+    } as Response);
+
+    renderSettings();
+    await waitFor(() =>
+      expect(screen.getByText("Reset Search Key")).toBeInTheDocument(),
+    );
+
+    vi.mocked(fetch).mockResolvedValueOnce({
+      ok: false,
+      status: 500,
+      json: () => Promise.resolve({}),
+      headers: new Headers(),
+    } as Response);
+
+    await user.click(screen.getByText("Reset Search Key"));
+    await waitFor(() =>
+      expect(
+        screen.getByText("Failed to reset search key. Please try again."),
+      ).toBeInTheDocument(),
+    );
+  });
+});
