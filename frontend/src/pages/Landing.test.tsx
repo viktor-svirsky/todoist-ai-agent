@@ -59,7 +59,8 @@ describe("Landing: rendering", () => {
   it("renders GitHub links", () => {
     renderLanding();
     expect(screen.getByText("GitHub")).toBeInTheDocument();
-    expect(screen.getByText("GitHub issue")).toBeInTheDocument();
+    expect(screen.getByText("Report a Bug")).toBeInTheDocument();
+    expect(screen.getByText("Request a Feature")).toBeInTheDocument();
   });
 });
 

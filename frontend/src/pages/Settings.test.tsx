@@ -612,6 +612,158 @@ describe("Settings: accessibility", () => {
 });
 
 // ============================================================================
+// Test Connection
+// ============================================================================
+
+describe("Settings: test connection", () => {
+  it("shows Test Connection button when all AI fields are filled", async () => {
+    const user = userEvent.setup();
+    renderSettings();
+    await waitFor(() =>
+      expect(screen.getByText("Settings")).toBeInTheDocument(),
+    );
+
+    // Button should not be visible initially (fields are empty)
+    expect(screen.queryByText("Test Connection")).not.toBeInTheDocument();
+
+    // Fill all three fields
+    await user.type(screen.getByLabelText("Base URL"), "https://api.openai.com/v1");
+    await user.type(screen.getByLabelText("AI provider API key"), "sk-test");
+    await user.type(screen.getByLabelText("Model"), "gpt-4o");
+
+    expect(screen.getByText("Test Connection")).toBeInTheDocument();
+  });
+
+  it("hides Test Connection button when any AI field is empty", async () => {
+    const user = userEvent.setup();
+    renderSettings();
+    await waitFor(() =>
+      expect(screen.getByText("Settings")).toBeInTheDocument(),
+    );
+
+    // Fill only base URL and model — no key
+    await user.type(screen.getByLabelText("Base URL"), "https://api.openai.com/v1");
+    await user.type(screen.getByLabelText("Model"), "gpt-4o");
+
+    expect(screen.queryByText("Test Connection")).not.toBeInTheDocument();
+  });
+
+  it("shows success message on valid key", async () => {
+    const user = userEvent.setup();
+    renderSettings();
+    await waitFor(() =>
+      expect(screen.getByText("Settings")).toBeInTheDocument(),
+    );
+
+    await user.type(screen.getByLabelText("Base URL"), "https://api.openai.com/v1");
+    await user.type(screen.getByLabelText("AI provider API key"), "sk-test");
+    await user.type(screen.getByLabelText("Model"), "gpt-4o");
+
+    // Mock the POST validation call
+    vi.mocked(fetch).mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve({ valid: true }),
+      headers: new Headers(),
+    } as Response);
+
+    await user.click(screen.getByText("Test Connection"));
+    await waitFor(() =>
+      expect(screen.getByText(/Connection successful/)).toBeInTheDocument(),
+    );
+  });
+
+  it("shows error message on invalid key", async () => {
+    const user = userEvent.setup();
+    renderSettings();
+    await waitFor(() =>
+      expect(screen.getByText("Settings")).toBeInTheDocument(),
+    );
+
+    await user.type(screen.getByLabelText("Base URL"), "https://api.openai.com/v1");
+    await user.type(screen.getByLabelText("AI provider API key"), "sk-bad");
+    await user.type(screen.getByLabelText("Model"), "gpt-4o");
+
+    vi.mocked(fetch).mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve({ valid: false, error: "Invalid API key" }),
+      headers: new Headers(),
+    } as Response);
+
+    await user.click(screen.getByText("Test Connection"));
+    await waitFor(() =>
+      expect(screen.getByText("Invalid API key")).toBeInTheDocument(),
+    );
+  });
+
+  it("shows Testing... while request is in flight", async () => {
+    const user = userEvent.setup();
+    renderSettings();
+    await waitFor(() =>
+      expect(screen.getByText("Settings")).toBeInTheDocument(),
+    );
+
+    await user.type(screen.getByLabelText("Base URL"), "https://api.openai.com/v1");
+    await user.type(screen.getByLabelText("AI provider API key"), "sk-test");
+    await user.type(screen.getByLabelText("Model"), "gpt-4o");
+
+    // Make it hang
+    vi.mocked(fetch).mockReturnValueOnce(new Promise(() => {}));
+
+    await user.click(screen.getByText("Test Connection"));
+    expect(screen.getByText("Testing...")).toBeInTheDocument();
+  });
+
+  it("clears test result when AI fields change", async () => {
+    const user = userEvent.setup();
+    renderSettings();
+    await waitFor(() =>
+      expect(screen.getByText("Settings")).toBeInTheDocument(),
+    );
+
+    await user.type(screen.getByLabelText("Base URL"), "https://api.openai.com/v1");
+    await user.type(screen.getByLabelText("AI provider API key"), "sk-test");
+    await user.type(screen.getByLabelText("Model"), "gpt-4o");
+
+    vi.mocked(fetch).mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve({ valid: true }),
+      headers: new Headers(),
+    } as Response);
+
+    await user.click(screen.getByText("Test Connection"));
+    await waitFor(() =>
+      expect(screen.getByText(/Connection successful/)).toBeInTheDocument(),
+    );
+
+    // Change a field — result should disappear
+    await user.type(screen.getByLabelText("Model"), "-mini");
+    expect(screen.queryByText(/Connection successful/)).not.toBeInTheDocument();
+  });
+
+  it("shows network error when fetch throws", async () => {
+    const user = userEvent.setup();
+    renderSettings();
+    await waitFor(() =>
+      expect(screen.getByText("Settings")).toBeInTheDocument(),
+    );
+
+    await user.type(screen.getByLabelText("Base URL"), "https://api.openai.com/v1");
+    await user.type(screen.getByLabelText("AI provider API key"), "sk-test");
+    await user.type(screen.getByLabelText("Model"), "gpt-4o");
+
+    vi.mocked(fetch).mockRejectedValueOnce(new Error("Network failure"));
+
+    await user.click(screen.getByText("Test Connection"));
+    await waitFor(() =>
+      expect(screen.getByText("Network error.")).toBeInTheDocument(),
+    );
+  });
+});
+
+// ============================================================================
 // Message styling
 // ============================================================================
 

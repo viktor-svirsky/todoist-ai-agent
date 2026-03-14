@@ -197,6 +197,9 @@ export default function Settings() {
   const [aiModel, setAiModel] = useState("");
   const [braveKey, setBraveKey] = useState("");
   const [customPrompt, setCustomPrompt] = useState("");
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState<{ valid: boolean; error?: string } | null>(null);
+  const testAbortRef = useRef<AbortController | null>(null);
 
   async function loadSettings(token: string) {
     try {
@@ -283,6 +286,60 @@ export default function Settings() {
       setMessage("Network error. Please try again.");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleTestKey() {
+    // Abort any in-flight test request
+    testAbortRef.current?.abort();
+    const controller = new AbortController();
+    testAbortRef.current = controller;
+
+    setTesting(true);
+    setTestResult(null);
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        setTestResult({ valid: false, error: "Session expired. Please sign in again." });
+        setTesting(false);
+        return;
+      }
+
+      const res = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/settings`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${session.access_token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            base_url: aiBaseUrl,
+            api_key: aiApiKey,
+            model: aiModel,
+          }),
+          signal: controller.signal,
+        }
+      );
+
+      if (res.ok) {
+        const data = await res.json();
+        setTestResult(data);
+      } else if (res.status === 429) {
+        const retryAfter = parseInt(res.headers.get("Retry-After") ?? "60", 10) || 60;
+        setTestResult({ valid: false, error: `Too many requests. Try again in ${retryAfter}s.` });
+      } else if (res.status === 403) {
+        setTestResult({ valid: false, error: "Account disabled." });
+      } else {
+        const data = await res.json().catch(() => ({}));
+        setTestResult({ valid: false, error: data.error || "Validation request failed." });
+      }
+    } catch (err) {
+      if (err instanceof DOMException && err.name === "AbortError") return;
+      setTestResult({ valid: false, error: "Network error." });
+    } finally {
+      if (!controller.signal.aborted) setTesting(false);
     }
   }
 
@@ -434,7 +491,7 @@ export default function Settings() {
               id="ai-base-url"
               type="text"
               value={aiBaseUrl}
-              onChange={(e) => setAiBaseUrl(e.target.value)}
+              onChange={(e) => { setAiBaseUrl(e.target.value); setTestResult(null); testAbortRef.current?.abort(); }}
               className={inputClasses}
               placeholder="https://api.openai.com/v1"
             />
@@ -445,7 +502,7 @@ export default function Settings() {
             <PasswordInput
               id="ai-api-key"
               value={aiApiKey}
-              onChange={setAiApiKey}
+              onChange={(v) => { setAiApiKey(v); setTestResult(null); testAbortRef.current?.abort(); }}
               className={inputClasses}
               placeholder={settings.has_custom_ai_key ? "••••••••  (key set)" : "sk-..."}
               ariaLabel="AI provider API key"
@@ -476,11 +533,34 @@ export default function Settings() {
               id="ai-model"
               type="text"
               value={aiModel}
-              onChange={(e) => setAiModel(e.target.value)}
+              onChange={(e) => { setAiModel(e.target.value); setTestResult(null); testAbortRef.current?.abort(); }}
               className={inputClasses}
               placeholder="gpt-4o-mini"
             />
           </div>
+
+          {aiBaseUrl && aiApiKey && aiModel && (
+            <div className="space-y-2">
+              <button
+                type="button"
+                onClick={handleTestKey}
+                disabled={testing}
+                className="py-2 px-4 bg-gray-100 hover:bg-gray-200 disabled:bg-gray-100 text-gray-700 text-sm font-medium rounded-xl transition-colors cursor-pointer disabled:cursor-not-allowed focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gray-500"
+                aria-busy={testing}
+              >
+                {testing ? "Testing..." : "Test Connection"}
+              </button>
+              {testResult && (
+                <p
+                  className={`text-xs ${testResult.valid ? "text-green-600" : "text-red-600"}`}
+                  role="status"
+                  aria-live="polite"
+                >
+                  {testResult.valid ? "Connection successful — key is valid." : testResult.error}
+                </p>
+              )}
+            </div>
+          )}
         </fieldset>
 
         <fieldset className="rounded-xl bg-gray-50 p-5 space-y-4">
@@ -555,8 +635,9 @@ export default function Settings() {
         <p className="text-center text-xs text-gray-400">
           <a href="https://github.com/viktor-svirsky/todoist-ai-agent" target="_blank" rel="noopener noreferrer" className="hover:text-gray-600 transition-colors">GitHub</a>
           {" · "}
-          Questions? Open a{" "}
-          <a href="https://github.com/viktor-svirsky/todoist-ai-agent/issues" target="_blank" rel="noopener noreferrer" className="hover:text-gray-600 transition-colors">GitHub issue</a>.
+          <a href="https://github.com/viktor-svirsky/todoist-ai-agent/issues/new?template=bug_report.yml" target="_blank" rel="noopener noreferrer" className="hover:text-gray-600 transition-colors">Report a Bug</a>
+          {" · "}
+          <a href="https://github.com/viktor-svirsky/todoist-ai-agent/issues/new?template=feature_request.yml" target="_blank" rel="noopener noreferrer" className="hover:text-gray-600 transition-colors">Request a Feature</a>
         </p>
       </div>
 
