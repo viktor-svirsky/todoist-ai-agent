@@ -199,6 +199,7 @@ export default function Settings() {
   const [customPrompt, setCustomPrompt] = useState("");
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<{ valid: boolean; error?: string } | null>(null);
+  const testAbortRef = useRef<AbortController | null>(null);
 
   async function loadSettings(token: string) {
     try {
@@ -289,9 +290,13 @@ export default function Settings() {
   }
 
   async function handleTestKey() {
+    // Abort any in-flight test request
+    testAbortRef.current?.abort();
+    const controller = new AbortController();
+    testAbortRef.current = controller;
+
     setTesting(true);
     setTestResult(null);
-    const snapshotKey = aiApiKey;
 
     try {
       const { data: { session } } = await supabase.auth.getSession();
@@ -314,11 +319,9 @@ export default function Settings() {
             api_key: aiApiKey,
             model: aiModel,
           }),
+          signal: controller.signal,
         }
       );
-
-      // Discard stale response if user changed the key while request was in flight
-      if (aiApiKey !== snapshotKey) return;
 
       if (res.ok) {
         const data = await res.json();
@@ -332,10 +335,11 @@ export default function Settings() {
         const data = await res.json().catch(() => ({}));
         setTestResult({ valid: false, error: data.error || "Validation request failed." });
       }
-    } catch {
+    } catch (err) {
+      if (err instanceof DOMException && err.name === "AbortError") return;
       setTestResult({ valid: false, error: "Network error." });
     } finally {
-      setTesting(false);
+      if (!controller.signal.aborted) setTesting(false);
     }
   }
 
@@ -487,7 +491,7 @@ export default function Settings() {
               id="ai-base-url"
               type="text"
               value={aiBaseUrl}
-              onChange={(e) => { setAiBaseUrl(e.target.value); setTestResult(null); }}
+              onChange={(e) => { setAiBaseUrl(e.target.value); setTestResult(null); testAbortRef.current?.abort(); }}
               className={inputClasses}
               placeholder="https://api.openai.com/v1"
             />
@@ -498,7 +502,7 @@ export default function Settings() {
             <PasswordInput
               id="ai-api-key"
               value={aiApiKey}
-              onChange={(v) => { setAiApiKey(v); setTestResult(null); }}
+              onChange={(v) => { setAiApiKey(v); setTestResult(null); testAbortRef.current?.abort(); }}
               className={inputClasses}
               placeholder={settings.has_custom_ai_key ? "••••••••  (key set)" : "sk-..."}
               ariaLabel="AI provider API key"
@@ -529,7 +533,7 @@ export default function Settings() {
               id="ai-model"
               type="text"
               value={aiModel}
-              onChange={(e) => { setAiModel(e.target.value); setTestResult(null); }}
+              onChange={(e) => { setAiModel(e.target.value); setTestResult(null); testAbortRef.current?.abort(); }}
               className={inputClasses}
               placeholder="gpt-4o-mini"
             />

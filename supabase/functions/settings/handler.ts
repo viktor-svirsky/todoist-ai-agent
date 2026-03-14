@@ -234,6 +234,11 @@ export async function settingsHandler(req: Request): Promise<Response> {
       return jsonResponse({ error: "No fields to update" }, 400, CORS_HEADERS);
     }
 
+    // Normalize trailing slashes on base URL to prevent double-slash in API calls
+    if (typeof updates.custom_ai_base_url === "string") {
+      updates.custom_ai_base_url = updates.custom_ai_base_url.replace(/\/+$/, "");
+    }
+
     // Validate inputs
     const validationErrors = validateSettings(updates);
     if (validationErrors.length > 0) {

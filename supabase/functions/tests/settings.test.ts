@@ -616,6 +616,29 @@ t("settingsHandler: PUT updates settings successfully", async () => {
   }
 });
 
+t("settingsHandler: PUT normalizes trailing slashes on base URL", async () => {
+  let capturedBody: Record<string, unknown> | null = null;
+  const restore = mockFetch(authedMock((url, init) => {
+    if (url.includes("/rest/v1/users_config") && init?.method === "PATCH") {
+      capturedBody = JSON.parse(init?.body as string ?? "{}");
+      return new Response("{}", { status: 200, headers: { "Content-Type": "application/json" } });
+    }
+    return null;
+  }));
+  try {
+    const req = new Request("http://localhost/settings", {
+      method: "PUT",
+      headers: { Authorization: "Bearer valid-jwt", "Content-Type": "application/json" },
+      body: JSON.stringify({ custom_ai_base_url: "https://api.openai.com/v1///" }),
+    });
+    const res = await handler(req);
+    assertEquals(res.status, 200);
+    assertEquals(capturedBody?.custom_ai_base_url, "https://api.openai.com/v1");
+  } finally {
+    restore();
+  }
+});
+
 // ============================================================================
 // DELETE
 // ============================================================================
