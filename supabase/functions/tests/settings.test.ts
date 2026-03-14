@@ -71,18 +71,308 @@ t("settingsHandler: OPTIONS returns CORS headers", async () => {
   const res = await handler(req);
   assertEquals(res.status, 200);
   assertEquals(res.headers.get("Access-Control-Allow-Origin"), "https://app.example.com");
-  assertEquals(res.headers.get("Access-Control-Allow-Methods"), "GET, PUT, DELETE, OPTIONS");
+  assertEquals(res.headers.get("Access-Control-Allow-Methods"), "GET, POST, PUT, DELETE, OPTIONS");
 });
 
-t("settingsHandler: POST returns 405", async () => {
+t("settingsHandler: PATCH returns 405", async () => {
   const restore = mockFetch(authedMock());
   try {
     const req = new Request("http://localhost/settings", {
-      method: "POST",
+      method: "PATCH",
       headers: { Authorization: "Bearer valid-jwt" },
     });
     const res = await handler(req);
     assertEquals(res.status, 405);
+  } finally {
+    restore();
+  }
+});
+
+// ============================================================================
+// POST: Validate API key
+// ============================================================================
+
+t("settingsHandler: POST rejects missing fields", async () => {
+  const restore = mockFetch(authedMock());
+  try {
+    const req = new Request("http://localhost/settings", {
+      method: "POST",
+      headers: { Authorization: "Bearer valid-jwt", "Content-Type": "application/json" },
+      body: JSON.stringify({ base_url: "https://api.openai.com/v1" }),
+    });
+    const res = await handler(req);
+    assertEquals(res.status, 400);
+    const body = await res.json();
+    assertEquals(body.error, "base_url, api_key, and model are required strings");
+  } finally {
+    restore();
+  }
+});
+
+t("settingsHandler: POST rejects empty fields", async () => {
+  const restore = mockFetch(authedMock());
+  try {
+    const req = new Request("http://localhost/settings", {
+      method: "POST",
+      headers: { Authorization: "Bearer valid-jwt", "Content-Type": "application/json" },
+      body: JSON.stringify({ base_url: "https://api.openai.com/v1", api_key: "", model: "gpt-4o" }),
+    });
+    const res = await handler(req);
+    assertEquals(res.status, 400);
+    const body = await res.json();
+    assertEquals(body.error, "base_url, api_key, and model must not be empty");
+  } finally {
+    restore();
+  }
+});
+
+t("settingsHandler: POST rejects non-HTTPS URL", async () => {
+  const restore = mockFetch(authedMock());
+  try {
+    const req = new Request("http://localhost/settings", {
+      method: "POST",
+      headers: { Authorization: "Bearer valid-jwt", "Content-Type": "application/json" },
+      body: JSON.stringify({ base_url: "http://api.openai.com/v1", api_key: "sk-test", model: "gpt-4o" }),
+    });
+    const res = await handler(req);
+    assertEquals(res.status, 400);
+    const body = await res.json();
+    assertEquals(body.error, "Base URL must use HTTPS");
+  } finally {
+    restore();
+  }
+});
+
+t("settingsHandler: POST rejects private URLs", async () => {
+  const restore = mockFetch(authedMock());
+  try {
+    const req = new Request("http://localhost/settings", {
+      method: "POST",
+      headers: { Authorization: "Bearer valid-jwt", "Content-Type": "application/json" },
+      body: JSON.stringify({ base_url: "https://192.168.1.1/v1", api_key: "sk-test", model: "gpt-4o" }),
+    });
+    const res = await handler(req);
+    assertEquals(res.status, 400);
+    const body = await res.json();
+    assertEquals(body.error, "Private or internal URLs are not allowed");
+  } finally {
+    restore();
+  }
+});
+
+t("settingsHandler: POST returns valid=true on successful API response", async () => {
+  const restore = mockFetch(authedMock((url) => {
+    // Intercept the test call to OpenAI
+    if (url.includes("api.openai.com")) {
+      return new Response(JSON.stringify({ choices: [{ message: { content: "hi" } }] }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+    return null;
+  }));
+  try {
+    const req = new Request("http://localhost/settings", {
+      method: "POST",
+      headers: { Authorization: "Bearer valid-jwt", "Content-Type": "application/json" },
+      body: JSON.stringify({ base_url: "https://api.openai.com/v1", api_key: "sk-test", model: "gpt-4o" }),
+    });
+    const res = await handler(req);
+    assertEquals(res.status, 200);
+    const body = await res.json();
+    assertEquals(body.valid, true);
+  } finally {
+    restore();
+  }
+});
+
+t("settingsHandler: POST returns valid=false on 401 (invalid key)", async () => {
+  const restore = mockFetch(authedMock((url) => {
+    if (url.includes("api.openai.com")) {
+      return new Response(JSON.stringify({ error: { message: "Invalid API key" } }), {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+    return null;
+  }));
+  try {
+    const req = new Request("http://localhost/settings", {
+      method: "POST",
+      headers: { Authorization: "Bearer valid-jwt", "Content-Type": "application/json" },
+      body: JSON.stringify({ base_url: "https://api.openai.com/v1", api_key: "sk-invalid", model: "gpt-4o" }),
+    });
+    const res = await handler(req);
+    assertEquals(res.status, 200);
+    const body = await res.json();
+    assertEquals(body.valid, false);
+    assertEquals(body.error, "Invalid API key");
+  } finally {
+    restore();
+  }
+});
+
+t("settingsHandler: POST returns valid=false on 404 (bad model)", async () => {
+  const restore = mockFetch(authedMock((url) => {
+    if (url.includes("api.openai.com")) {
+      return new Response(JSON.stringify({ error: { message: "Not found" } }), {
+        status: 404,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+    return null;
+  }));
+  try {
+    const req = new Request("http://localhost/settings", {
+      method: "POST",
+      headers: { Authorization: "Bearer valid-jwt", "Content-Type": "application/json" },
+      body: JSON.stringify({ base_url: "https://api.openai.com/v1", api_key: "sk-test", model: "nonexistent" }),
+    });
+    const res = await handler(req);
+    assertEquals(res.status, 200);
+    const body = await res.json();
+    assertEquals(body.valid, false);
+    assertEquals(body.error, "Model not found or invalid base URL");
+  } finally {
+    restore();
+  }
+});
+
+t("settingsHandler: POST validates Anthropic keys correctly", async () => {
+  const restore = mockFetch(authedMock((url, init) => {
+    if (url.includes("api.anthropic.com")) {
+      // Verify Anthropic-specific headers
+      const headers = init?.headers as Record<string, string>;
+      if (headers?.["x-api-key"] === "valid-key") {
+        return new Response(JSON.stringify({ content: [{ type: "text", text: "hi" }] }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      return new Response(JSON.stringify({ error: { message: "Invalid API key" } }), {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+    return null;
+  }));
+  try {
+    const req = new Request("http://localhost/settings", {
+      method: "POST",
+      headers: { Authorization: "Bearer valid-jwt", "Content-Type": "application/json" },
+      body: JSON.stringify({ base_url: "https://api.anthropic.com/v1", api_key: "valid-key", model: "claude-sonnet-4-20250514" }),
+    });
+    const res = await handler(req);
+    assertEquals(res.status, 200);
+    const body = await res.json();
+    assertEquals(body.valid, true);
+  } finally {
+    restore();
+  }
+});
+
+t("settingsHandler: POST returns valid=false on network error", async () => {
+  const restore = mockFetch(authedMock((url) => {
+    if (url.includes("api.openai.com")) {
+      throw new Error("DNS resolution failed");
+    }
+    return null;
+  }));
+  try {
+    const req = new Request("http://localhost/settings", {
+      method: "POST",
+      headers: { Authorization: "Bearer valid-jwt", "Content-Type": "application/json" },
+      body: JSON.stringify({ base_url: "https://api.openai.com/v1", api_key: "sk-test", model: "gpt-4o" }),
+    });
+    const res = await handler(req);
+    assertEquals(res.status, 200);
+    const body = await res.json();
+    assertEquals(body.valid, false);
+    assertEquals(body.error, "Could not reach the API — check base URL");
+  } finally {
+    restore();
+  }
+});
+
+t("settingsHandler: POST returns valid=false on timeout", async () => {
+  const restore = mockFetch(authedMock((url) => {
+    if (url.includes("api.openai.com")) {
+      const err = new DOMException("The operation was aborted", "AbortError");
+      throw err;
+    }
+    return null;
+  }));
+  try {
+    const req = new Request("http://localhost/settings", {
+      method: "POST",
+      headers: { Authorization: "Bearer valid-jwt", "Content-Type": "application/json" },
+      body: JSON.stringify({ base_url: "https://api.openai.com/v1", api_key: "sk-test", model: "gpt-4o" }),
+    });
+    const res = await handler(req);
+    assertEquals(res.status, 200);
+    const body = await res.json();
+    assertEquals(body.valid, false);
+    assertEquals(body.error, "Request timed out — check base URL and try again");
+  } finally {
+    restore();
+  }
+});
+
+t("settingsHandler: POST rejects oversized api_key", async () => {
+  const restore = mockFetch(authedMock());
+  try {
+    const req = new Request("http://localhost/settings", {
+      method: "POST",
+      headers: { Authorization: "Bearer valid-jwt", "Content-Type": "application/json" },
+      body: JSON.stringify({ base_url: "https://api.openai.com/v1", api_key: "x".repeat(501), model: "gpt-4o" }),
+    });
+    const res = await handler(req);
+    assertEquals(res.status, 400);
+    const body = await res.json();
+    assertEquals(body.error, "api_key must be at most 500 characters");
+  } finally {
+    restore();
+  }
+});
+
+t("settingsHandler: POST strips trailing slash from base URL", async () => {
+  const restore = mockFetch(authedMock((url) => {
+    // Verify no double slash in the URL
+    if (url.includes("api.openai.com") && !url.includes("//chat")) {
+      return new Response(JSON.stringify({ choices: [{ message: { content: "hi" } }] }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+    return null;
+  }));
+  try {
+    const req = new Request("http://localhost/settings", {
+      method: "POST",
+      headers: { Authorization: "Bearer valid-jwt", "Content-Type": "application/json" },
+      body: JSON.stringify({ base_url: "https://api.openai.com/v1/", api_key: "sk-test", model: "gpt-4o" }),
+    });
+    const res = await handler(req);
+    assertEquals(res.status, 200);
+    const body = await res.json();
+    assertEquals(body.valid, true);
+  } finally {
+    restore();
+  }
+});
+
+t("settingsHandler: POST rejects invalid JSON body", async () => {
+  const restore = mockFetch(authedMock());
+  try {
+    const req = new Request("http://localhost/settings", {
+      method: "POST",
+      headers: { Authorization: "Bearer valid-jwt", "Content-Type": "application/json" },
+      body: "not-json",
+    });
+    const res = await handler(req);
+    assertEquals(res.status, 400);
+    const body = await res.json();
+    assertEquals(body.error, "Invalid JSON body");
   } finally {
     restore();
   }

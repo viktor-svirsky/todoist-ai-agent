@@ -62,7 +62,7 @@ sequenceDiagram
 | **Web search** | Real-time information via Brave Search API |
 | **Conversation memory** | Full message history per task |
 | **Rate limiting** | Per-user webhook and settings rate limits with account blocking |
-| **Bring your own key** | Supports Anthropic (Claude) and any OpenAI-compatible provider |
+| **Bring your own key** | Supports Anthropic (Claude) and any OpenAI-compatible provider, with key validation before save |
 | **Image support** | Attach images to comments for multimodal AI analysis |
 | **Data isolation** | Row Level Security ensures complete tenant separation |
 | **Error tracking** | Optional Sentry integration for monitoring |
@@ -268,7 +268,7 @@ deno test supabase/functions/tests/crypto.test.ts --no-check --allow-env --allow
 | **crypto.ts** | 21 | AES-256-GCM encrypt/decrypt round-trips, HMAC verification, OAuth state signing/verification |
 | **webhook** | 21 | HMAC verification, rate limiting, idempotency, request validation |
 | **todoist.ts** | 15 | All TodoistClient methods: API calls, auth headers, error handling, trusted domains |
-| **settings** | 13 | CRUD operations, auth, rate limiting, field validation |
+| **settings** | 26 | CRUD operations, auth, rate limiting, field validation, API key validation |
 | **auth-callback** | 10 | OAuth flow, token exchange, CSRF state verification, error handling |
 | **search.ts** | 6 | Brave Search: result mapping, params, headers, empty/error responses |
 | **auth-start** | 4 | OAuth initiation, CORS, state signing, error handling |
