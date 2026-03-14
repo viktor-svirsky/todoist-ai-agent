@@ -163,7 +163,7 @@ t("settingsHandler: POST rejects private URLs", async () => {
 t("settingsHandler: POST returns valid=true on successful API response", async () => {
   const restore = mockFetch(authedMock((url) => {
     // Intercept the test call to OpenAI
-    if (url.includes("api.openai.com")) {
+    if (new URL(url).hostname === "api.openai.com") {
       return new Response(JSON.stringify({ choices: [{ message: { content: "hi" } }] }), {
         status: 200,
         headers: { "Content-Type": "application/json" },
@@ -188,7 +188,7 @@ t("settingsHandler: POST returns valid=true on successful API response", async (
 
 t("settingsHandler: POST returns valid=false on 401 (invalid key)", async () => {
   const restore = mockFetch(authedMock((url) => {
-    if (url.includes("api.openai.com")) {
+    if (new URL(url).hostname === "api.openai.com") {
       return new Response(JSON.stringify({ error: { message: "Invalid API key" } }), {
         status: 401,
         headers: { "Content-Type": "application/json" },
@@ -214,7 +214,7 @@ t("settingsHandler: POST returns valid=false on 401 (invalid key)", async () => 
 
 t("settingsHandler: POST returns valid=false on 404 (bad model)", async () => {
   const restore = mockFetch(authedMock((url) => {
-    if (url.includes("api.openai.com")) {
+    if (new URL(url).hostname === "api.openai.com") {
       return new Response(JSON.stringify({ error: { message: "Not found" } }), {
         status: 404,
         headers: { "Content-Type": "application/json" },
@@ -240,7 +240,7 @@ t("settingsHandler: POST returns valid=false on 404 (bad model)", async () => {
 
 t("settingsHandler: POST validates Anthropic keys correctly", async () => {
   const restore = mockFetch(authedMock((url, init) => {
-    if (url.includes("api.anthropic.com")) {
+    if (new URL(url).hostname === "api.anthropic.com") {
       // Verify Anthropic-specific headers
       const headers = init?.headers as Record<string, string>;
       if (headers?.["x-api-key"] === "valid-key") {
@@ -273,7 +273,7 @@ t("settingsHandler: POST validates Anthropic keys correctly", async () => {
 
 t("settingsHandler: POST returns valid=false on network error", async () => {
   const restore = mockFetch(authedMock((url) => {
-    if (url.includes("api.openai.com")) {
+    if (new URL(url).hostname === "api.openai.com") {
       throw new Error("DNS resolution failed");
     }
     return null;
@@ -296,7 +296,7 @@ t("settingsHandler: POST returns valid=false on network error", async () => {
 
 t("settingsHandler: POST returns valid=false on timeout", async () => {
   const restore = mockFetch(authedMock((url) => {
-    if (url.includes("api.openai.com")) {
+    if (new URL(url).hostname === "api.openai.com") {
       const err = new DOMException("The operation was aborted", "AbortError");
       throw err;
     }
@@ -338,7 +338,7 @@ t("settingsHandler: POST rejects oversized api_key", async () => {
 t("settingsHandler: POST strips trailing slash from base URL", async () => {
   const restore = mockFetch(authedMock((url) => {
     // Verify no double slash in the URL
-    if (url.includes("api.openai.com") && !url.includes("//chat")) {
+    if (new URL(url).hostname === "api.openai.com" && !url.includes("//chat")) {
       return new Response(JSON.stringify({ choices: [{ message: { content: "hi" } }] }), {
         status: 200,
         headers: { "Content-Type": "application/json" },
