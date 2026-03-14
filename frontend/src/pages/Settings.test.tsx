@@ -1107,3 +1107,476 @@ describe("Settings: Reset Search Key button", () => {
     );
   });
 });
+
+// ============================================================================
+// Save: payload correctness & edge cases
+// ============================================================================
+
+describe("Settings: save payload and edge cases", () => {
+  it("does not include empty API keys in save payload", async () => {
+    const user = userEvent.setup();
+    renderSettings();
+    await waitFor(() =>
+      expect(screen.getByText("Settings")).toBeInTheDocument(),
+    );
+
+    vi.mocked(fetch).mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve(mockSettings),
+      headers: new Headers(),
+    } as Response);
+
+    await user.click(screen.getByText("Save Settings"));
+
+    await waitFor(() => {
+      const calls = vi.mocked(fetch).mock.calls;
+      const putCall = calls.find(
+        (c) => c[1] && (c[1] as RequestInit).method === "PUT",
+      );
+      expect(putCall).toBeDefined();
+      const body = JSON.parse((putCall![1] as RequestInit).body as string);
+      expect(body).not.toHaveProperty("custom_ai_api_key");
+      expect(body).not.toHaveProperty("custom_brave_key");
+    });
+  });
+
+  it("includes API keys in save payload when provided", async () => {
+    const user = userEvent.setup();
+    renderSettings();
+    await waitFor(() =>
+      expect(screen.getByText("Settings")).toBeInTheDocument(),
+    );
+
+    await user.type(screen.getByLabelText("AI provider API key"), "sk-test123");
+    await user.type(screen.getByLabelText("Brave Search API key"), "BSA-test");
+
+    vi.mocked(fetch).mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve(mockSettings),
+      headers: new Headers(),
+    } as Response);
+
+    await user.click(screen.getByText("Save Settings"));
+
+    await waitFor(() => {
+      const calls = vi.mocked(fetch).mock.calls;
+      const putCall = calls.find(
+        (c) => c[1] && (c[1] as RequestInit).method === "PUT",
+      );
+      expect(putCall).toBeDefined();
+      const body = JSON.parse((putCall![1] as RequestInit).body as string);
+      expect(body.custom_ai_api_key).toBe("sk-test123");
+      expect(body.custom_brave_key).toBe("BSA-test");
+    });
+  });
+
+  it("clears key inputs after successful save", async () => {
+    const user = userEvent.setup();
+    renderSettings();
+    await waitFor(() =>
+      expect(screen.getByText("Settings")).toBeInTheDocument(),
+    );
+
+    const aiKeyInput = screen.getByLabelText("AI provider API key");
+    const braveKeyInput = screen.getByLabelText("Brave Search API key");
+    await user.type(aiKeyInput, "sk-secret");
+    await user.type(braveKeyInput, "BSA-secret");
+
+    vi.mocked(fetch).mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve(mockSettings),
+      headers: new Headers(),
+    } as Response);
+
+    await user.click(screen.getByText("Save Settings"));
+    await waitFor(() =>
+      expect(screen.getByText("Settings saved.")).toBeInTheDocument(),
+    );
+
+    expect(aiKeyInput).toHaveValue("");
+    expect(braveKeyInput).toHaveValue("");
+  });
+
+  it("shows network error on save fetch exception", async () => {
+    const user = userEvent.setup();
+    renderSettings();
+    await waitFor(() =>
+      expect(screen.getByText("Settings")).toBeInTheDocument(),
+    );
+
+    vi.mocked(fetch).mockRejectedValueOnce(new Error("Connection lost"));
+
+    await user.click(screen.getByText("Save Settings"));
+    await waitFor(() =>
+      expect(
+        screen.getByText("Network error. Please try again."),
+      ).toBeInTheDocument(),
+    );
+  });
+
+  it("re-enables save button after failure", async () => {
+    const user = userEvent.setup();
+    renderSettings();
+    await waitFor(() =>
+      expect(screen.getByText("Settings")).toBeInTheDocument(),
+    );
+
+    vi.mocked(fetch).mockResolvedValueOnce({
+      ok: false,
+      status: 500,
+      json: () => Promise.resolve({}),
+      headers: new Headers(),
+    } as Response);
+
+    await user.click(screen.getByText("Save Settings"));
+    await waitFor(() =>
+      expect(screen.getByText("Save Settings")).toBeInTheDocument(),
+    );
+    expect(
+      screen.getByText("Save Settings").closest("button"),
+    ).not.toBeDisabled();
+  });
+
+  it("clears previous message when starting a new save", async () => {
+    const user = userEvent.setup();
+    renderSettings();
+    await waitFor(() =>
+      expect(screen.getByText("Settings")).toBeInTheDocument(),
+    );
+
+    // First save fails
+    vi.mocked(fetch).mockResolvedValueOnce({
+      ok: false,
+      status: 500,
+      json: () => Promise.resolve({}),
+      headers: new Headers(),
+    } as Response);
+
+    await user.click(screen.getByText("Save Settings"));
+    await waitFor(() =>
+      expect(
+        screen.getByText("Failed to save settings."),
+      ).toBeInTheDocument(),
+    );
+
+    // Second save hangs — stale error should vanish
+    vi.mocked(fetch).mockReturnValueOnce(new Promise(() => {}));
+    await user.click(screen.getByText("Save Settings"));
+    expect(
+      screen.queryByText("Failed to save settings."),
+    ).not.toBeInTheDocument();
+  });
+});
+
+// ============================================================================
+// Test Connection: additional error branches
+// ============================================================================
+
+describe("Settings: test connection error branches", () => {
+  async function fillAiFields(user: ReturnType<typeof userEvent.setup>) {
+    await user.type(screen.getByLabelText("Base URL"), "https://api.openai.com/v1");
+    await user.type(screen.getByLabelText("AI provider API key"), "sk-test");
+    await user.type(screen.getByLabelText("Model"), "gpt-4o");
+  }
+
+  it("shows rate limit error on 429", async () => {
+    const user = userEvent.setup();
+    renderSettings();
+    await waitFor(() =>
+      expect(screen.getByText("Settings")).toBeInTheDocument(),
+    );
+
+    await fillAiFields(user);
+
+    vi.mocked(fetch).mockResolvedValueOnce({
+      ok: false,
+      status: 429,
+      json: () => Promise.resolve({}),
+      headers: new Headers({ "Retry-After": "10" }),
+    } as Response);
+
+    await user.click(screen.getByText("Test Connection"));
+    await waitFor(() =>
+      expect(
+        screen.getByText("Too many requests. Try again in 10s."),
+      ).toBeInTheDocument(),
+    );
+  });
+
+  it("shows account disabled on 403", async () => {
+    const user = userEvent.setup();
+    renderSettings();
+    await waitFor(() =>
+      expect(screen.getByText("Settings")).toBeInTheDocument(),
+    );
+
+    await fillAiFields(user);
+
+    vi.mocked(fetch).mockResolvedValueOnce({
+      ok: false,
+      status: 403,
+      json: () => Promise.resolve({}),
+      headers: new Headers(),
+    } as Response);
+
+    await user.click(screen.getByText("Test Connection"));
+    await waitFor(() =>
+      expect(screen.getByText("Account disabled.")).toBeInTheDocument(),
+    );
+  });
+
+  it("shows server error message from JSON body", async () => {
+    const user = userEvent.setup();
+    renderSettings();
+    await waitFor(() =>
+      expect(screen.getByText("Settings")).toBeInTheDocument(),
+    );
+
+    await fillAiFields(user);
+
+    vi.mocked(fetch).mockResolvedValueOnce({
+      ok: false,
+      status: 422,
+      json: () => Promise.resolve({ error: "Invalid model name" }),
+      headers: new Headers(),
+    } as Response);
+
+    await user.click(screen.getByText("Test Connection"));
+    await waitFor(() =>
+      expect(screen.getByText("Invalid model name")).toBeInTheDocument(),
+    );
+  });
+
+  it("shows fallback error when response is not JSON", async () => {
+    const user = userEvent.setup();
+    renderSettings();
+    await waitFor(() =>
+      expect(screen.getByText("Settings")).toBeInTheDocument(),
+    );
+
+    await fillAiFields(user);
+
+    vi.mocked(fetch).mockResolvedValueOnce({
+      ok: false,
+      status: 500,
+      json: () => Promise.reject(new Error("not json")),
+      headers: new Headers(),
+    } as Response);
+
+    await user.click(screen.getByText("Test Connection"));
+    await waitFor(() =>
+      expect(
+        screen.getByText("Validation request failed."),
+      ).toBeInTheDocument(),
+    );
+  });
+
+  it("shows session expired error when session is null", async () => {
+    const user = userEvent.setup();
+    renderSettings();
+    await waitFor(() =>
+      expect(screen.getByText("Settings")).toBeInTheDocument(),
+    );
+
+    await fillAiFields(user);
+
+    // Session expires after initial load
+    mockGetSession.mockResolvedValue({ data: { session: null } });
+
+    await user.click(screen.getByText("Test Connection"));
+    await waitFor(() =>
+      expect(
+        screen.getByText("Session expired. Please sign in again."),
+      ).toBeInTheDocument(),
+    );
+  });
+});
+
+// ============================================================================
+// Delete account: error branches
+// ============================================================================
+
+describe("Settings: delete account error handling", () => {
+  async function openAndConfirmDelete(user: ReturnType<typeof userEvent.setup>) {
+    await user.click(screen.getByText("Disconnect & Delete Account"));
+    await user.click(screen.getByRole("button", { name: "Delete Account" }));
+  }
+
+  it("shows rate limit error on 429 and does not sign out", async () => {
+    const user = userEvent.setup();
+    renderSettings();
+    await waitFor(() =>
+      expect(screen.getByText("Settings")).toBeInTheDocument(),
+    );
+
+    vi.mocked(fetch).mockResolvedValueOnce({
+      ok: false,
+      status: 429,
+      json: () => Promise.resolve({}),
+      headers: new Headers({ "Retry-After": "20" }),
+    } as Response);
+
+    await openAndConfirmDelete(user);
+    await waitFor(() =>
+      expect(
+        screen.getByText(
+          "Too many requests. Please try again in 20 seconds.",
+        ),
+      ).toBeInTheDocument(),
+    );
+    expect(mockSignOut).not.toHaveBeenCalled();
+    expect(mockNavigate).not.toHaveBeenCalledWith("/");
+  });
+
+  it("shows disabled error on 403 and does not sign out", async () => {
+    const user = userEvent.setup();
+    renderSettings();
+    await waitFor(() =>
+      expect(screen.getByText("Settings")).toBeInTheDocument(),
+    );
+
+    vi.mocked(fetch).mockResolvedValueOnce({
+      ok: false,
+      status: 403,
+      json: () => Promise.resolve({}),
+      headers: new Headers(),
+    } as Response);
+
+    await openAndConfirmDelete(user);
+    await waitFor(() =>
+      expect(
+        screen.getByText(
+          "Your account has been disabled. Please contact support.",
+        ),
+      ).toBeInTheDocument(),
+    );
+    expect(mockSignOut).not.toHaveBeenCalled();
+  });
+
+  it("shows generic error on 500 and does not sign out", async () => {
+    const user = userEvent.setup();
+    renderSettings();
+    await waitFor(() =>
+      expect(screen.getByText("Settings")).toBeInTheDocument(),
+    );
+
+    vi.mocked(fetch).mockResolvedValueOnce({
+      ok: false,
+      status: 500,
+      json: () => Promise.resolve({}),
+      headers: new Headers(),
+    } as Response);
+
+    await openAndConfirmDelete(user);
+    await waitFor(() =>
+      expect(
+        screen.getByText("Failed to delete account. Please try again."),
+      ).toBeInTheDocument(),
+    );
+    expect(mockSignOut).not.toHaveBeenCalled();
+  });
+
+  it("shows network error on fetch exception and does not sign out", async () => {
+    const user = userEvent.setup();
+    renderSettings();
+    await waitFor(() =>
+      expect(screen.getByText("Settings")).toBeInTheDocument(),
+    );
+
+    vi.mocked(fetch).mockRejectedValueOnce(new Error("Network down"));
+
+    await openAndConfirmDelete(user);
+    await waitFor(() =>
+      expect(
+        screen.getByText("Network error. Please try again."),
+      ).toBeInTheDocument(),
+    );
+    expect(mockSignOut).not.toHaveBeenCalled();
+  });
+});
+
+// ============================================================================
+// Error screen retry button
+// ============================================================================
+
+describe("Settings: error screen retry", () => {
+  it("retries loading on Retry button click", async () => {
+    const user = userEvent.setup();
+
+    // Initial load fails
+    vi.mocked(fetch).mockResolvedValueOnce({
+      ok: false,
+      status: 500,
+      json: () => Promise.resolve({}),
+      headers: new Headers(),
+    } as Response);
+
+    renderSettings();
+    await waitFor(() =>
+      expect(
+        screen.getByText("Failed to load settings."),
+      ).toBeInTheDocument(),
+    );
+
+    // Retry succeeds
+    vi.mocked(fetch).mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve(mockSettings),
+      headers: new Headers(),
+    } as Response);
+
+    await user.click(screen.getByText("Retry"));
+    await waitFor(() =>
+      expect(screen.getByText("Settings")).toBeInTheDocument(),
+    );
+  });
+
+  it("redirects to / on retry when session expired", async () => {
+    const user = userEvent.setup();
+
+    vi.mocked(fetch).mockResolvedValueOnce({
+      ok: false,
+      status: 500,
+      json: () => Promise.resolve({}),
+      headers: new Headers(),
+    } as Response);
+
+    renderSettings();
+    await waitFor(() =>
+      expect(
+        screen.getByText("Failed to load settings."),
+      ).toBeInTheDocument(),
+    );
+
+    mockGetSession.mockResolvedValue({ data: { session: null } });
+
+    await user.click(screen.getByText("Retry"));
+    await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith("/"));
+  });
+});
+
+// ============================================================================
+// Confirm modal: backdrop interactions
+// ============================================================================
+
+describe("Settings: confirm modal backdrop", () => {
+  it("closes modal when clicking backdrop", async () => {
+    const user = userEvent.setup();
+    renderSettings();
+    await waitFor(() =>
+      expect(screen.getByText("Settings")).toBeInTheDocument(),
+    );
+
+    await user.click(screen.getByText("Disconnect & Delete Account"));
+    const dialog = screen.getByRole("dialog");
+    expect(dialog).toBeInTheDocument();
+
+    // Click the backdrop (the outer overlay div)
+    await user.click(dialog);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+});
