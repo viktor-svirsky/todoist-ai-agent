@@ -540,6 +540,7 @@ export default function Settings() {
                 type="button"
                 onClick={async () => {
                   testAbortRef.current?.abort();
+                  setTesting(false);
                   setTestResult(null);
                   const { data: { session } } = await supabase.auth.getSession();
                   if (!session) return;
