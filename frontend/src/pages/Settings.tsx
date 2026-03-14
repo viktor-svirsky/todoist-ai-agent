@@ -507,24 +507,6 @@ export default function Settings() {
               placeholder={settings.has_custom_ai_key ? "••••••••  (key set)" : "sk-..."}
               ariaLabel="AI provider API key"
             />
-            {settings.has_custom_ai_key && !aiApiKey && (
-              <button
-                type="button"
-                onClick={async () => {
-                  const { data: { session } } = await supabase.auth.getSession();
-                  if (!session) return;
-                  await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/settings`, {
-                    method: "PUT",
-                    headers: { Authorization: `Bearer ${session.access_token}`, "Content-Type": "application/json" },
-                    body: JSON.stringify({ custom_ai_api_key: null }),
-                  });
-                  await loadSettings(session.access_token);
-                }}
-                className="mt-1 text-xs text-red-500 hover:text-red-700 transition-colors cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-500 rounded"
-              >
-                Clear saved key
-              </button>
-            )}
           </div>
 
           <div>
@@ -539,27 +521,56 @@ export default function Settings() {
             />
           </div>
 
-          {aiBaseUrl && aiApiKey && aiModel && (
-            <div className="space-y-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            {aiBaseUrl && aiApiKey && aiModel && (
+              <div className="space-y-2">
+                <button
+                  type="button"
+                  onClick={handleTestKey}
+                  disabled={testing}
+                  className="py-2 px-4 bg-gray-100 hover:bg-gray-200 disabled:bg-gray-100 text-gray-700 text-sm font-medium rounded-xl transition-colors cursor-pointer disabled:cursor-not-allowed focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gray-500"
+                  aria-busy={testing}
+                >
+                  {testing ? "Testing..." : "Test Connection"}
+                </button>
+              </div>
+            )}
+            {(settings.has_custom_ai_key || aiBaseUrl || aiApiKey || aiModel) && (
               <button
                 type="button"
-                onClick={handleTestKey}
-                disabled={testing}
-                className="py-2 px-4 bg-gray-100 hover:bg-gray-200 disabled:bg-gray-100 text-gray-700 text-sm font-medium rounded-xl transition-colors cursor-pointer disabled:cursor-not-allowed focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gray-500"
-                aria-busy={testing}
+                onClick={async () => {
+                  testAbortRef.current?.abort();
+                  setTestResult(null);
+                  const { data: { session } } = await supabase.auth.getSession();
+                  if (!session) return;
+                  const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/settings`, {
+                    method: "PUT",
+                    headers: { Authorization: `Bearer ${session.access_token}`, "Content-Type": "application/json" },
+                    body: JSON.stringify({ custom_ai_base_url: null, custom_ai_api_key: null, custom_ai_model: null }),
+                  });
+                  if (!res.ok) {
+                    setMessage("Failed to reset AI settings. Please try again.");
+                    return;
+                  }
+                  setAiBaseUrl("");
+                  setAiApiKey("");
+                  setAiModel("");
+                  await loadSettings(session.access_token);
+                }}
+                className="py-2 px-4 bg-red-50 hover:bg-red-100 text-red-600 text-sm font-medium rounded-xl transition-colors cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-500"
               >
-                {testing ? "Testing..." : "Test Connection"}
+                Reset AI Settings
               </button>
-              {testResult && (
-                <p
-                  className={`text-xs ${testResult.valid ? "text-green-600" : "text-red-600"}`}
-                  role="status"
-                  aria-live="polite"
-                >
-                  {testResult.valid ? "Connection successful — key is valid." : testResult.error}
-                </p>
-              )}
-            </div>
+            )}
+          </div>
+          {aiBaseUrl && aiApiKey && aiModel && testResult && (
+            <p
+              className={`text-xs ${testResult.valid ? "text-green-600" : "text-red-600"}`}
+              role="status"
+              aria-live="polite"
+            >
+              {testResult.valid ? "Connection successful — key is valid." : testResult.error}
+            </p>
           )}
         </fieldset>
 
@@ -583,25 +594,30 @@ export default function Settings() {
               placeholder={settings.has_custom_brave_key ? "••••••••  (key set)" : "BSA..."}
               ariaLabel="Brave Search API key"
             />
-            {settings.has_custom_brave_key && !braveKey && (
-              <button
-                type="button"
-                onClick={async () => {
-                  const { data: { session } } = await supabase.auth.getSession();
-                  if (!session) return;
-                  await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/settings`, {
-                    method: "PUT",
-                    headers: { Authorization: `Bearer ${session.access_token}`, "Content-Type": "application/json" },
-                    body: JSON.stringify({ custom_brave_key: null }),
-                  });
-                  await loadSettings(session.access_token);
-                }}
-                className="mt-1 text-xs text-red-500 hover:text-red-700 transition-colors cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-500 rounded"
-              >
-                Clear saved key
-              </button>
-            )}
           </div>
+          {settings.has_custom_brave_key && !braveKey && (
+            <button
+              type="button"
+              onClick={async () => {
+                const { data: { session } } = await supabase.auth.getSession();
+                if (!session) return;
+                const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/settings`, {
+                  method: "PUT",
+                  headers: { Authorization: `Bearer ${session.access_token}`, "Content-Type": "application/json" },
+                  body: JSON.stringify({ custom_brave_key: null }),
+                });
+                if (!res.ok) {
+                  setMessage("Failed to reset search key. Please try again.");
+                  return;
+                }
+                setBraveKey("");
+                await loadSettings(session.access_token);
+              }}
+              className="py-2 px-4 bg-red-50 hover:bg-red-100 text-red-600 text-sm font-medium rounded-xl transition-colors cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-500"
+            >
+              Reset Search Key
+            </button>
+          )}
         </fieldset>
 
         {message && (
