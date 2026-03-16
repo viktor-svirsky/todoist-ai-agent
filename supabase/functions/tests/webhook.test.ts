@@ -764,11 +764,16 @@ function mockFullFlowWithImages(options: {
     ? "https://api.anthropic.com/v1"
     : "https://api.openai.com/v1";
 
+  // Save original env vars so restore() can clean up
+  const prevBaseUrl = Deno.env.get("DEFAULT_AI_BASE_URL");
+  const prevApiKey = Deno.env.get("DEFAULT_AI_API_KEY");
+  const prevModel = Deno.env.get("DEFAULT_AI_MODEL");
+
   Deno.env.set("DEFAULT_AI_BASE_URL", aiBaseUrl);
   Deno.env.set("DEFAULT_AI_API_KEY", "test-key");
   Deno.env.set("DEFAULT_AI_MODEL", useAnthropic ? "claude-3-5-sonnet" : "gpt-4o-mini");
 
-  return mockFetch((url, init) => {
+  const restoreFetch = mockFetch((url, init) => {
     // Supabase
     if (url.includes("/rest/v1/users_config") && init?.method !== "POST" && !url.includes("rpc")) {
       return new Response(JSON.stringify(mockUserConfig()), {
@@ -853,6 +858,17 @@ function mockFullFlowWithImages(options: {
       status: 200, headers: { "Content-Type": "image/png" },
     });
   });
+
+  return () => {
+    restoreFetch();
+    // Restore env vars to prevent leakage between tests
+    if (prevBaseUrl !== undefined) Deno.env.set("DEFAULT_AI_BASE_URL", prevBaseUrl);
+    else Deno.env.delete("DEFAULT_AI_BASE_URL");
+    if (prevApiKey !== undefined) Deno.env.set("DEFAULT_AI_API_KEY", prevApiKey);
+    else Deno.env.delete("DEFAULT_AI_API_KEY");
+    if (prevModel !== undefined) Deno.env.set("DEFAULT_AI_MODEL", prevModel);
+    else Deno.env.delete("DEFAULT_AI_MODEL");
+  };
 }
 
 // -- A. Comment Image Attachments --
