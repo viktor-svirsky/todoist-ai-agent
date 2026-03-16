@@ -1,4 +1,4 @@
-import { assertEquals } from "@std/assert";
+import { assert, assertEquals } from "@std/assert";
 
 // ---------------------------------------------------------------------------
 // Env + dynamic import setup
@@ -740,6 +740,515 @@ t("webhookHandler: item:updated skips when AI already responded", async () => {
     assertEquals(res.status, 200);
     await new Promise((r) => setTimeout(r, 100));
     assertEquals(rpcCalled, false, "item:updated should skip when AI already commented");
+  } finally {
+    restore();
+  }
+});
+
+// ============================================================================
+// Image handling in webhook flow
+// ============================================================================
+
+const MOCK_PNG_BYTES = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]);
+
+function mockFullFlowWithImages(options: {
+  commentsResponse?: unknown[];
+  taskDescription?: string;
+  onAiRequest?: (body: Record<string, unknown>) => void;
+  failImageDownload?: boolean;
+  useAnthropic?: boolean;
+} = {}): () => void {
+  const useAnthropic = options.useAnthropic ?? false;
+  const aiHost = useAnthropic ? "api.anthropic.com" : "api.openai.com";
+  const aiBaseUrl = useAnthropic
+    ? "https://api.anthropic.com/v1"
+    : "https://api.openai.com/v1";
+
+  // Save original env vars so restore() can clean up
+  const prevBaseUrl = Deno.env.get("DEFAULT_AI_BASE_URL");
+  const prevApiKey = Deno.env.get("DEFAULT_AI_API_KEY");
+  const prevModel = Deno.env.get("DEFAULT_AI_MODEL");
+
+  Deno.env.set("DEFAULT_AI_BASE_URL", aiBaseUrl);
+  Deno.env.set("DEFAULT_AI_API_KEY", "test-key");
+  Deno.env.set("DEFAULT_AI_MODEL", useAnthropic ? "claude-3-5-sonnet" : "gpt-4o-mini");
+
+  const restoreFetch = mockFetch((url, init) => {
+    // Supabase
+    if (url.includes("/rest/v1/users_config") && init?.method !== "POST" && !url.includes("rpc")) {
+      return new Response(JSON.stringify(mockUserConfig()), {
+        status: 200, headers: { "Content-Type": "application/json" },
+      });
+    }
+    if (url.includes("/rest/v1/rpc/try_claim_event")) {
+      return new Response("true", { status: 200, headers: { "Content-Type": "application/json" } });
+    }
+    if (url.includes("/rest/v1/rpc/check_rate_limit")) {
+      return new Response(JSON.stringify({ allowed: true, blocked: false, retry_after: 0 }), {
+        status: 200, headers: { "Content-Type": "application/json" },
+      });
+    }
+    if (url.includes("/rest/v1/rpc/increment_ai_requests")) {
+      return new Response("null", { status: 200, headers: { "Content-Type": "application/json" } });
+    }
+
+    let host: string;
+    try { host = new URL(url).hostname; } catch { host = ""; }
+
+    // Todoist API
+    if (host === "api.todoist.com") {
+      if (url.includes("/comments") && init?.method === "POST") {
+        return new Response(JSON.stringify({ id: "progress-1" }), {
+          status: 200, headers: { "Content-Type": "application/json" },
+        });
+      }
+      if (url.includes("/comments")) {
+        return new Response(JSON.stringify({ results: options.commentsResponse ?? [] }), {
+          status: 200, headers: { "Content-Type": "application/json" },
+        });
+      }
+      if (url.includes("/tasks/")) {
+        return new Response(JSON.stringify({
+          content: "Test task",
+          description: options.taskDescription ?? "",
+        }), {
+          status: 200, headers: { "Content-Type": "application/json" },
+        });
+      }
+    }
+
+    // Todoist CDN (trusted file download domains)
+    if (
+      (host.endsWith(".todoist.com") && host !== "api.todoist.com") ||
+      host.endsWith(".doist.com") ||
+      host.endsWith(".todoist.net")
+    ) {
+      if (options.failImageDownload) {
+        return new Response("Not Found", { status: 404 });
+      }
+      return new Response(MOCK_PNG_BYTES, {
+        status: 200, headers: { "Content-Type": "image/png" },
+      });
+    }
+
+    // AI API
+    if (host === aiHost) {
+      if (options.onAiRequest && init?.body) {
+        options.onAiRequest(JSON.parse(String(init.body)));
+      }
+      if (useAnthropic) {
+        return new Response(JSON.stringify({
+          content: [{ type: "text", text: "AI response" }],
+        }), {
+          status: 200, headers: { "Content-Type": "application/json" },
+        });
+      }
+      return new Response(JSON.stringify({
+        choices: [{ message: { content: "AI response", role: "assistant" } }],
+      }), {
+        status: 200, headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    // External URLs (description image downloads)
+    if (options.failImageDownload) {
+      return new Response("Not Found", { status: 404 });
+    }
+    return new Response(MOCK_PNG_BYTES, {
+      status: 200, headers: { "Content-Type": "image/png" },
+    });
+  });
+
+  return () => {
+    restoreFetch();
+    // Restore env vars to prevent leakage between tests
+    if (prevBaseUrl !== undefined) Deno.env.set("DEFAULT_AI_BASE_URL", prevBaseUrl);
+    else Deno.env.delete("DEFAULT_AI_BASE_URL");
+    if (prevApiKey !== undefined) Deno.env.set("DEFAULT_AI_API_KEY", prevApiKey);
+    else Deno.env.delete("DEFAULT_AI_API_KEY");
+    if (prevModel !== undefined) Deno.env.set("DEFAULT_AI_MODEL", prevModel);
+    else Deno.env.delete("DEFAULT_AI_MODEL");
+  };
+}
+
+// -- A. Comment Image Attachments --
+
+t("image: comment with text + image includes image in AI request", async () => {
+  let capturedBody: Record<string, unknown> | null = null;
+
+  const restore = mockFullFlowWithImages({
+    commentsResponse: [
+      {
+        id: "img-comment-1",
+        content: "@ai What is this?",
+        posted_at: "2026-01-01T00:00:00Z",
+        file_attachment: {
+          file_type: "image/png",
+          file_name: "photo.png",
+          file_url: "https://files.todoist.com/photo.png",
+        },
+      },
+    ],
+    onAiRequest: (body) => { capturedBody = body; },
+  });
+
+  try {
+    const payload = JSON.stringify(makePayload({
+      event_data: { id: "img-comment-1", content: "@ai What is this?", item_id: "task-1" },
+    }));
+    const req = await signedRequest(payload);
+    const res = await handler(req);
+    assertEquals(res.status, 200);
+    await new Promise((r) => setTimeout(r, 300));
+
+    assert(capturedBody !== null, "AI API should have been called");
+    const messages = capturedBody!.messages as Record<string, unknown>[];
+    const lastUser = [...messages].reverse().find((m) => m.role === "user");
+    assert(lastUser, "Should have a user message");
+    assert(Array.isArray(lastUser.content), "Last user message should be multimodal array");
+    const parts = lastUser.content as Record<string, unknown>[];
+    const textPart = parts.find((p) => p.type === "text");
+    const imageParts = parts.filter((p) => p.type === "image_url");
+    assert(textPart, "Should have text part");
+    assertEquals(imageParts.length, 1, "Should have exactly one image part");
+    const imageUrl = (imageParts[0].image_url as { url: string }).url;
+    assert(imageUrl.startsWith("data:image/png;base64,"), "Image should be base64 data URI");
+  } finally {
+    restore();
+  }
+});
+
+t("image: image-only comment (trigger word only) appears as [image]", async () => {
+  let capturedBody: Record<string, unknown> | null = null;
+
+  const restore = mockFullFlowWithImages({
+    commentsResponse: [
+      {
+        id: "img-only-1",
+        content: "@ai",
+        posted_at: "2026-01-01T00:00:00Z",
+        file_attachment: {
+          file_type: "image/png",
+          file_name: "photo.png",
+          file_url: "https://files.todoist.com/photo.png",
+        },
+      },
+    ],
+    onAiRequest: (body) => { capturedBody = body; },
+  });
+
+  try {
+    const payload = JSON.stringify(makePayload({
+      event_data: { id: "img-only-1", content: "@ai", item_id: "task-1" },
+    }));
+    const req = await signedRequest(payload);
+    const res = await handler(req);
+    assertEquals(res.status, 200);
+    await new Promise((r) => setTimeout(r, 300));
+
+    assert(capturedBody !== null, "AI API should have been called");
+    const messages = capturedBody!.messages as Record<string, unknown>[];
+    const lastUser = [...messages].reverse().find((m) => m.role === "user");
+    assert(lastUser, "Should have a user message");
+    assert(Array.isArray(lastUser.content), "Last user message should be multimodal");
+    const parts = lastUser.content as Record<string, unknown>[];
+    const textPart = parts.find((p) => p.type === "text") as { text: string } | undefined;
+    assert(textPart, "Should have text part");
+    assertEquals(textPart!.text, "[image]", "Text should be [image] for trigger-only comment");
+    assert(parts.some((p) => p.type === "image_url"), "Should have image_url part");
+  } finally {
+    restore();
+  }
+});
+
+t("image: multiple comments with images attaches all to last user message", async () => {
+  let capturedBody: Record<string, unknown> | null = null;
+
+  const restore = mockFullFlowWithImages({
+    commentsResponse: [
+      {
+        id: "c1",
+        content: "@ai First question",
+        posted_at: "2026-01-01T00:00:00Z",
+        file_attachment: {
+          file_type: "image/png",
+          file_name: "first.png",
+          file_url: "https://files.todoist.com/first.png",
+        },
+      },
+      {
+        id: "c2",
+        content: "\u{1F916} **AI Agent**\n\nHere's my answer",
+        posted_at: "2026-01-01T00:01:00Z",
+      },
+      {
+        id: "c3",
+        content: "@ai Follow up",
+        posted_at: "2026-01-01T00:02:00Z",
+        file_attachment: {
+          file_type: "image/jpeg",
+          file_name: "second.jpg",
+          file_url: "https://files.todoist.com/second.jpg",
+        },
+      },
+    ],
+    onAiRequest: (body) => { capturedBody = body; },
+  });
+
+  try {
+    const payload = JSON.stringify(makePayload({
+      event_data: { id: "c3", content: "@ai Follow up", item_id: "task-1" },
+    }));
+    const req = await signedRequest(payload);
+    const res = await handler(req);
+    assertEquals(res.status, 200);
+    await new Promise((r) => setTimeout(r, 300));
+
+    assert(capturedBody !== null, "AI API should have been called");
+    const messages = capturedBody!.messages as Record<string, unknown>[];
+    const lastUser = [...messages].reverse().find((m) => m.role === "user");
+    assert(lastUser, "Should have a user message");
+    assert(Array.isArray(lastUser.content), "Last user message should be multimodal");
+    const imageParts = (lastUser.content as Record<string, unknown>[]).filter(
+      (p) => p.type === "image_url",
+    );
+    assertEquals(imageParts.length, 2, "Both images should be attached to last user message");
+  } finally {
+    restore();
+  }
+});
+
+t("image: download failure is handled gracefully, AI still processes", async () => {
+  let capturedBody: Record<string, unknown> | null = null;
+
+  const restore = mockFullFlowWithImages({
+    commentsResponse: [
+      {
+        id: "fail-img-1",
+        content: "@ai Analyze this",
+        posted_at: "2026-01-01T00:00:00Z",
+        file_attachment: {
+          file_type: "image/png",
+          file_name: "broken.png",
+          file_url: "https://files.todoist.com/broken.png",
+        },
+      },
+    ],
+    failImageDownload: true,
+    onAiRequest: (body) => { capturedBody = body; },
+  });
+
+  try {
+    const payload = JSON.stringify(makePayload({
+      event_data: { id: "fail-img-1", content: "@ai Analyze this", item_id: "task-1" },
+    }));
+    const req = await signedRequest(payload);
+    const res = await handler(req);
+    assertEquals(res.status, 200);
+    await new Promise((r) => setTimeout(r, 300));
+
+    assert(capturedBody !== null, "AI should be called despite image download failure");
+    const messages = capturedBody!.messages as Record<string, unknown>[];
+    const lastUser = [...messages].reverse().find((m) => m.role === "user");
+    assert(lastUser, "Should have a user message");
+    assertEquals(typeof lastUser.content, "string", "No images — content should be plain string");
+  } finally {
+    restore();
+  }
+});
+
+t("image: non-image attachment (PDF) is ignored", async () => {
+  let capturedBody: Record<string, unknown> | null = null;
+
+  const restore = mockFullFlowWithImages({
+    commentsResponse: [
+      {
+        id: "pdf-1",
+        content: "@ai Check this document",
+        posted_at: "2026-01-01T00:00:00Z",
+        file_attachment: {
+          file_type: "application/pdf",
+          file_name: "document.pdf",
+          file_url: "https://files.todoist.com/document.pdf",
+        },
+      },
+    ],
+    onAiRequest: (body) => { capturedBody = body; },
+  });
+
+  try {
+    const payload = JSON.stringify(makePayload({
+      event_data: { id: "pdf-1", content: "@ai Check this document", item_id: "task-1" },
+    }));
+    const req = await signedRequest(payload);
+    const res = await handler(req);
+    assertEquals(res.status, 200);
+    await new Promise((r) => setTimeout(r, 300));
+
+    assert(capturedBody !== null, "AI should be called");
+    const messages = capturedBody!.messages as Record<string, unknown>[];
+    const lastUser = [...messages].reverse().find((m) => m.role === "user");
+    assert(lastUser, "Should have a user message");
+    assertEquals(typeof lastUser.content, "string", "PDF should not produce image parts");
+    assertEquals(lastUser.content, "Check this document");
+  } finally {
+    restore();
+  }
+});
+
+// -- B. Task Description Images --
+
+t("image: description markdown image is included in AI request", async () => {
+  let capturedBody: Record<string, unknown> | null = null;
+
+  const restore = mockFullFlowWithImages({
+    commentsResponse: [
+      {
+        id: "desc-img-1",
+        content: "@ai Analyze the task",
+        posted_at: "2026-01-01T00:00:00Z",
+      },
+    ],
+    taskDescription: "Task details: ![screenshot](https://cdn.example.com/screenshot.png)",
+    onAiRequest: (body) => { capturedBody = body; },
+  });
+
+  try {
+    const payload = JSON.stringify(makePayload({
+      event_data: { id: "desc-img-1", content: "@ai Analyze the task", item_id: "task-1" },
+    }));
+    const req = await signedRequest(payload);
+    const res = await handler(req);
+    assertEquals(res.status, 200);
+    await new Promise((r) => setTimeout(r, 300));
+
+    assert(capturedBody !== null, "AI should be called");
+    const messages = capturedBody!.messages as Record<string, unknown>[];
+    const lastUser = [...messages].reverse().find((m) => m.role === "user");
+    assert(lastUser, "Should have a user message");
+    assert(Array.isArray(lastUser.content), "Should have multimodal content with description image");
+    const imageParts = (lastUser.content as Record<string, unknown>[]).filter(
+      (p) => p.type === "image_url",
+    );
+    assertEquals(imageParts.length, 1, "Should have one image from description");
+    const imageUrl = (imageParts[0].image_url as { url: string }).url;
+    assert(imageUrl.startsWith("data:image/png;base64,"), "Image should be base64 data URI");
+  } finally {
+    restore();
+  }
+});
+
+t("image: description image from private IP is rejected (SSRF)", async () => {
+  let capturedBody: Record<string, unknown> | null = null;
+
+  const restore = mockFullFlowWithImages({
+    commentsResponse: [
+      {
+        id: "ssrf-1",
+        content: "@ai Look at this",
+        posted_at: "2026-01-01T00:00:00Z",
+      },
+    ],
+    taskDescription: "Reference: ![img](https://192.168.1.1/secret.png)",
+    onAiRequest: (body) => { capturedBody = body; },
+  });
+
+  try {
+    const payload = JSON.stringify(makePayload({
+      event_data: { id: "ssrf-1", content: "@ai Look at this", item_id: "task-1" },
+    }));
+    const req = await signedRequest(payload);
+    const res = await handler(req);
+    assertEquals(res.status, 200);
+    await new Promise((r) => setTimeout(r, 300));
+
+    assert(capturedBody !== null, "AI should process despite SSRF-blocked image");
+    const messages = capturedBody!.messages as Record<string, unknown>[];
+    const lastUser = [...messages].reverse().find((m) => m.role === "user");
+    assert(lastUser, "Should have a user message");
+    assertEquals(typeof lastUser.content, "string", "Private IP image should be rejected — no images");
+  } finally {
+    restore();
+  }
+});
+
+t("image: description image with HTTP protocol is rejected", async () => {
+  let capturedBody: Record<string, unknown> | null = null;
+
+  const restore = mockFullFlowWithImages({
+    commentsResponse: [
+      {
+        id: "http-1",
+        content: "@ai Check this",
+        posted_at: "2026-01-01T00:00:00Z",
+      },
+    ],
+    taskDescription: "See: ![img](http://example.com/image.png)",
+    onAiRequest: (body) => { capturedBody = body; },
+  });
+
+  try {
+    const payload = JSON.stringify(makePayload({
+      event_data: { id: "http-1", content: "@ai Check this", item_id: "task-1" },
+    }));
+    const req = await signedRequest(payload);
+    const res = await handler(req);
+    assertEquals(res.status, 200);
+    await new Promise((r) => setTimeout(r, 300));
+
+    assert(capturedBody !== null, "AI should process despite rejected HTTP image");
+    const messages = capturedBody!.messages as Record<string, unknown>[];
+    const lastUser = [...messages].reverse().find((m) => m.role === "user");
+    assert(lastUser, "Should have a user message");
+    assertEquals(typeof lastUser.content, "string", "HTTP image should be rejected — no images");
+  } finally {
+    restore();
+  }
+});
+
+// -- C. Anthropic Provider --
+
+t("image: Anthropic provider converts to base64 source format", async () => {
+  let capturedBody: Record<string, unknown> | null = null;
+
+  const restore = mockFullFlowWithImages({
+    commentsResponse: [
+      {
+        id: "anth-img-1",
+        content: "@ai What is this?",
+        posted_at: "2026-01-01T00:00:00Z",
+        file_attachment: {
+          file_type: "image/png",
+          file_name: "photo.png",
+          file_url: "https://files.todoist.com/photo.png",
+        },
+      },
+    ],
+    onAiRequest: (body) => { capturedBody = body; },
+    useAnthropic: true,
+  });
+
+  try {
+    const payload = JSON.stringify(makePayload({
+      event_data: { id: "anth-img-1", content: "@ai What is this?", item_id: "task-1" },
+    }));
+    const req = await signedRequest(payload);
+    const res = await handler(req);
+    assertEquals(res.status, 200);
+    await new Promise((r) => setTimeout(r, 300));
+
+    assert(capturedBody !== null, "AI API should have been called");
+    const messages = capturedBody!.messages as Record<string, unknown>[];
+    const lastUser = [...messages].reverse().find((m) => m.role === "user");
+    assert(lastUser, "Should have a user message");
+    assert(Array.isArray(lastUser.content), "Last user message should be multimodal");
+    const parts = lastUser.content as Record<string, unknown>[];
+    const imagePart = parts.find((p) => p.type === "image");
+    assert(imagePart, "Should have Anthropic-format image part");
+    const source = imagePart.source as { type: string; media_type: string; data: string };
+    assertEquals(source.type, "base64");
+    assertEquals(source.media_type, "image/png");
+    assert(source.data.length > 0, "Image data should not be empty");
   } finally {
     restore();
   }
