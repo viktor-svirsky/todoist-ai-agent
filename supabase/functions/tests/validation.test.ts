@@ -1,5 +1,5 @@
 import { assertEquals } from "@std/assert";
-import { validateSettings, isPrivateHostname, sanitizeImageMediaType } from "../_shared/validation.ts";
+import { validateSettings, isPrivateHostname, sanitizeImageMediaType, extractMarkdownImageUrls, guessMediaType } from "../_shared/validation.ts";
 
 // -- max_messages --
 
@@ -301,4 +301,77 @@ Deno.test("sanitizeImageMediaType: handles undefined", () => {
 
 Deno.test("sanitizeImageMediaType: handles empty string", () => {
   assertEquals(sanitizeImageMediaType(""), "image/png");
+});
+
+// -- extractMarkdownImageUrls --
+
+Deno.test("extractMarkdownImageUrls: extracts single image URL", () => {
+  assertEquals(
+    extractMarkdownImageUrls("Check this: ![screenshot](https://files.todoist.com/img.png)"),
+    ["https://files.todoist.com/img.png"]
+  );
+});
+
+Deno.test("extractMarkdownImageUrls: extracts multiple image URLs", () => {
+  const text = "![a](https://files.todoist.com/a.png) and ![b](https://files.todoist.com/b.jpg)";
+  assertEquals(extractMarkdownImageUrls(text), [
+    "https://files.todoist.com/a.png",
+    "https://files.todoist.com/b.jpg",
+  ]);
+});
+
+Deno.test("extractMarkdownImageUrls: empty alt text", () => {
+  assertEquals(
+    extractMarkdownImageUrls("![](https://files.todoist.com/img.png)"),
+    ["https://files.todoist.com/img.png"]
+  );
+});
+
+Deno.test("extractMarkdownImageUrls: no images returns empty", () => {
+  assertEquals(extractMarkdownImageUrls("Just some text"), []);
+});
+
+Deno.test("extractMarkdownImageUrls: ignores regular links", () => {
+  assertEquals(extractMarkdownImageUrls("[click here](https://example.com)"), []);
+});
+
+Deno.test("extractMarkdownImageUrls: empty string returns empty", () => {
+  assertEquals(extractMarkdownImageUrls(""), []);
+});
+
+Deno.test("extractMarkdownImageUrls: handles URLs with parentheses", () => {
+  assertEquals(
+    extractMarkdownImageUrls("![img](https://example.com/path(1).png)"),
+    ["https://example.com/path(1).png"]
+  );
+});
+
+// -- guessMediaType --
+
+Deno.test("guessMediaType: detects png", () => {
+  assertEquals(guessMediaType("https://files.todoist.com/img.png"), "image/png");
+});
+
+Deno.test("guessMediaType: detects jpeg", () => {
+  assertEquals(guessMediaType("https://files.todoist.com/photo.jpeg"), "image/jpeg");
+});
+
+Deno.test("guessMediaType: detects jpg", () => {
+  assertEquals(guessMediaType("https://files.todoist.com/photo.jpg"), "image/jpeg");
+});
+
+Deno.test("guessMediaType: detects gif", () => {
+  assertEquals(guessMediaType("https://files.todoist.com/anim.gif"), "image/gif");
+});
+
+Deno.test("guessMediaType: detects webp", () => {
+  assertEquals(guessMediaType("https://files.todoist.com/img.webp"), "image/webp");
+});
+
+Deno.test("guessMediaType: defaults to png for unknown extension", () => {
+  assertEquals(guessMediaType("https://files.todoist.com/file.bmp"), "image/png");
+});
+
+Deno.test("guessMediaType: defaults to png for invalid URL", () => {
+  assertEquals(guessMediaType("not-a-url"), "image/png");
 });

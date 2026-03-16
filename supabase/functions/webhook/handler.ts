@@ -7,6 +7,7 @@ import {
   DEFAULT_AI_MODEL,
   DEFAULT_MAX_MESSAGES,
   MAX_WEBHOOK_BODY_BYTES,
+  MAX_IMAGE_SIZE_BYTES,
 } from "../_shared/constants.ts";
 import {
   getRateLimitConfig,
@@ -15,7 +16,7 @@ import {
 import { commentsToMessages, normalizeModel } from "../_shared/messages.ts";
 import { captureException } from "../_shared/sentry.ts";
 import { uint8ToBase64, verifyHmac, decrypt, decryptIfPresent } from "../_shared/crypto.ts";
-import { sanitizeImageMediaType, isPrivateHostname } from "../_shared/validation.ts";
+import { sanitizeImageMediaType, isPrivateHostname, extractMarkdownImageUrls, guessMediaType } from "../_shared/validation.ts";
 import type { TodoistComment, TodoistWebhookEvent, UserConfig } from "../_shared/types.ts";
 
 // ---------------------------------------------------------------------------
@@ -83,7 +84,7 @@ async function runAiForTask(
     // Only download images from comments within the message window (#96)
     const imageComments = comments.filter(
       (c: TodoistComment) =>
-        c.file_attachment?.resource_type === "image" &&
+        c.file_attachment?.file_type?.startsWith("image/") &&
         windowCommentIds.has(c.id)
     );
     const imageResults = await Promise.allSettled(
@@ -110,6 +111,52 @@ async function runAiForTask(
     const images = imageResults
       .filter((r): r is PromiseFulfilledResult<{ data: string; mediaType: string }> => r.status === "fulfilled")
       .map((r) => r.value);
+
+    // Download images embedded in task description via markdown syntax (cap at 5 to prevent DoS)
+    if (task.description) {
+      const descImageUrls = extractMarkdownImageUrls(task.description).slice(0, 5);
+      if (descImageUrls.length > 0) {
+        const descResults = await Promise.allSettled(
+          descImageUrls.map(async (url: string) => {
+            // Validate URL: HTTPS only, no private/internal hosts (SSRF prevention)
+            try {
+              const parsed = new URL(url);
+              if (parsed.protocol !== "https:" || isPrivateHostname(parsed.hostname)) return null;
+            } catch {
+              return null;
+            }
+            // Plain fetch without auth — description images may be external
+            const res = await fetch(url);
+            if (!res.ok) throw new Error(`Download failed: ${res.status}`);
+            const contentLength = res.headers.get("content-length");
+            if (contentLength && Number(contentLength) > MAX_IMAGE_SIZE_BYTES) {
+              throw new Error(`File exceeds maximum size of ${MAX_IMAGE_SIZE_BYTES / (1024 * 1024)} MB`);
+            }
+            const bytes = new Uint8Array(await res.arrayBuffer());
+            if (bytes.byteLength > MAX_IMAGE_SIZE_BYTES) {
+              throw new Error(`File exceeds maximum size of ${MAX_IMAGE_SIZE_BYTES / (1024 * 1024)} MB`);
+            }
+            return { data: uint8ToBase64(bytes), mediaType: sanitizeImageMediaType(guessMediaType(url)) };
+          })
+        );
+        const descRejected = descResults.filter((r) => r.status === "rejected");
+        if (descRejected.length > 0) {
+          console.warn("Some description image downloads failed", {
+            requestId,
+            taskId,
+            failedCount: descRejected.length,
+            errors: descRejected.map((r) =>
+              (r as PromiseRejectedResult).reason instanceof Error
+                ? (r as PromiseRejectedResult).reason.message
+                : String((r as PromiseRejectedResult).reason)
+            ),
+          });
+        }
+        for (const r of descResults) {
+          if (r.status === "fulfilled" && r.value) images.push(r.value);
+        }
+      }
+    }
 
     const aiConfig = {
       baseUrl: (
