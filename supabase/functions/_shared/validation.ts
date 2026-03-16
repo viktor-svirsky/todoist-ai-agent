@@ -112,6 +112,31 @@ export function validateSettings(
   return errors;
 }
 
+/** Extract image URLs from markdown ![alt](url) syntax.
+ *  Handles URLs with balanced parentheses (e.g. `path(1).png`). */
+export function extractMarkdownImageUrls(text: string): string[] {
+  const regex = /!\[[^\]]*\]\(([^()\s]+(?:\([^)]*\)[^()\s]*)*)\)/g;
+  const urls: string[] = [];
+  let match;
+  while ((match = regex.exec(text)) !== null) {
+    urls.push(match[1]);
+  }
+  return urls;
+}
+
+/** Guess media type from a URL's file extension. */
+export function guessMediaType(url: string): string {
+  try {
+    const pathname = new URL(url).pathname;
+    const ext = pathname.split(".").pop()?.toLowerCase();
+    if (ext === "jpg" || ext === "jpeg") return "image/jpeg";
+    if (ext === "png") return "image/png";
+    if (ext === "gif") return "image/gif";
+    if (ext === "webp") return "image/webp";
+  } catch { /* ignore */ }
+  return "image/png";
+}
+
 const ALLOWED_IMAGE_TYPES = new Set([
   "image/png",
   "image/jpeg",

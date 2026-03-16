@@ -33,7 +33,8 @@ export function commentsToMessages(
     if (comment.id === progressCommentId) continue;
 
     const content: string = comment.content ?? "";
-    if (!content.trim()) continue;
+    const hasImageAttachment = !!comment.file_attachment?.file_type?.startsWith("image/");
+    if (!content.trim() && !hasImageAttachment) continue;
 
     if (content.startsWith(AI_INDICATOR)) {
       if (content === PROGRESS_INDICATOR) continue;
@@ -46,8 +47,8 @@ export function commentsToMessages(
       continue;
     } else {
       const stripped = content.replace(triggerRegex, "").replace(/\s+/g, " ").trim();
-      if (stripped) {
-        messages.push({ role: "user", content: stripped });
+      if (stripped || hasImageAttachment) {
+        messages.push({ role: "user", content: stripped || "[image]" });
         commentIds.push(comment.id);
       }
     }

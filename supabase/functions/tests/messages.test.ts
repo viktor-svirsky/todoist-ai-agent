@@ -149,6 +149,91 @@ Deno.test("empty comments array: returns empty", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Image attachment handling
+// ---------------------------------------------------------------------------
+
+Deno.test("image-only comment (no text): included as [image] placeholder", () => {
+  const comments = [{
+    id: "1",
+    content: "",
+    file_attachment: { file_type: "image/png", file_name: "img.png", file_url: "https://files.todoist.com/img.png" },
+  }];
+  const result = commentsToMessages(comments, "@ai", "none");
+  assertEquals(result.messages, [{ role: "user", content: "[image]" }]);
+  assertEquals(result.commentIds, ["1"]);
+});
+
+Deno.test("comment with text and attachment: text content used, ID tracked", () => {
+  const comments = [{
+    id: "1",
+    content: "@ai what is this?",
+    file_attachment: { file_type: "image/png", file_name: "img.png", file_url: "https://files.todoist.com/img.png" },
+  }];
+  const result = commentsToMessages(comments, "@ai", "none");
+  assertEquals(result.messages, [{ role: "user", content: "what is this?" }]);
+  assertEquals(result.commentIds, ["1"]);
+});
+
+Deno.test("image-only comment with null content: included as [image]", () => {
+  const comments = [{
+    id: "1",
+    content: null,
+    file_attachment: { file_type: "image/png", file_name: "img.png", file_url: "https://files.todoist.com/img.png" },
+  }];
+  const result = commentsToMessages(comments, "@ai", "none");
+  assertEquals(result.messages, [{ role: "user", content: "[image]" }]);
+  assertEquals(result.commentIds, ["1"]);
+});
+
+Deno.test("comment with only trigger word + attachment: included as [image]", () => {
+  const comments = [{
+    id: "1",
+    content: "@ai",
+    file_attachment: { file_type: "image/png", file_name: "img.png", file_url: "https://files.todoist.com/img.png" },
+  }];
+  const result = commentsToMessages(comments, "@ai", "none");
+  assertEquals(result.messages, [{ role: "user", content: "[image]" }]);
+  assertEquals(result.commentIds, ["1"]);
+});
+
+Deno.test("empty comment without attachment: still skipped", () => {
+  const comments = [{ id: "1", content: "" }];
+  const result = commentsToMessages(comments, "@ai", "none");
+  assertEquals(result.messages, []);
+  assertEquals(result.commentIds, []);
+});
+
+Deno.test("non-image attachment (PDF) without text: skipped", () => {
+  const comments = [{
+    id: "1",
+    content: "",
+    file_attachment: { file_type: "application/pdf", file_name: "doc.pdf", file_url: "https://files.todoist.com/doc.pdf" },
+  }];
+  const result = commentsToMessages(comments, "@ai", "none");
+  assertEquals(result.messages, []);
+  assertEquals(result.commentIds, []);
+});
+
+Deno.test("multi-turn with image-only comment in middle: preserved in order", () => {
+  const comments = [
+    { id: "1", content: "@ai help" },
+    { id: "2", content: `${AI_INDICATOR}\n\nSure, send me the image.` },
+    {
+      id: "3",
+      content: "",
+      file_attachment: { file_type: "image/png", file_name: "img.png", file_url: "https://files.todoist.com/img.png" },
+    },
+  ];
+  const result = commentsToMessages(comments, "@ai", "none");
+  assertEquals(result.messages, [
+    { role: "user", content: "help" },
+    { role: "assistant", content: "Sure, send me the image." },
+    { role: "user", content: "[image]" },
+  ]);
+  assertEquals(result.commentIds, ["1", "2", "3"]);
+});
+
+// ---------------------------------------------------------------------------
 // normalizeBaseUrl — covers the trailing-space production bug
 // ---------------------------------------------------------------------------
 

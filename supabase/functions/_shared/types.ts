@@ -3,9 +3,11 @@
 // ---------------------------------------------------------------------------
 
 export interface TodoistFileAttachment {
-  resource_type: string;
-  file_url: string;
   file_type: string;
+  file_name: string;
+  file_url: string;
+  file_size?: number;
+  upload_state?: string;
 }
 
 export interface TodoistComment {
