@@ -126,15 +126,39 @@ async function runAiForTask(
               return null;
             }
             // Plain fetch without auth — description images may be external
-            const res = await fetch(url);
+            // Reject redirects to prevent SSRF bypass via open redirectors
+            const res = await fetch(url, { redirect: "error" });
             if (!res.ok) throw new Error(`Download failed: ${res.status}`);
             const contentLength = res.headers.get("content-length");
             if (contentLength && Number(contentLength) > MAX_IMAGE_SIZE_BYTES) {
               throw new Error(`File exceeds maximum size of ${MAX_IMAGE_SIZE_BYTES / (1024 * 1024)} MB`);
             }
-            const bytes = new Uint8Array(await res.arrayBuffer());
-            if (bytes.byteLength > MAX_IMAGE_SIZE_BYTES) {
-              throw new Error(`File exceeds maximum size of ${MAX_IMAGE_SIZE_BYTES / (1024 * 1024)} MB`);
+            // Stream body to enforce size limit without buffering entire response
+            if (!res.body) {
+              const bytes = new Uint8Array(await res.arrayBuffer());
+              if (bytes.byteLength > MAX_IMAGE_SIZE_BYTES) {
+                throw new Error(`File exceeds maximum size of ${MAX_IMAGE_SIZE_BYTES / (1024 * 1024)} MB`);
+              }
+              return { data: uint8ToBase64(bytes), mediaType: sanitizeImageMediaType(guessMediaType(url)) };
+            }
+            const chunks: Uint8Array[] = [];
+            let totalSize = 0;
+            const reader = res.body.getReader();
+            while (true) {
+              const { done, value } = await reader.read();
+              if (done) break;
+              totalSize += value.byteLength;
+              if (totalSize > MAX_IMAGE_SIZE_BYTES) {
+                reader.cancel();
+                throw new Error(`File exceeds maximum size of ${MAX_IMAGE_SIZE_BYTES / (1024 * 1024)} MB`);
+              }
+              chunks.push(value);
+            }
+            const bytes = new Uint8Array(totalSize);
+            let offset = 0;
+            for (const chunk of chunks) {
+              bytes.set(chunk, offset);
+              offset += chunk.byteLength;
             }
             return { data: uint8ToBase64(bytes), mediaType: sanitizeImageMediaType(guessMediaType(url)) };
           })
