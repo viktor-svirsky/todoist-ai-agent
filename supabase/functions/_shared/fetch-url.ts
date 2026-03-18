@@ -5,16 +5,20 @@ import {
   MAX_FETCH_CONTENT_CHARS,
 } from "./constants.ts";
 
-/** Decode HTML entities to plain characters. */
+/** Decode HTML entities to plain characters.
+ *  Order matters: named entities (&lt;, &gt;) are decoded BEFORE numeric
+ *  entities (&#38;, &#x26;) so that &#38;lt; cannot become &lt; → <.
+ *  &amp; is decoded last for the same reason.
+ */
 function decodeEntities(text: string): string {
   return text
-    .replace(/&#x([0-9a-fA-F]+);/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
-    .replace(/&#(\d+);/g, (_, dec) => String.fromCharCode(Number(dec)))
     .replace(/&nbsp;/g, " ")
     .replace(/&quot;/g, '"')
     .replace(/&#39;/g, "'")
     .replace(/&lt;/g, "<")
     .replace(/&gt;/g, ">")
+    .replace(/&#x([0-9a-fA-F]+);/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
+    .replace(/&#(\d+);/g, (_, dec) => String.fromCharCode(Number(dec)))
     .replace(/&amp;/g, "&");
 }
 
@@ -46,7 +50,6 @@ export function htmlToText(html: string): string {
   text = text.replace(/<[^>]+>/g, "");
 
   // Decode entities AFTER tag stripping so decoded chars can't form new tags.
-  // Decode &amp; last so &amp;lt; → &lt; does not then become <
   text = decodeEntities(text);
 
   // Collapse whitespace
@@ -107,9 +110,12 @@ export async function fetchUrl(url: string): Promise<string> {
       return `Error: page too large (${Math.round(Number(contentLength) / 1024 / 1024)}MB, limit ${MAX_FETCH_BYTES / 1024 / 1024}MB).`;
     }
 
-    // Stream body with size limit
+    // Fallback for responses with no readable stream
     if (!res.body) {
       const raw = await res.text();
+      if (new TextEncoder().encode(raw).byteLength > MAX_FETCH_BYTES) {
+        return "Error: page too large, download aborted.";
+      }
       const text = isHtml ? htmlToText(raw) : raw.trim();
       if (!text) return "Error: page returned empty content.";
       if (text.length > MAX_FETCH_CONTENT_CHARS) {
@@ -128,7 +134,7 @@ export async function fetchUrl(url: string): Promise<string> {
       if (done) break;
       totalBytes += value.byteLength;
       if (totalBytes > MAX_FETCH_BYTES) {
-        reader.cancel();
+        await reader.cancel();
         return "Error: page too large, download aborted.";
       }
       raw += decoder.decode(value, { stream: true });

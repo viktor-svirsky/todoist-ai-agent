@@ -271,7 +271,7 @@ deno test supabase/functions/tests/crypto.test.ts --no-check --allow-env --allow
 | Module | Tests | What's covered |
 |--------|-------|----------------|
 | **ai.ts** | 61 | `buildMessages` (custom prompts, images, edge cases), `executePrompt` (OpenAI + Anthropic providers, tool calls, multi-tool batching, model fallback on overload, fetch_url tool) |
-| **fetch-url.ts** | 30 | `htmlToText` (tag stripping, entity decoding, whitespace), `fetchUrl` (SSRF blocking, content-type filtering, size limits, error handling) |
+| **fetch-url.ts** | 31 | `htmlToText` (tag stripping, entity decoding, whitespace), `fetchUrl` (SSRF blocking, content-type filtering, size limits, error handling) |
 | **validation.ts** | 33 | All settings fields: type checks, boundaries, nulls, multi-field errors, SSRF prevention |
 | **messages.ts** | 30 | Comment parsing, trigger word stripping, special chars, normalize helpers |
 | **rate-limit.ts** | 29 | Config parsing, env overrides, rate limit checks, account blocking |
