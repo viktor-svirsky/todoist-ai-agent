@@ -999,3 +999,174 @@ Deno.test("executePrompt (Anthropic): final response fallback after exhausted to
     globalThis.fetch = originalFetch;
   }
 });
+
+// ---------------------------------------------------------------------------
+// executePrompt — fetch_url tool
+// ---------------------------------------------------------------------------
+
+Deno.test("executePrompt: fetch_url tool always included even without braveApiKey", async () => {
+  let capturedBody: Record<string, unknown> = {};
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = ((_input: unknown, init?: RequestInit) => {
+    capturedBody = JSON.parse((init?.body as string) || "{}");
+    return Promise.resolve(new Response(JSON.stringify({
+      choices: [{ message: { content: "ok" } }],
+    }), { status: 200, headers: { "Content-Type": "application/json" } }));
+  }) as typeof fetch;
+  try {
+    await executePrompt([{ role: "system", content: "test" }], BASE_CONFIG);
+    const tools = capturedBody.tools as Record<string, unknown>[];
+    assertEquals(Array.isArray(tools), true);
+    const toolNames = tools.map((t) => (t.function as Record<string, unknown>).name);
+    assertEquals(toolNames.includes("fetch_url"), true);
+    assertEquals(toolNames.includes("web_search"), false);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+Deno.test("executePrompt: both fetch_url and web_search included with braveApiKey", async () => {
+  let capturedBody: Record<string, unknown> = {};
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = ((_input: unknown, init?: RequestInit) => {
+    capturedBody = JSON.parse((init?.body as string) || "{}");
+    return Promise.resolve(new Response(JSON.stringify({
+      choices: [{ message: { content: "ok" } }],
+    }), { status: 200, headers: { "Content-Type": "application/json" } }));
+  }) as typeof fetch;
+  try {
+    await executePrompt([{ role: "system", content: "test" }], { ...BASE_CONFIG, braveApiKey: "key" });
+    const tools = capturedBody.tools as Record<string, unknown>[];
+    assertEquals(Array.isArray(tools), true);
+    const toolNames = tools.map((t) => (t.function as Record<string, unknown>).name);
+    assertEquals(toolNames.includes("fetch_url"), true);
+    assertEquals(toolNames.includes("web_search"), true);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+Deno.test("executePrompt (Anthropic): fetch_url tool always included", async () => {
+  let capturedBody: Record<string, unknown> = {};
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = ((_input: unknown, init?: RequestInit) => {
+    capturedBody = JSON.parse((init?.body as string) || "{}");
+    return Promise.resolve(new Response(JSON.stringify({
+      content: [{ type: "text", text: "ok" }],
+    }), { status: 200, headers: { "Content-Type": "application/json" } }));
+  }) as typeof fetch;
+  try {
+    await executePrompt([{ role: "user", content: "test" }], ANTHROPIC_CONFIG);
+    const tools = capturedBody.tools as Record<string, unknown>[];
+    assertEquals(Array.isArray(tools), true);
+    const toolNames = tools.map((t) => t.name);
+    assertEquals(toolNames.includes("fetch_url"), true);
+    assertEquals(toolNames.includes("web_search"), false);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+Deno.test("executePrompt: handles fetch_url tool call", async () => {
+  const originalFetch = globalThis.fetch;
+  let callIndex = 0;
+  const responses = [
+    // 1st fetch: AI call — model requests fetch_url
+    {
+      status: 200,
+      body: {
+        choices: [{
+          message: {
+            content: null,
+            tool_calls: [{
+              id: "call_1",
+              type: "function",
+              function: { name: "fetch_url", arguments: '{"url":"https://example.com"}' },
+            }],
+          },
+        }],
+      },
+    },
+    // 2nd fetch: fetchUrl fetches the page
+    {
+      status: 200,
+      body: "<html><body><p>Page content here</p></body></html>",
+      contentType: "text/html",
+    },
+    // 3rd fetch: AI returns final answer
+    {
+      status: 200,
+      body: { choices: [{ message: { content: "Based on the page content" } }] },
+    },
+  ];
+  globalThis.fetch = ((input: unknown, _init?: RequestInit) => {
+    const url = String(input);
+    const response = responses[callIndex++];
+    if (!response) throw new Error(`Unexpected fetch #${callIndex}: ${url}`);
+    const isHtml = typeof response.body === "string";
+    return Promise.resolve(new Response(
+      isHtml ? response.body : JSON.stringify(response.body),
+      {
+        status: response.status,
+        headers: {
+          "Content-Type": isHtml ? "text/html" : "application/json",
+        },
+      }
+    ));
+  }) as typeof fetch;
+  try {
+    const result = await executePrompt([{ role: "system", content: "test" }], BASE_CONFIG);
+    assertEquals(result, "Based on the page content");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+Deno.test("executePrompt (Anthropic): handles fetch_url tool call", async () => {
+  const originalFetch = globalThis.fetch;
+  let callIndex = 0;
+  const responses = [
+    // 1st fetch: AI call — Anthropic model requests fetch_url
+    {
+      status: 200,
+      body: {
+        content: [
+          { type: "text", text: "Let me read that page." },
+          { type: "tool_use", id: "toolu_1", name: "fetch_url", input: { url: "https://example.com" } },
+        ],
+      },
+    },
+    // 2nd fetch: fetchUrl fetches the page
+    {
+      status: 200,
+      body: "<html><body><p>Anthropic page content</p></body></html>",
+      contentType: "text/html",
+    },
+    // 3rd fetch: AI returns final answer
+    {
+      status: 200,
+      body: { content: [{ type: "text", text: "Based on the Anthropic page content" }] },
+    },
+  ];
+  globalThis.fetch = ((input: unknown, _init?: RequestInit) => {
+    const url = String(input);
+    const response = responses[callIndex++];
+    if (!response) throw new Error(`Unexpected fetch #${callIndex}: ${url}`);
+    const isHtml = typeof response.body === "string";
+    return Promise.resolve(new Response(
+      isHtml ? response.body : JSON.stringify(response.body),
+      {
+        status: response.status,
+        headers: {
+          "Content-Type": isHtml ? "text/html" : "application/json",
+        },
+      }
+    ));
+  }) as typeof fetch;
+  try {
+    const result = await executePrompt([{ role: "user", content: "test" }], ANTHROPIC_CONFIG);
+    assertEquals(result, "Based on the Anthropic page content");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});

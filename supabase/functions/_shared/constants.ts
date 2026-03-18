@@ -27,3 +27,7 @@ export const RATE_LIMIT_WINDOW_SECONDS = 120;
 
 export const MAX_WEBHOOK_BODY_BYTES = 1024 * 1024; // 1 MB
 export const MAX_AI_RESPONSE_BYTES = 10 * 1024 * 1024; // 10 MB
+
+export const FETCH_URL_TIMEOUT_MS = 15_000; // 15 seconds
+export const MAX_FETCH_BYTES = 2 * 1024 * 1024; // 2 MB
+export const MAX_FETCH_CONTENT_CHARS = 50_000; // 50k characters
