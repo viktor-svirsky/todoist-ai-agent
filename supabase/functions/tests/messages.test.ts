@@ -203,15 +203,78 @@ Deno.test("empty comment without attachment: still skipped", () => {
   assertEquals(result.commentIds, []);
 });
 
-Deno.test("non-image attachment (PDF) without text: skipped", () => {
+Deno.test("PDF attachment without text: included as [file: doc.pdf] placeholder", () => {
   const comments = [{
     id: "1",
     content: "",
     file_attachment: { file_type: "application/pdf", file_name: "doc.pdf", file_url: "https://files.todoist.com/doc.pdf" },
   }];
   const result = commentsToMessages(comments, "@ai", "none");
-  assertEquals(result.messages, []);
-  assertEquals(result.commentIds, []);
+  assertEquals(result.messages, [{ role: "user", content: "[file: doc.pdf]" }]);
+  assertEquals(result.commentIds, ["1"]);
+});
+
+Deno.test("PDF attachment with text: text content used, ID tracked", () => {
+  const comments = [{
+    id: "1",
+    content: "@ai analyze this document",
+    file_attachment: { file_type: "application/pdf", file_name: "report.pdf", file_url: "https://files.todoist.com/report.pdf" },
+  }];
+  const result = commentsToMessages(comments, "@ai", "none");
+  assertEquals(result.messages, [{ role: "user", content: "analyze this document" }]);
+  assertEquals(result.commentIds, ["1"]);
+});
+
+Deno.test("PDF attachment with null content: included as [file: doc.pdf]", () => {
+  const comments = [{
+    id: "1",
+    content: null,
+    file_attachment: { file_type: "application/pdf", file_name: "doc.pdf", file_url: "https://files.todoist.com/doc.pdf" },
+  }];
+  const result = commentsToMessages(comments, "@ai", "none");
+  assertEquals(result.messages, [{ role: "user", content: "[file: doc.pdf]" }]);
+  assertEquals(result.commentIds, ["1"]);
+});
+
+Deno.test("XLS attachment without text: included as [file: data.xlsx] placeholder", () => {
+  const comments = [{
+    id: "1",
+    content: "",
+    file_attachment: { file_type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", file_name: "data.xlsx", file_url: "https://files.todoist.com/data.xlsx" },
+  }];
+  const result = commentsToMessages(comments, "@ai", "none");
+  assertEquals(result.messages, [{ role: "user", content: "[file: data.xlsx]" }]);
+  assertEquals(result.commentIds, ["1"]);
+});
+
+Deno.test("file attachment with only trigger word: included as [file: doc.pdf]", () => {
+  const comments = [{
+    id: "1",
+    content: "@ai",
+    file_attachment: { file_type: "application/pdf", file_name: "doc.pdf", file_url: "https://files.todoist.com/doc.pdf" },
+  }];
+  const result = commentsToMessages(comments, "@ai", "none");
+  assertEquals(result.messages, [{ role: "user", content: "[file: doc.pdf]" }]);
+  assertEquals(result.commentIds, ["1"]);
+});
+
+Deno.test("multi-turn with file attachment in middle: preserved in order", () => {
+  const comments = [
+    { id: "1", content: "@ai help" },
+    { id: "2", content: `${AI_INDICATOR}\n\nSure, send me the file.` },
+    {
+      id: "3",
+      content: "",
+      file_attachment: { file_type: "application/pdf", file_name: "report.pdf", file_url: "https://files.todoist.com/report.pdf" },
+    },
+  ];
+  const result = commentsToMessages(comments, "@ai", "none");
+  assertEquals(result.messages, [
+    { role: "user", content: "help" },
+    { role: "assistant", content: "Sure, send me the file." },
+    { role: "user", content: "[file: report.pdf]" },
+  ]);
+  assertEquals(result.commentIds, ["1", "2", "3"]);
 });
 
 Deno.test("multi-turn with image-only comment in middle: preserved in order", () => {

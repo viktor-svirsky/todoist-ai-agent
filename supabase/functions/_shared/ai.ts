@@ -19,6 +19,12 @@ interface ImageAttachment {
   mediaType: string;
 }
 
+export interface DocumentAttachment {
+  data: string;
+  mediaType: string;
+  fileName: string;
+}
+
 export interface AiConfig {
   baseUrl: string;
   apiKey: string;
@@ -37,6 +43,7 @@ const SYSTEM_PROMPT = [
   "You help solve tasks by reasoning and providing clear, actionable answers.",
   "You can search the web when you need current information.",
   "You can fetch and read web pages when a user shares a URL or when you need content from a specific page.",
+  "Users may attach files (like PDFs) to their comments — you can read and analyze their contents.",
   "Respond concisely — your reply will be posted as a Todoist comment.",
 ].join("\n");
 
@@ -118,7 +125,8 @@ export function buildMessages(
   taskDescription: string | undefined,
   messages: Message[],
   images?: ImageAttachment[],
-  customPrompt?: string | null
+  customPrompt?: string | null,
+  documents?: DocumentAttachment[],
 ): ApiMessage[] {
   const taskContext = [
     `Current task: "${taskContent}"`,
@@ -139,7 +147,8 @@ export function buildMessages(
     result.push({ role: msg.role, content: msg.content });
   }
 
-  if (images && images.length > 0) {
+  const hasAttachments = (images && images.length > 0) || (documents && documents.length > 0);
+  if (hasAttachments) {
     let lastUserIdx = -1;
     for (let i = result.length - 1; i >= 0; i--) {
       if (result[i].role === "user") { lastUserIdx = i; break; }
@@ -148,16 +157,36 @@ export function buildMessages(
       const textContent = typeof result[lastUserIdx].content === "string"
         ? result[lastUserIdx].content
         : "";
-      result[lastUserIdx] = {
-        role: "user",
-        content: [
-          { type: "text", text: textContent },
-          ...images.map((img) => ({
+      // deno-lint-ignore no-explicit-any
+      const parts: any[] = [{ type: "text", text: textContent }];
+      if (images) {
+        for (const img of images) {
+          parts.push({
             type: "image_url",
             image_url: { url: `data:${img.mediaType};base64,${img.data}` },
-          })),
-        ],
-      };
+          });
+        }
+      }
+      if (documents) {
+        for (const doc of documents) {
+          if (doc.data) {
+            // Supported document with content — will be converted per-provider
+            parts.push({
+              type: "document_attachment",
+              file_name: doc.fileName,
+              media_type: doc.mediaType,
+              data: doc.data,
+            });
+          } else {
+            // Unsupported file type — text placeholder for all providers
+            parts.push({
+              type: "text",
+              text: `[Attached file: ${doc.fileName} — only PDF files are supported for AI processing]`,
+            });
+          }
+        }
+      }
+      result[lastUserIdx] = { role: "user", content: parts };
     }
   }
 
@@ -175,8 +204,25 @@ function openaiHeaders(apiKey: string): Record<string, string> {
   };
 }
 
+/** Convert document_attachment parts to text placeholders for OpenAI-compatible providers. */
+function sanitizeDocumentsForOpenAi(messages: ApiMessage[]): ApiMessage[] {
+  return messages.map((msg) => {
+    if (msg.role !== "user" || !Array.isArray(msg.content)) return msg;
+    const parts = (msg.content as Record<string, unknown>[]).map((part) => {
+      if (part.type === "document_attachment") {
+        return {
+          type: "text",
+          text: `[Attached file: ${part.file_name} — document processing requires Anthropic provider]`,
+        };
+      }
+      return part;
+    });
+    return { ...msg, content: parts };
+  });
+}
+
 function openaiBody(model: string, messages: ApiMessage[], maxTokens: number, tools: Record<string, unknown>[]): Record<string, unknown> {
-  const body: Record<string, unknown> = { model, messages, max_tokens: maxTokens };
+  const body: Record<string, unknown> = { model, messages: sanitizeDocumentsForOpenAi(messages), max_tokens: maxTokens };
   if (tools.length > 0) body.tools = tools;
   return body;
 }
@@ -229,7 +275,7 @@ function toAnthropicMessages(messages: ApiMessage[]): { system: string; messages
     }
     if (msg.role === "user") {
       if (Array.isArray(msg.content)) {
-        // Multimodal content — convert image_url to Anthropic image format
+        // Multimodal content — convert image_url and document_attachment to Anthropic formats
         const parts = (msg.content as Record<string, unknown>[]).map((part) => {
           if (part.type === "image_url") {
             const imageUrl = part.image_url as { url: string };
@@ -240,6 +286,16 @@ function toAnthropicMessages(messages: ApiMessage[]): { system: string; messages
                 source: { type: "base64", media_type: match[1], data: match[2] },
               };
             }
+          }
+          if (part.type === "document_attachment") {
+            return {
+              type: "document",
+              source: {
+                type: "base64",
+                media_type: part.media_type as string,
+                data: part.data as string,
+              },
+            };
           }
           return part;
         });

@@ -1057,7 +1057,7 @@ t("image: download failure is handled gracefully, AI still processes", async () 
   }
 });
 
-t("image: non-image attachment (PDF) is ignored", async () => {
+t("document: PDF attachment is downloaded and sent as Anthropic document block", async () => {
   let capturedBody: Record<string, unknown> | null = null;
 
   const restore = mockFullFlowWithImages({
@@ -1074,6 +1074,7 @@ t("image: non-image attachment (PDF) is ignored", async () => {
       },
     ],
     onAiRequest: (body) => { capturedBody = body; },
+    useAnthropic: true,
   });
 
   try {
@@ -1089,8 +1090,105 @@ t("image: non-image attachment (PDF) is ignored", async () => {
     const messages = capturedBody!.messages as Record<string, unknown>[];
     const lastUser = [...messages].reverse().find((m) => m.role === "user");
     assert(lastUser, "Should have a user message");
-    assertEquals(typeof lastUser.content, "string", "PDF should not produce image parts");
-    assertEquals(lastUser.content, "Check this document");
+    // PDF creates multimodal content with text + Anthropic document block
+    assertEquals(Array.isArray(lastUser.content), true, "PDF should produce multimodal content");
+    const parts = lastUser.content as Record<string, unknown>[];
+    assertEquals(parts[0].type, "text");
+    assertEquals(parts[0].text, "Check this document");
+    assertEquals(parts[1].type, "document");
+    const source = parts[1].source as Record<string, unknown>;
+    assertEquals(source.type, "base64");
+    assertEquals(source.media_type, "application/pdf");
+    assert(typeof source.data === "string" && source.data.length > 0, "Should have base64 data");
+  } finally {
+    restore();
+  }
+});
+
+t("document: PDF attachment with OpenAI becomes text placeholder", async () => {
+  let capturedBody: Record<string, unknown> | null = null;
+
+  const restore = mockFullFlowWithImages({
+    commentsResponse: [
+      {
+        id: "pdf-2",
+        content: "@ai Check this document",
+        posted_at: "2026-01-01T00:00:00Z",
+        file_attachment: {
+          file_type: "application/pdf",
+          file_name: "document.pdf",
+          file_url: "https://files.todoist.com/document.pdf",
+        },
+      },
+    ],
+    onAiRequest: (body) => { capturedBody = body; },
+  });
+
+  try {
+    const payload = JSON.stringify(makePayload({
+      event_data: { id: "pdf-2", content: "@ai Check this document", item_id: "task-1" },
+    }));
+    const req = await signedRequest(payload);
+    const res = await handler(req);
+    assertEquals(res.status, 200);
+    await new Promise((r) => setTimeout(r, 300));
+
+    assert(capturedBody !== null, "AI should be called");
+    const messages = capturedBody!.messages as Record<string, unknown>[];
+    const lastUser = [...messages].reverse().find((m) => m.role === "user");
+    assert(lastUser, "Should have a user message");
+    // OpenAI: document_attachment is sanitized to text placeholder
+    assertEquals(Array.isArray(lastUser.content), true, "Should produce multimodal content");
+    const parts = lastUser.content as Record<string, unknown>[];
+    const textParts = parts.filter((p) => p.type === "text");
+    const hasPlaceholder = textParts.some((p) =>
+      (p.text as string).includes("document processing requires Anthropic provider")
+    );
+    assertEquals(hasPlaceholder, true, "OpenAI should get text placeholder for PDF");
+  } finally {
+    restore();
+  }
+});
+
+t("document: unsupported file type (XLSX) included as text placeholder", async () => {
+  let capturedBody: Record<string, unknown> | null = null;
+
+  const restore = mockFullFlowWithImages({
+    commentsResponse: [
+      {
+        id: "xlsx-1",
+        content: "@ai Check this spreadsheet",
+        posted_at: "2026-01-01T00:00:00Z",
+        file_attachment: {
+          file_type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+          file_name: "data.xlsx",
+          file_url: "https://files.todoist.com/data.xlsx",
+        },
+      },
+    ],
+    onAiRequest: (body) => { capturedBody = body; },
+  });
+
+  try {
+    const payload = JSON.stringify(makePayload({
+      event_data: { id: "xlsx-1", content: "@ai Check this spreadsheet", item_id: "task-1" },
+    }));
+    const req = await signedRequest(payload);
+    const res = await handler(req);
+    assertEquals(res.status, 200);
+    await new Promise((r) => setTimeout(r, 300));
+
+    assert(capturedBody !== null, "AI should be called");
+    const messages = capturedBody!.messages as Record<string, unknown>[];
+    const lastUser = [...messages].reverse().find((m) => m.role === "user");
+    assert(lastUser, "Should have a user message");
+    assertEquals(Array.isArray(lastUser.content), true, "Unsupported file should produce multimodal content");
+    const parts = lastUser.content as Record<string, unknown>[];
+    const textParts = parts.filter((p) => p.type === "text");
+    const hasPlaceholder = textParts.some((p) =>
+      (p.text as string).includes("only PDF files are supported")
+    );
+    assertEquals(hasPlaceholder, true, "Should have unsupported file placeholder text");
   } finally {
     restore();
   }

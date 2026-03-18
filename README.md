@@ -69,6 +69,7 @@ sequenceDiagram
 | **Rate limiting** | Per-user webhook and settings rate limits with account blocking |
 | **Bring your own key** | Supports Anthropic (Claude) and any OpenAI-compatible provider, with key validation before save |
 | **Image support** | Attach images to comments for multimodal AI analysis |
+| **PDF document support** | Attach PDF files to comments — processed natively by Anthropic provider |
 | **Data isolation** | Row Level Security ensures complete tenant separation |
 | **Error tracking** | Optional Sentry integration for monitoring |
 | **Accessible UI** | ARIA labels, focus management, keyboard navigation, screen reader support |
@@ -266,24 +267,26 @@ deno test supabase/functions/tests/crypto.test.ts --no-check --allow-env --allow
 
 ### Test Coverage
 
-375 tests covering all shared modules and handlers:
+391 tests covering all shared modules and handlers:
 
 | Module | Tests | What's covered |
 |--------|-------|----------------|
-| **ai.ts** | 61 | `buildMessages` (custom prompts, images, edge cases), `executePrompt` (OpenAI + Anthropic providers, tool calls, multi-tool batching, model fallback on overload, fetch_url tool) |
+| **ai.ts** | 70 | `buildMessages` (custom prompts, images, documents, edge cases), `executePrompt` (OpenAI + Anthropic providers, tool calls, multi-tool batching, model fallback on overload, fetch_url tool, document block conversion) |
+| **validation.ts** | 58 | All settings fields: type checks, boundaries, nulls, multi-field errors, SSRF prevention |
+| **messages.ts** | 42 | Comment parsing, trigger word stripping, special chars, image/file attachments, normalize helpers |
+| **webhook** | 33 | HMAC verification, rate limiting, idempotency, request validation, image/document downloads |
 | **fetch-url.ts** | 31 | `htmlToText` (tag stripping, entity decoding, whitespace), `fetchUrl` (SSRF blocking, content-type filtering, size limits, error handling) |
-| **validation.ts** | 33 | All settings fields: type checks, boundaries, nulls, multi-field errors, SSRF prevention |
-| **messages.ts** | 30 | Comment parsing, trigger word stripping, special chars, normalize helpers |
 | **rate-limit.ts** | 29 | Config parsing, env overrides, rate limit checks, account blocking |
-| **crypto.ts** | 21 | AES-256-GCM encrypt/decrypt round-trips, HMAC verification, OAuth state signing/verification |
-| **webhook** | 21 | HMAC verification, rate limiting, idempotency, request validation |
+| **settings** | 27 | CRUD operations, auth, rate limiting, field validation, API key validation |
+| **crypto.ts** | 22 | AES-256-GCM encrypt/decrypt round-trips, HMAC verification, OAuth state signing/verification |
+| **retry.ts** | 18 | Retry logic: GET/POST behavior, status codes, network errors |
 | **todoist.ts** | 15 | All TodoistClient methods: API calls, auth headers, error handling, trusted domains |
-| **settings** | 26 | CRUD operations, auth, rate limiting, field validation, API key validation |
+| **env.ts** | 12 | Environment variable validation |
 | **auth-callback** | 10 | OAuth flow, token exchange, CSRF state verification, error handling |
+| **health** | 8 | Health check endpoint |
 | **search.ts** | 6 | Brave Search: result mapping, params, headers, empty/error responses |
+| **sentry.ts** | 6 | `withSentry` wrapper, error handling, `captureException` no-op |
 | **auth-start** | 4 | OAuth initiation, CORS, state signing, error handling |
-| **release-config** | 4 | Release configuration validation |
-| **sentry.ts** | 4 | `withSentry` wrapper, error handling, `captureException` no-op |
 
 ### Linting
 
@@ -318,7 +321,7 @@ deno lint supabase/functions/   # Deno lint for Edge Functions
 | **Code scanning** | CodeQL analysis for security vulnerabilities |
 | **Dependency scanning** | Automated npm audit + Dependabot |
 | **Rate limiting** | Per-user webhook and settings rate limits |
-| **Image limits** | 4 MB max per attachment |
+| **Attachment limits** | 4 MB max per image or document attachment |
 | **URL fetch limits** | 2 MB download cap, 50k char output, 15s timeout, no redirects |
 
 ## License

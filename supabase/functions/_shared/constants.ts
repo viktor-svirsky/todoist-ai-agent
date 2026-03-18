@@ -15,7 +15,8 @@ export const FALLBACK_STATUS_CODES = [529, 503];
 export const DEFAULT_MAX_MESSAGES = 10;
 export const DEFAULT_MAX_TOKENS = 2048;
 
-export const MAX_IMAGE_SIZE_BYTES = 4 * 1024 * 1024; // 4 MB
+export const MAX_IMAGE_SIZE_BYTES = 4 * 1024 * 1024; // 4 MB (also applies to document downloads via downloadFile)
+export const SUPPORTED_DOCUMENT_TYPES = new Set(["application/pdf"]);
 export const TODOIST_API_TIMEOUT_MS = 30_000; // 30 seconds
 
 export const RETRY_MAX_RETRIES = 2;

@@ -1,6 +1,6 @@
 import { createServiceClient } from "../_shared/supabase.ts";
 import { TodoistClient } from "../_shared/todoist.ts";
-import { buildMessages, executePrompt, isAnthropicUrl } from "../_shared/ai.ts";
+import { buildMessages, executePrompt, isAnthropicUrl, type DocumentAttachment } from "../_shared/ai.ts";
 import {
   AI_INDICATOR,
   ERROR_PREFIX,
@@ -9,6 +9,7 @@ import {
   DEFAULT_MAX_MESSAGES,
   MAX_WEBHOOK_BODY_BYTES,
   MAX_IMAGE_SIZE_BYTES,
+  SUPPORTED_DOCUMENT_TYPES,
 } from "../_shared/constants.ts";
 import {
   getRateLimitConfig,
@@ -17,7 +18,7 @@ import {
 import { commentsToMessages, normalizeModel } from "../_shared/messages.ts";
 import { captureException } from "../_shared/sentry.ts";
 import { uint8ToBase64, verifyHmac, decrypt, decryptIfPresent } from "../_shared/crypto.ts";
-import { sanitizeImageMediaType, isPrivateHostname, extractMarkdownImageUrls, guessMediaType } from "../_shared/validation.ts";
+import { sanitizeImageMediaType, sanitizeDocumentMediaType, isPrivateHostname, extractMarkdownImageUrls, guessMediaType } from "../_shared/validation.ts";
 import type { TodoistComment, TodoistWebhookEvent, UserConfig } from "../_shared/types.ts";
 
 // ---------------------------------------------------------------------------
@@ -112,6 +113,54 @@ async function runAiForTask(
     const images = imageResults
       .filter((r): r is PromiseFulfilledResult<{ data: string; mediaType: string }> => r.status === "fulfilled")
       .map((r) => r.value);
+
+    // Download document attachments (PDF) from comments within the message window
+    const docComments = comments.filter(
+      (c: TodoistComment) =>
+        c.file_attachment &&
+        !c.file_attachment.file_type?.startsWith("image/") &&
+        SUPPORTED_DOCUMENT_TYPES.has(c.file_attachment.file_type ?? "") &&
+        windowCommentIds.has(c.id)
+    );
+    const docResults = await Promise.allSettled(
+      docComments.map(async (c: TodoistComment) => {
+        const att = c.file_attachment!;
+        const bytes = await todoist.downloadFile(att.file_url);
+        return { data: uint8ToBase64(bytes), mediaType: sanitizeDocumentMediaType(att.file_type), fileName: att.file_name };
+      })
+    );
+    if (docResults.some((r) => r.status === "rejected")) {
+      const rejectedDocs = docResults.filter((r) => r.status === "rejected");
+      console.warn("Some document downloads failed", {
+        requestId,
+        taskId,
+        failedCount: rejectedDocs.length,
+        errors: rejectedDocs.map((r) =>
+          (r as PromiseRejectedResult).reason instanceof Error
+            ? (r as PromiseRejectedResult).reason.message
+            : String((r as PromiseRejectedResult).reason)
+        ),
+      });
+    }
+    const documents: DocumentAttachment[] = docResults
+      .filter((r): r is PromiseFulfilledResult<DocumentAttachment> => r.status === "fulfilled")
+      .map((r) => r.value);
+
+    // For non-supported file types, add placeholder documents so the AI knows a file was attached
+    const unsupportedFileComments = comments.filter(
+      (c: TodoistComment) =>
+        c.file_attachment &&
+        !c.file_attachment.file_type?.startsWith("image/") &&
+        !SUPPORTED_DOCUMENT_TYPES.has(c.file_attachment.file_type ?? "") &&
+        windowCommentIds.has(c.id)
+    );
+    for (const c of unsupportedFileComments) {
+      documents.push({
+        data: "",
+        mediaType: c.file_attachment!.file_type,
+        fileName: c.file_attachment!.file_name,
+      });
+    }
 
     // Download images embedded in task description via markdown syntax (cap at 5 to prevent DoS)
     if (task.description) {
@@ -219,7 +268,8 @@ async function runAiForTask(
       task.description,
       messages,
       images.length > 0 ? images : undefined,
-      user.custom_prompt
+      user.custom_prompt,
+      documents.length > 0 ? documents : undefined,
     );
     const response = await executePrompt(apiMessages, aiConfig);
 
