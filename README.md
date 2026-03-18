@@ -191,6 +191,7 @@ TODOIST_CLIENT_SECRET=your_client_secret
 DEFAULT_AI_BASE_URL=https://api.anthropic.com/v1
 DEFAULT_AI_API_KEY=your_api_key
 DEFAULT_AI_MODEL=claude-opus-4-6
+DEFAULT_AI_FALLBACK_MODEL=claude-sonnet-4-6  # optional, fallback on overload
 DEFAULT_BRAVE_API_KEY=your_brave_key    # optional
 PUBLIC_SITE_URL=http://localhost:5173
 SENTRY_DSN=your_sentry_dsn              # optional
@@ -257,11 +258,11 @@ deno test supabase/functions/tests/crypto.test.ts --no-check --allow-env --allow
 
 ### Test Coverage
 
-231 tests covering all shared modules and handlers:
+246 tests covering all shared modules and handlers:
 
 | Module | Tests | What's covered |
 |--------|-------|----------------|
-| **ai.ts** | 41 | `buildMessages` (custom prompts, images, edge cases), `executePrompt` (OpenAI + Anthropic providers, tool calls, multi-tool batching) |
+| **ai.ts** | 56 | `buildMessages` (custom prompts, images, edge cases), `executePrompt` (OpenAI + Anthropic providers, tool calls, multi-tool batching, model fallback on overload) |
 | **validation.ts** | 33 | All settings fields: type checks, boundaries, nulls, multi-field errors, SSRF prevention |
 | **messages.ts** | 30 | Comment parsing, trigger word stripping, special chars, normalize helpers |
 | **rate-limit.ts** | 29 | Config parsing, env overrides, rate limit checks, account blocking |

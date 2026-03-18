@@ -1,10 +1,11 @@
 import { createServiceClient } from "../_shared/supabase.ts";
 import { TodoistClient } from "../_shared/todoist.ts";
-import { buildMessages, executePrompt } from "../_shared/ai.ts";
+import { buildMessages, executePrompt, isAnthropicUrl } from "../_shared/ai.ts";
 import {
   AI_INDICATOR,
   ERROR_PREFIX,
   DEFAULT_AI_MODEL,
+  DEFAULT_AI_FALLBACK_MODEL,
   DEFAULT_MAX_MESSAGES,
   MAX_WEBHOOK_BODY_BYTES,
   MAX_IMAGE_SIZE_BYTES,
@@ -182,25 +183,35 @@ async function runAiForTask(
       }
     }
 
+    const resolvedBaseUrl = (
+      user.custom_ai_base_url ||
+      Deno.env.get("DEFAULT_AI_BASE_URL") ||
+      "https://api.anthropic.com/v1"
+    ).trim().replace(/\/$/, "");
+    const resolvedModel = normalizeModel(
+      user.custom_ai_model ||
+      Deno.env.get("DEFAULT_AI_MODEL") ||
+      DEFAULT_AI_MODEL
+    );
+
+    // Fallback only for the default Anthropic model (no custom overrides)
+    // Empty env var disables fallback; unset env var uses the hardcoded default
+    const fallbackModel = (isAnthropicUrl(resolvedBaseUrl) && resolvedModel === DEFAULT_AI_MODEL)
+      ? (Deno.env.get("DEFAULT_AI_FALLBACK_MODEL") ?? DEFAULT_AI_FALLBACK_MODEL) || undefined
+      : undefined;
+
     const aiConfig = {
-      baseUrl: (
-        user.custom_ai_base_url ||
-        Deno.env.get("DEFAULT_AI_BASE_URL") ||
-        "https://api.anthropic.com/v1"
-      ).trim().replace(/\/$/, ""),
+      baseUrl: resolvedBaseUrl,
       apiKey: user.custom_ai_base_url
         ? user.custom_ai_api_key!
         : (user.custom_ai_api_key || Deno.env.get("DEFAULT_AI_API_KEY") || ""),
-      model: normalizeModel(
-        user.custom_ai_model ||
-        Deno.env.get("DEFAULT_AI_MODEL") ||
-        DEFAULT_AI_MODEL
-      ),
+      model: resolvedModel,
       timeoutMs: 120_000,
       braveApiKey:
         user.custom_brave_key ||
         Deno.env.get("DEFAULT_BRAVE_KEY") ||
         undefined,
+      fallbackModel,
     };
 
     const apiMessages = buildMessages(
