@@ -9,6 +9,11 @@ export default defineConfig({
     baseURL: process.env.E2E_BASE_URL || "http://localhost:5173",
     headless: true,
   },
+  webServer: {
+    command: "npx vite --mode e2e",
+    url: "http://localhost:5173",
+    reuseExistingServer: !process.env.CI,
+  },
   projects: [
     {
       name: "chromium",

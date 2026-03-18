@@ -214,6 +214,9 @@ export default function Settings() {
         setAiBaseUrl(data.custom_ai_base_url || "");
         setAiModel(data.custom_ai_model || "");
         setCustomPrompt(data.custom_prompt || "");
+      } else if (res.status === 401) {
+        await supabase.auth.signOut();
+        navigate("/");
       } else if (res.status === 429) {
         const retryAfter = parseInt(res.headers.get("Retry-After") ?? "60", 10) || 60;
         setError(`Too many requests. Please try again in ${retryAfter} seconds.`);
@@ -274,6 +277,10 @@ export default function Settings() {
         setAiApiKey("");
         setBraveKey("");
         await loadSettings(session.access_token);
+      } else if (res.status === 401) {
+        await supabase.auth.signOut();
+        navigate("/");
+        return;
       } else if (res.status === 429) {
         const retryAfter = parseInt(res.headers.get("Retry-After") ?? "60", 10) || 60;
         setMessage(`Too many requests. Please try again in ${retryAfter} seconds.`);
@@ -353,7 +360,10 @@ export default function Settings() {
 
     try {
       const { data: { session } } = await supabase.auth.getSession();
-      if (!session) return;
+      if (!session) {
+        navigate("/");
+        return;
+      }
 
       const res = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/settings`,

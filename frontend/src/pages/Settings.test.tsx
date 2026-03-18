@@ -1580,3 +1580,76 @@ describe("Settings: confirm modal backdrop", () => {
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 });
+
+// ============================================================================
+// 401 handling (session expired / user deleted)
+// ============================================================================
+
+describe("Settings: 401 handling", () => {
+  it("signs out and redirects on 401 during load", async () => {
+    mockSignOut.mockResolvedValue(undefined);
+    vi.mocked(fetch).mockResolvedValue({
+      ok: false,
+      status: 401,
+      json: () => Promise.resolve({ error: "Unauthorized" }),
+      headers: new Headers(),
+    } as Response);
+
+    renderSettings();
+    await waitFor(() => {
+      expect(mockSignOut).toHaveBeenCalled();
+      expect(mockNavigate).toHaveBeenCalledWith("/");
+    });
+  });
+
+  it("signs out and redirects on 401 during save", async () => {
+    const user = userEvent.setup();
+    mockSignOut.mockResolvedValue(undefined);
+    renderSettings();
+    await waitFor(() =>
+      expect(screen.getByText("Settings")).toBeInTheDocument(),
+    );
+
+    vi.mocked(fetch).mockResolvedValueOnce({
+      ok: false,
+      status: 401,
+      json: () => Promise.resolve({ error: "Unauthorized" }),
+      headers: new Headers(),
+    } as Response);
+
+    await user.click(screen.getByText("Save Settings"));
+    await waitFor(() => {
+      expect(mockSignOut).toHaveBeenCalled();
+      expect(mockNavigate).toHaveBeenCalledWith("/");
+    });
+  });
+});
+
+// ============================================================================
+// Disconnect with no session
+// ============================================================================
+
+describe("Settings: disconnect with expired session", () => {
+  it("navigates to / when session is missing during disconnect", async () => {
+    const user = userEvent.setup();
+    renderSettings();
+    await waitFor(() =>
+      expect(screen.getByText("Settings")).toBeInTheDocument(),
+    );
+
+    // Session expires after page loaded
+    mockGetSession.mockResolvedValue({ data: { session: null } });
+
+    await user.click(screen.getByText("Disconnect & Delete Account"));
+    await user.click(screen.getByRole("button", { name: "Delete Account" }));
+
+    await waitFor(() =>
+      expect(mockNavigate).toHaveBeenCalledWith("/"),
+    );
+    // Should NOT have called fetch for DELETE since no session
+    const deleteCalls = vi.mocked(fetch).mock.calls.filter(
+      (call) => (call[1] as RequestInit)?.method === "DELETE",
+    );
+    expect(deleteCalls).toHaveLength(0);
+  });
+});

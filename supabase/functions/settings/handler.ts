@@ -269,15 +269,12 @@ export async function settingsHandler(req: Request): Promise<Response> {
 
   // ── DELETE: Delete account ─────────────────────────────────────────
   if (req.method === "DELETE") {
-    // Delete the Supabase Auth user (cascades to users_config, conversations, messages)
+    // Delete the Supabase Auth user (cascades to users_config)
     const { error } = await serviceClient.auth.admin.deleteUser(user.id);
     if (error) {
       console.error("Failed to delete user:", error);
       return jsonResponse({ error: "Failed to delete account" }, 500, CORS_HEADERS);
     }
-
-    // Sign out the current session
-    await supabase.auth.signOut();
 
     return jsonResponse({ ok: true }, 200, CORS_HEADERS);
   }
