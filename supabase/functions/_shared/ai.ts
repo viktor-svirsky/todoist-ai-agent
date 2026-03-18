@@ -1,4 +1,5 @@
 import { braveSearch } from "./search.ts";
+import { fetchUrl } from "./fetch-url.ts";
 import { MAX_TOOL_ROUNDS, DEFAULT_MAX_TOKENS, MAX_AI_RESPONSE_BYTES, FALLBACK_STATUS_CODES } from "./constants.ts";
 import * as Sentry from "@sentry/deno"; // startSpan is a no-op when Sentry is not initialized (no DSN set)
 import type {
@@ -35,32 +36,16 @@ const SYSTEM_PROMPT = [
   "You are an AI assistant embedded in Todoist.",
   "You help solve tasks by reasoning and providing clear, actionable answers.",
   "You can search the web when you need current information.",
+  "You can fetch and read web pages when a user shares a URL or when you need content from a specific page.",
   "Respond concisely — your reply will be posted as a Todoist comment.",
 ].join("\n");
 
-const OPENAI_TOOLS = [
-  {
-    type: "function" as const,
-    function: {
-      name: "web_search",
-      description: "Search the web for current information.",
-      parameters: {
-        type: "object",
-        properties: {
-          query: { type: "string", description: "The search query" },
-          count: { type: "number", description: "Number of results (1-10, default 5)" },
-        },
-        required: ["query"],
-      },
-    },
-  },
-];
-
-const ANTHROPIC_TOOLS = [
-  {
+const OPENAI_SEARCH_TOOL = {
+  type: "function" as const,
+  function: {
     name: "web_search",
     description: "Search the web for current information.",
-    input_schema: {
+    parameters: {
       type: "object",
       properties: {
         query: { type: "string", description: "The search query" },
@@ -69,7 +54,47 @@ const ANTHROPIC_TOOLS = [
       required: ["query"],
     },
   },
-];
+};
+
+const OPENAI_FETCH_TOOL = {
+  type: "function" as const,
+  function: {
+    name: "fetch_url",
+    description: "Fetch and read the text content of a web page. Returns the extracted text (HTML is stripped). Redirects are blocked for security. Only works with text-based pages (HTML, plain text).",
+    parameters: {
+      type: "object",
+      properties: {
+        url: { type: "string", description: "The URL to fetch" },
+      },
+      required: ["url"],
+    },
+  },
+};
+
+const ANTHROPIC_SEARCH_TOOL = {
+  name: "web_search",
+  description: "Search the web for current information.",
+  input_schema: {
+    type: "object",
+    properties: {
+      query: { type: "string", description: "The search query" },
+      count: { type: "number", description: "Number of results (1-10, default 5)" },
+    },
+    required: ["query"],
+  },
+};
+
+const ANTHROPIC_FETCH_TOOL = {
+  name: "fetch_url",
+  description: "Fetch and read the text content of a web page. Returns the extracted text (HTML is stripped). Redirects are blocked for security. Only works with text-based pages (HTML, plain text).",
+  input_schema: {
+    type: "object",
+    properties: {
+      url: { type: "string", description: "The URL to fetch" },
+    },
+    required: ["url"],
+  },
+};
 
 // ---------------------------------------------------------------------------
 // Provider detection
@@ -150,9 +175,9 @@ function openaiHeaders(apiKey: string): Record<string, string> {
   };
 }
 
-function openaiBody(model: string, messages: ApiMessage[], maxTokens: number, useTools: boolean): Record<string, unknown> {
+function openaiBody(model: string, messages: ApiMessage[], maxTokens: number, tools: Record<string, unknown>[]): Record<string, unknown> {
   const body: Record<string, unknown> = { model, messages, max_tokens: maxTokens };
-  if (useTools) body.tools = OPENAI_TOOLS;
+  if (tools.length > 0) body.tools = tools;
   return body;
 }
 
@@ -238,11 +263,11 @@ function toAnthropicMessages(messages: ApiMessage[]): { system: string; messages
   return { system, messages: converted };
 }
 
-function anthropicBody(model: string, messages: ApiMessage[], maxTokens: number, useTools: boolean): Record<string, unknown> {
+function anthropicBody(model: string, messages: ApiMessage[], maxTokens: number, tools: Record<string, unknown>[]): Record<string, unknown> {
   const { system, messages: converted } = toAnthropicMessages(messages);
   const body: Record<string, unknown> = { model, messages: converted, max_tokens: maxTokens };
   if (system) body.system = system;
-  if (useTools) body.tools = ANTHROPIC_TOOLS;
+  if (tools.length > 0) body.tools = tools;
   return body;
 }
 
@@ -376,8 +401,17 @@ export async function executePrompt(
   config: AiConfig
 ): Promise<string> {
   const anthropic = isAnthropicUrl(config.baseUrl);
-  const useTools = !!config.braveApiKey;
   const runMessages = [...messages];
+
+  // Build tools list: fetch_url is always available, web_search requires Brave API key
+  const tools: Record<string, unknown>[] = [];
+  if (anthropic) {
+    tools.push(ANTHROPIC_FETCH_TOOL);
+    if (config.braveApiKey) tools.push(ANTHROPIC_SEARCH_TOOL);
+  } else {
+    tools.push(OPENAI_FETCH_TOOL);
+    if (config.braveApiKey) tools.push(OPENAI_SEARCH_TOOL);
+  }
 
   const headers = anthropic ? anthropicHeaders(config.apiKey) : openaiHeaders(config.apiKey);
   const endpoint = anthropic
@@ -394,7 +428,7 @@ export async function executePrompt(
   let hasFallenBack = false;
 
   for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
-    const body = buildBody(activeModel, runMessages, DEFAULT_MAX_TOKENS, useTools);
+    const body = buildBody(activeModel, runMessages, DEFAULT_MAX_TOKENS, tools);
     const result = await fetchWithFallback(ctx, body, { activeModel, hasFallenBack, fallbackModel: config.fallbackModel }, round);
     activeModel = result.activeModel;
     hasFallenBack = result.hasFallenBack;
@@ -412,7 +446,7 @@ export async function executePrompt(
     const toolResults = await Promise.all(
       toolCalls.map(async (tc) => ({
         id: tc.id,
-        result: await handleToolCall(tc.name, tc.arguments, config.braveApiKey!),
+        result: await handleToolCall(tc.name, tc.arguments, config.braveApiKey),
       }))
     );
     if (anthropic) {
@@ -433,7 +467,7 @@ export async function executePrompt(
   }
 
   // Exhausted tool rounds — get final response without tools
-  const finalBody = buildBody(activeModel, runMessages, DEFAULT_MAX_TOKENS, false);
+  const finalBody = buildBody(activeModel, runMessages, DEFAULT_MAX_TOKENS, []);
   const finalResult = await fetchWithFallback(ctx, finalBody, { activeModel, hasFallenBack, fallbackModel: config.fallbackModel }, "final");
 
   const data = await parseAiResponse(finalResult.res);
@@ -444,25 +478,33 @@ export async function executePrompt(
 async function handleToolCall(
   name: string,
   argsJson: string,
-  braveApiKey: string
+  braveApiKey?: string
 ): Promise<string> {
   try {
-    if (name !== "web_search") {
-      return `Unknown tool: ${name}`;
+    if (name === "web_search") {
+      if (!braveApiKey) return "Error: web search is not configured.";
+      const args = JSON.parse(argsJson);
+      const query = typeof args.query === "string" ? args.query.slice(0, 500) : "";
+      if (!query) return "Error: search query is required.";
+      const count = typeof args.count === "number"
+        ? Math.min(Math.max(Math.round(args.count), 1), 10)
+        : 5;
+
+      const results = await braveSearch(braveApiKey, query, count);
+      if (results.length === 0) return "No results found.";
+      return results
+        .map((r) => `**${r.title}**\n${r.url}\n${r.description}`)
+        .join("\n\n");
     }
 
-    const args = JSON.parse(argsJson);
-    const query = typeof args.query === "string" ? args.query.slice(0, 500) : "";
-    if (!query) return "Error: search query is required.";
-    const count = typeof args.count === "number"
-      ? Math.min(Math.max(Math.round(args.count), 1), 10)
-      : 5;
+    if (name === "fetch_url") {
+      const args = JSON.parse(argsJson);
+      const url = typeof args.url === "string" ? args.url.trim() : "";
+      if (!url) return "Error: URL is required.";
+      return await fetchUrl(url);
+    }
 
-    const results = await braveSearch(braveApiKey, query, count);
-    if (results.length === 0) return "No results found.";
-    return results
-      .map((r) => `**${r.title}**\n${r.url}\n${r.description}`)
-      .join("\n\n");
+    return `Unknown tool: ${name}`;
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
     console.error("Tool call failed", { tool: name, error: message });

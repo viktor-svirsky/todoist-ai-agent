@@ -39,6 +39,7 @@ sequenceDiagram
     participant W as Webhook (Edge Function)
     participant AI as AI Provider
     participant B as Brave Search
+    participant P as Web Page
 
     U->>T: Comment "@ai What is X?"
     T->>W: POST /webhook/:userId
@@ -47,6 +48,9 @@ sequenceDiagram
     AI-->>W: Tool call: web_search("X")
     W->>B: Search query
     B-->>W: Search results
+    AI-->>W: Tool call: fetch_url("https://...")
+    W->>P: GET page content
+    P-->>W: HTML → extracted text
     W->>AI: Results + continue
     AI-->>W: Final answer
     W->>T: Post comment with response
@@ -60,6 +64,7 @@ sequenceDiagram
 | **Self-service onboarding** | Connect via Todoist OAuth in one click |
 | **Trigger word** | Customizable per user (default: `@ai`) |
 | **Web search** | Real-time information via Brave Search API |
+| **URL reading** | Fetch and read web page content from links shared in comments |
 | **Conversation memory** | Full message history per task |
 | **Rate limiting** | Per-user webhook and settings rate limits with account blocking |
 | **Bring your own key** | Supports Anthropic (Claude) and any OpenAI-compatible provider, with key validation before save |
@@ -87,6 +92,7 @@ graph LR
         TD[Todoist API]
         AI[AI Provider]
         BS[Brave Search]
+        WP[Web Pages]
     end
 
     LP -->|OAuth| Auth
@@ -95,6 +101,7 @@ graph LR
     EF -->|CRUD| DB
     EF -->|Chat| AI
     EF -->|Search| BS
+    EF -->|Fetch| WP
     EF -->|Comments| TD
 ```
 
@@ -131,6 +138,7 @@ todoist-ai-agent/
 │       │   ├── ai.ts               # Chat completions + tool loop
 │       │   ├── constants.ts        # API URLs, defaults, limits
 │       │   ├── crypto.ts           # AES-256-GCM encryption, HMAC verification, OAuth state signing
+│       │   ├── fetch-url.ts        # URL fetcher with SSRF protection + HTML-to-text
 │       │   ├── messages.ts         # Comment → message parsing
 │       │   ├── rate-limit.ts       # Per-user rate limiting + account blocking
 │       │   ├── search.ts           # Brave Search client
@@ -258,11 +266,12 @@ deno test supabase/functions/tests/crypto.test.ts --no-check --allow-env --allow
 
 ### Test Coverage
 
-246 tests covering all shared modules and handlers:
+375 tests covering all shared modules and handlers:
 
 | Module | Tests | What's covered |
 |--------|-------|----------------|
-| **ai.ts** | 56 | `buildMessages` (custom prompts, images, edge cases), `executePrompt` (OpenAI + Anthropic providers, tool calls, multi-tool batching, model fallback on overload) |
+| **ai.ts** | 61 | `buildMessages` (custom prompts, images, edge cases), `executePrompt` (OpenAI + Anthropic providers, tool calls, multi-tool batching, model fallback on overload, fetch_url tool) |
+| **fetch-url.ts** | 31 | `htmlToText` (tag stripping, entity decoding, whitespace), `fetchUrl` (SSRF blocking, content-type filtering, size limits, error handling) |
 | **validation.ts** | 33 | All settings fields: type checks, boundaries, nulls, multi-field errors, SSRF prevention |
 | **messages.ts** | 30 | Comment parsing, trigger word stripping, special chars, normalize helpers |
 | **rate-limit.ts** | 29 | Config parsing, env overrides, rate limit checks, account blocking |
@@ -310,6 +319,7 @@ deno lint supabase/functions/   # Deno lint for Edge Functions
 | **Dependency scanning** | Automated npm audit + Dependabot |
 | **Rate limiting** | Per-user webhook and settings rate limits |
 | **Image limits** | 4 MB max per attachment |
+| **URL fetch limits** | 2 MB download cap, 50k char output, 15s timeout, no redirects |
 
 ## License
 
