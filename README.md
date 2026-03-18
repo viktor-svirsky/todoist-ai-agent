@@ -267,14 +267,14 @@ deno test supabase/functions/tests/crypto.test.ts --no-check --allow-env --allow
 
 ### Test Coverage
 
-391 tests covering all shared modules and handlers:
+400 tests covering all shared modules and handlers:
 
 | Module | Tests | What's covered |
 |--------|-------|----------------|
 | **ai.ts** | 70 | `buildMessages` (custom prompts, images, documents, edge cases), `executePrompt` (OpenAI + Anthropic providers, tool calls, multi-tool batching, model fallback on overload, fetch_url tool, document block conversion) |
 | **validation.ts** | 58 | All settings fields: type checks, boundaries, nulls, multi-field errors, SSRF prevention |
 | **messages.ts** | 42 | Comment parsing, trigger word stripping, special chars, image/file attachments, normalize helpers |
-| **webhook** | 33 | HMAC verification, rate limiting, idempotency, request validation, image/document downloads |
+| **webhook** | 42 | HMAC verification, rate limiting, idempotency, request validation, image/document downloads, fetch_url/web_search tool call e2e |
 | **fetch-url.ts** | 31 | `htmlToText` (tag stripping, entity decoding, whitespace), `fetchUrl` (SSRF blocking, content-type filtering, size limits, error handling) |
 | **rate-limit.ts** | 29 | Config parsing, env overrides, rate limit checks, account blocking |
 | **settings** | 27 | CRUD operations, auth, rate limiting, field validation, API key validation |
