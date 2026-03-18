@@ -5,11 +5,18 @@ import {
   MAX_FETCH_CONTENT_CHARS,
 } from "./constants.ts";
 
-/** Decode HTML entities to plain characters.
- *  Order matters: named entities (&lt;, &gt;) are decoded BEFORE numeric
- *  entities (&#38;, &#x26;) so that &#38;lt; cannot become &lt; → <.
- *  &amp; is decoded last for the same reason.
- */
+/** Tags whose content should be completely suppressed. */
+const SUPPRESSED_TAGS = new Set([
+  "script", "style", "noscript", "nav", "header", "footer",
+]);
+
+/** Block-level tags that produce a newline when closed. */
+const BLOCK_TAGS = new Set([
+  "p", "div", "h1", "h2", "h3", "h4", "h5", "h6",
+  "li", "tr", "blockquote", "section", "article", "br",
+]);
+
+/** Decode HTML entities to plain characters. */
 function decodeEntities(text: string): string {
   return text
     .replace(/&nbsp;/g, " ")
@@ -17,40 +24,82 @@ function decodeEntities(text: string): string {
     .replace(/&#39;/g, "'")
     .replace(/&lt;/g, "<")
     .replace(/&gt;/g, ">")
-    .replace(/&#x([0-9a-fA-F]+);/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
-    .replace(/&#(\d+);/g, (_, dec) => String.fromCharCode(Number(dec)))
+    .replace(/&#x([0-9a-fA-F]+);/g, (_, hex: string) => String.fromCharCode(parseInt(hex, 16)))
+    .replace(/&#(\d+);/g, (_, dec: string) => String.fromCharCode(Number(dec)))
     .replace(/&amp;/g, "&");
 }
 
-/** Strip HTML to plain text for AI consumption. */
+/**
+ * Strip HTML to plain text for AI consumption.
+ * Uses a character-level parser instead of regex tag matching
+ * to avoid incomplete sanitization edge cases.
+ */
 export function htmlToText(html: string): string {
-  let text = html;
+  let result = "";
+  let i = 0;
+  const len = html.length;
 
-  // Remove dangerous blocks in a loop to handle nested patterns like
-  // <scr<script>...</script>ipt> which leave <script> after one pass.
-  let prev;
-  do {
-    prev = text;
-    text = text.replace(/<script[\s>][\s\S]*?<\/script\s*>/gi, "");
-    text = text.replace(/<style[\s>][\s\S]*?<\/style\s*>/gi, "");
-    text = text.replace(/<noscript[\s>][\s\S]*?<\/noscript\s*>/gi, "");
-  } while (text !== prev);
+  // Stack of suppressed tags (supports nesting)
+  let suppressDepth = 0;
+  const suppressStack: string[] = [];
 
-  // Remove nav, header, footer (reduce boilerplate)
-  text = text.replace(/<nav[\s>][\s\S]*?<\/nav\s*>/gi, "");
-  text = text.replace(/<header[\s>][\s\S]*?<\/header\s*>/gi, "");
-  text = text.replace(/<footer[\s>][\s\S]*?<\/footer\s*>/gi, "");
+  while (i < len) {
+    // Detect tag opening
+    if (html[i] === "<") {
+      // Collect the full tag content between < and >
+      const closeIdx = html.indexOf(">", i);
+      if (closeIdx === -1) {
+        // Malformed: no closing >, skip the rest
+        break;
+      }
+      const tagContent = html.substring(i + 1, closeIdx);
+      i = closeIdx + 1;
 
-  // Line breaks
-  text = text.replace(/<br\s*\/?>/gi, "\n");
-  // Block-level closing tags → newline
-  text = text.replace(/<\/(?:p|div|h[1-6]|li|tr|blockquote|section|article)\s*>/gi, "\n");
+      // Parse tag name (first token, ignoring attributes)
+      const trimmed = tagContent.trimStart();
+      const isClosing = trimmed.startsWith("/");
+      const nameStart = isClosing ? 1 : 0;
+      let nameEnd = nameStart;
+      while (nameEnd < trimmed.length && !/[\s/>]/.test(trimmed[nameEnd])) {
+        nameEnd++;
+      }
+      const tagName = trimmed.substring(nameStart, nameEnd).toLowerCase();
 
-  // Strip all remaining tags
-  text = text.replace(/<[^>]+>/g, "");
+      if (isClosing) {
+        // Closing tag
+        if (SUPPRESSED_TAGS.has(tagName) && suppressDepth > 0) {
+          const last = suppressStack[suppressStack.length - 1];
+          if (last === tagName) {
+            suppressStack.pop();
+            suppressDepth--;
+          }
+        }
+        if (suppressDepth === 0 && BLOCK_TAGS.has(tagName)) {
+          result += "\n";
+        }
+      } else {
+        // Opening or self-closing tag
+        if (SUPPRESSED_TAGS.has(tagName)) {
+          suppressStack.push(tagName);
+          suppressDepth++;
+        }
+        // <br> / <br/> → newline
+        if (tagName === "br" && suppressDepth === 0) {
+          result += "\n";
+        }
+      }
+      continue;
+    }
 
-  // Decode entities AFTER tag stripping so decoded chars can't form new tags.
-  text = decodeEntities(text);
+    // Text content — only emit if not inside a suppressed block
+    if (suppressDepth === 0) {
+      result += html[i];
+    }
+    i++;
+  }
+
+  // Decode entities on the extracted text (no tags remain)
+  let text = decodeEntities(result);
 
   // Collapse whitespace
   text = text.replace(/[ \t]+/g, " ");
