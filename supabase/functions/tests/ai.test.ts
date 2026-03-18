@@ -149,6 +149,86 @@ Deno.test("buildMessages: images attached to last user message, not first", () =
 });
 
 // ---------------------------------------------------------------------------
+// Document attachment handling in buildMessages
+// ---------------------------------------------------------------------------
+
+Deno.test("buildMessages: PDF document attached to last user message as document_attachment", () => {
+  const messages = [{ role: "user" as const, content: "analyze this" }];
+  const docs = [{ data: "pdfbase64data", mediaType: "application/pdf", fileName: "report.pdf" }];
+  const result = buildMessages("Task", undefined, messages, undefined, null, docs);
+
+  const lastUserMsg = result[result.length - 1];
+  assertEquals(Array.isArray(lastUserMsg.content), true);
+  assertEquals(lastUserMsg.content[0], { type: "text", text: "analyze this" });
+  assertEquals(lastUserMsg.content[1], {
+    type: "document_attachment",
+    file_name: "report.pdf",
+    media_type: "application/pdf",
+    data: "pdfbase64data",
+  });
+});
+
+Deno.test("buildMessages: unsupported document (empty data) becomes text placeholder", () => {
+  const messages = [{ role: "user" as const, content: "check this" }];
+  const docs = [{ data: "", mediaType: "application/vnd.ms-excel", fileName: "data.xls" }];
+  const result = buildMessages("Task", undefined, messages, undefined, null, docs);
+
+  const lastUserMsg = result[result.length - 1];
+  assertEquals(Array.isArray(lastUserMsg.content), true);
+  assertEquals(lastUserMsg.content[1], {
+    type: "text",
+    text: "[Attached file: data.xls — only PDF files are supported for AI processing]",
+  });
+});
+
+Deno.test("buildMessages: images and documents combined on last user message", () => {
+  const messages = [{ role: "user" as const, content: "review these" }];
+  const images = [{ data: "imgdata", mediaType: "image/png" }];
+  const docs = [{ data: "pdfdata", mediaType: "application/pdf", fileName: "doc.pdf" }];
+  const result = buildMessages("Task", undefined, messages, images, null, docs);
+
+  const lastUserMsg = result[result.length - 1];
+  assertEquals(Array.isArray(lastUserMsg.content), true);
+  assertEquals(lastUserMsg.content.length, 3); // text + image + document
+  assertEquals(lastUserMsg.content[0].type, "text");
+  assertEquals(lastUserMsg.content[1].type, "image_url");
+  assertEquals(lastUserMsg.content[2].type, "document_attachment");
+});
+
+Deno.test("buildMessages: documents with no user messages — no crash", () => {
+  const docs = [{ data: "pdfdata", mediaType: "application/pdf", fileName: "doc.pdf" }];
+  const result = buildMessages("Task", undefined, [], undefined, null, docs);
+  assertEquals(result.length, 1);
+  assertEquals(result[0].role, "system");
+});
+
+Deno.test("buildMessages: empty documents array treated same as no documents", () => {
+  const messages = [{ role: "user" as const, content: "hello" }];
+  const result = buildMessages("Task", undefined, messages, undefined, null, []);
+  assertEquals(typeof result[1].content, "string");
+});
+
+Deno.test("buildMessages: multiple documents all attached to last user message", () => {
+  const messages = [{ role: "user" as const, content: "compare" }];
+  const docs = [
+    { data: "pdf1", mediaType: "application/pdf", fileName: "a.pdf" },
+    { data: "pdf2", mediaType: "application/pdf", fileName: "b.pdf" },
+  ];
+  const result = buildMessages("Task", undefined, messages, undefined, null, docs);
+
+  const lastUserMsg = result[result.length - 1];
+  assertEquals(Array.isArray(lastUserMsg.content), true);
+  assertEquals(lastUserMsg.content.length, 3); // text + 2 documents
+  assertEquals(lastUserMsg.content[1].file_name, "a.pdf");
+  assertEquals(lastUserMsg.content[2].file_name, "b.pdf");
+});
+
+Deno.test("buildMessages: system prompt includes file support mention", () => {
+  const result = buildMessages("Task", undefined, []);
+  assertStringIncludes(result[0].content, "attach files");
+});
+
+// ---------------------------------------------------------------------------
 // executePrompt — requires fetch mocking
 // ---------------------------------------------------------------------------
 
@@ -1166,6 +1246,76 @@ Deno.test("executePrompt (Anthropic): handles fetch_url tool call", async () => 
   try {
     const result = await executePrompt([{ role: "user", content: "test" }], ANTHROPIC_CONFIG);
     assertEquals(result, "Based on the Anthropic page content");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+// ---------------------------------------------------------------------------
+// executePrompt — Document attachment conversion per provider
+// ---------------------------------------------------------------------------
+
+Deno.test("executePrompt (Anthropic): document_attachment converted to Anthropic document block", async () => {
+  let capturedBody: Record<string, unknown> = {};
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = ((_input: unknown, init?: RequestInit) => {
+    capturedBody = JSON.parse((init?.body as string) || "{}");
+    return Promise.resolve(new Response(JSON.stringify({
+      content: [{ type: "text", text: "I read the PDF" }],
+    }), { status: 200, headers: { "Content-Type": "application/json" } }));
+  }) as typeof fetch;
+  try {
+    const messages = buildMessages(
+      "Review doc", undefined,
+      [{ role: "user" as const, content: "check this PDF" }],
+      undefined, null,
+      [{ data: "cGRmZGF0YQ==", mediaType: "application/pdf", fileName: "report.pdf" }],
+    );
+    await executePrompt(messages, ANTHROPIC_CONFIG);
+
+    const apiMessages = capturedBody.messages as Record<string, unknown>[];
+    const userMsg = apiMessages.find((m) => m.role === "user");
+    const content = userMsg!.content as Record<string, unknown>[];
+    const docPart = content.find((p) => p.type === "document");
+    assertEquals(docPart!.type, "document");
+    const source = docPart!.source as Record<string, unknown>;
+    assertEquals(source.type, "base64");
+    assertEquals(source.media_type, "application/pdf");
+    assertEquals(source.data, "cGRmZGF0YQ==");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+Deno.test("executePrompt (OpenAI): document_attachment converted to text placeholder", async () => {
+  let capturedBody: Record<string, unknown> = {};
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = ((_input: unknown, init?: RequestInit) => {
+    capturedBody = JSON.parse((init?.body as string) || "{}");
+    return Promise.resolve(new Response(JSON.stringify({
+      choices: [{ message: { content: "ok" } }],
+    }), { status: 200, headers: { "Content-Type": "application/json" } }));
+  }) as typeof fetch;
+  try {
+    const messages = buildMessages(
+      "Review doc", undefined,
+      [{ role: "user" as const, content: "check this PDF" }],
+      undefined, null,
+      [{ data: "cGRmZGF0YQ==", mediaType: "application/pdf", fileName: "report.pdf" }],
+    );
+    await executePrompt(messages, BASE_CONFIG);
+
+    const apiMessages = capturedBody.messages as Record<string, unknown>[];
+    const userMsg = apiMessages.find((m) => m.role === "user");
+    const content = userMsg!.content as Record<string, unknown>[];
+    // document_attachment should be converted to text placeholder
+    const docPart = content.find((p) => (p as Record<string, unknown>).type === "document_attachment");
+    assertEquals(docPart, undefined); // no document_attachment in OpenAI
+    const textParts = content.filter((p) => p.type === "text");
+    const hasPlaceholder = textParts.some((p) =>
+      (p.text as string).includes("document processing requires Anthropic provider")
+    );
+    assertEquals(hasPlaceholder, true);
   } finally {
     globalThis.fetch = originalFetch;
   }

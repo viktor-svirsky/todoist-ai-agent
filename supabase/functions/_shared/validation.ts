@@ -148,3 +148,12 @@ export function sanitizeImageMediaType(fileType: string | undefined): string {
   if (fileType && ALLOWED_IMAGE_TYPES.has(fileType)) return fileType;
   return "image/png";
 }
+
+const ALLOWED_DOCUMENT_TYPES = new Set([
+  "application/pdf",
+]);
+
+export function sanitizeDocumentMediaType(fileType: string | undefined): string {
+  if (fileType && ALLOWED_DOCUMENT_TYPES.has(fileType)) return fileType;
+  return "application/pdf";
+}

@@ -1057,7 +1057,7 @@ t("image: download failure is handled gracefully, AI still processes", async () 
   }
 });
 
-t("image: non-image attachment (PDF) is ignored", async () => {
+t("document: PDF attachment is downloaded and sent as Anthropic document block", async () => {
   let capturedBody: Record<string, unknown> | null = null;
 
   const restore = mockFullFlowWithImages({
@@ -1074,6 +1074,7 @@ t("image: non-image attachment (PDF) is ignored", async () => {
       },
     ],
     onAiRequest: (body) => { capturedBody = body; },
+    useAnthropic: true,
   });
 
   try {
@@ -1089,8 +1090,105 @@ t("image: non-image attachment (PDF) is ignored", async () => {
     const messages = capturedBody!.messages as Record<string, unknown>[];
     const lastUser = [...messages].reverse().find((m) => m.role === "user");
     assert(lastUser, "Should have a user message");
-    assertEquals(typeof lastUser.content, "string", "PDF should not produce image parts");
-    assertEquals(lastUser.content, "Check this document");
+    // PDF creates multimodal content with text + Anthropic document block
+    assertEquals(Array.isArray(lastUser.content), true, "PDF should produce multimodal content");
+    const parts = lastUser.content as Record<string, unknown>[];
+    assertEquals(parts[0].type, "text");
+    assertEquals(parts[0].text, "Check this document");
+    assertEquals(parts[1].type, "document");
+    const source = parts[1].source as Record<string, unknown>;
+    assertEquals(source.type, "base64");
+    assertEquals(source.media_type, "application/pdf");
+    assert(typeof source.data === "string" && source.data.length > 0, "Should have base64 data");
+  } finally {
+    restore();
+  }
+});
+
+t("document: PDF attachment with OpenAI becomes text placeholder", async () => {
+  let capturedBody: Record<string, unknown> | null = null;
+
+  const restore = mockFullFlowWithImages({
+    commentsResponse: [
+      {
+        id: "pdf-2",
+        content: "@ai Check this document",
+        posted_at: "2026-01-01T00:00:00Z",
+        file_attachment: {
+          file_type: "application/pdf",
+          file_name: "document.pdf",
+          file_url: "https://files.todoist.com/document.pdf",
+        },
+      },
+    ],
+    onAiRequest: (body) => { capturedBody = body; },
+  });
+
+  try {
+    const payload = JSON.stringify(makePayload({
+      event_data: { id: "pdf-2", content: "@ai Check this document", item_id: "task-1" },
+    }));
+    const req = await signedRequest(payload);
+    const res = await handler(req);
+    assertEquals(res.status, 200);
+    await new Promise((r) => setTimeout(r, 300));
+
+    assert(capturedBody !== null, "AI should be called");
+    const messages = capturedBody!.messages as Record<string, unknown>[];
+    const lastUser = [...messages].reverse().find((m) => m.role === "user");
+    assert(lastUser, "Should have a user message");
+    // OpenAI: document_attachment is sanitized to text placeholder
+    assertEquals(Array.isArray(lastUser.content), true, "Should produce multimodal content");
+    const parts = lastUser.content as Record<string, unknown>[];
+    const textParts = parts.filter((p) => p.type === "text");
+    const hasPlaceholder = textParts.some((p) =>
+      (p.text as string).includes("document processing requires Anthropic provider")
+    );
+    assertEquals(hasPlaceholder, true, "OpenAI should get text placeholder for PDF");
+  } finally {
+    restore();
+  }
+});
+
+t("document: unsupported file type (XLSX) included as text placeholder", async () => {
+  let capturedBody: Record<string, unknown> | null = null;
+
+  const restore = mockFullFlowWithImages({
+    commentsResponse: [
+      {
+        id: "xlsx-1",
+        content: "@ai Check this spreadsheet",
+        posted_at: "2026-01-01T00:00:00Z",
+        file_attachment: {
+          file_type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+          file_name: "data.xlsx",
+          file_url: "https://files.todoist.com/data.xlsx",
+        },
+      },
+    ],
+    onAiRequest: (body) => { capturedBody = body; },
+  });
+
+  try {
+    const payload = JSON.stringify(makePayload({
+      event_data: { id: "xlsx-1", content: "@ai Check this spreadsheet", item_id: "task-1" },
+    }));
+    const req = await signedRequest(payload);
+    const res = await handler(req);
+    assertEquals(res.status, 200);
+    await new Promise((r) => setTimeout(r, 300));
+
+    assert(capturedBody !== null, "AI should be called");
+    const messages = capturedBody!.messages as Record<string, unknown>[];
+    const lastUser = [...messages].reverse().find((m) => m.role === "user");
+    assert(lastUser, "Should have a user message");
+    assertEquals(Array.isArray(lastUser.content), true, "Unsupported file should produce multimodal content");
+    const parts = lastUser.content as Record<string, unknown>[];
+    const textParts = parts.filter((p) => p.type === "text");
+    const hasPlaceholder = textParts.some((p) =>
+      (p.text as string).includes("only PDF files are supported")
+    );
+    assertEquals(hasPlaceholder, true, "Should have unsupported file placeholder text");
   } finally {
     restore();
   }
@@ -1249,6 +1347,604 @@ t("image: Anthropic provider converts to base64 source format", async () => {
     assertEquals(source.type, "base64");
     assertEquals(source.media_type, "image/png");
     assert(source.data.length > 0, "Image data should not be empty");
+  } finally {
+    restore();
+  }
+});
+
+// ============================================================================
+// Document handling — additional e2e tests
+// ============================================================================
+
+t("document: PDF-only comment (no text) creates [file:] message + document block", async () => {
+  let capturedBody: Record<string, unknown> | null = null;
+
+  const restore = mockFullFlowWithImages({
+    commentsResponse: [
+      {
+        id: "pdf-only-1",
+        content: "",
+        posted_at: "2026-01-01T00:00:00Z",
+        file_attachment: {
+          file_type: "application/pdf",
+          file_name: "report.pdf",
+          file_url: "https://files.todoist.com/report.pdf",
+        },
+      },
+    ],
+    onAiRequest: (body) => { capturedBody = body; },
+    useAnthropic: true,
+  });
+
+  try {
+    const payload = JSON.stringify(makePayload({
+      event_data: { id: "pdf-only-1", content: "@ai", item_id: "task-1" },
+    }));
+    const req = await signedRequest(payload);
+    const res = await handler(req);
+    assertEquals(res.status, 200);
+    await new Promise((r) => setTimeout(r, 300));
+
+    assert(capturedBody !== null, "AI should be called for PDF-only comment");
+    const messages = capturedBody!.messages as Record<string, unknown>[];
+    // The [file: report.pdf] message should be in the conversation
+    const userMessages = messages.filter((m) => m.role === "user");
+    assert(userMessages.length > 0, "Should have user messages");
+    // Last user message should have the document block
+    const lastUser = userMessages[userMessages.length - 1];
+    assertEquals(Array.isArray(lastUser.content), true, "Should be multimodal");
+    const parts = lastUser.content as Record<string, unknown>[];
+    const docPart = parts.find((p) => p.type === "document");
+    assert(docPart, "Should have Anthropic document block");
+  } finally {
+    restore();
+  }
+});
+
+t("document: failed PDF download still calls AI without document", async () => {
+  let capturedBody: Record<string, unknown> | null = null;
+
+  const restore = mockFullFlowWithImages({
+    commentsResponse: [
+      {
+        id: "pdf-fail-1",
+        content: "@ai Analyze this document",
+        posted_at: "2026-01-01T00:00:00Z",
+        file_attachment: {
+          file_type: "application/pdf",
+          file_name: "missing.pdf",
+          file_url: "https://files.todoist.com/missing.pdf",
+        },
+      },
+    ],
+    failImageDownload: true,
+    onAiRequest: (body) => { capturedBody = body; },
+    useAnthropic: true,
+  });
+
+  try {
+    const payload = JSON.stringify(makePayload({
+      event_data: { id: "pdf-fail-1", content: "@ai Analyze this document", item_id: "task-1" },
+    }));
+    const req = await signedRequest(payload);
+    const res = await handler(req);
+    assertEquals(res.status, 200);
+    await new Promise((r) => setTimeout(r, 300));
+
+    assert(capturedBody !== null, "AI should be called despite failed document download");
+    const messages = capturedBody!.messages as Record<string, unknown>[];
+    const lastUser = [...messages].reverse().find((m) => m.role === "user");
+    assert(lastUser, "Should have a user message");
+    // No document block — download failed
+    if (Array.isArray(lastUser.content)) {
+      const parts = lastUser.content as Record<string, unknown>[];
+      const docPart = parts.find((p) => p.type === "document");
+      assertEquals(docPart, undefined, "Failed download should not produce document block");
+    }
+  } finally {
+    restore();
+  }
+});
+
+t("document: image + PDF in same conversation both included", async () => {
+  let capturedBody: Record<string, unknown> | null = null;
+
+  const restore = mockFullFlowWithImages({
+    commentsResponse: [
+      {
+        id: "img-1",
+        content: "@ai look at this image",
+        posted_at: "2026-01-01T00:00:00Z",
+        file_attachment: {
+          file_type: "image/png",
+          file_name: "photo.png",
+          file_url: "https://files.todoist.com/photo.png",
+        },
+      },
+      {
+        id: "pdf-1",
+        content: "@ai and this PDF",
+        posted_at: "2026-01-01T00:01:00Z",
+        file_attachment: {
+          file_type: "application/pdf",
+          file_name: "doc.pdf",
+          file_url: "https://files.todoist.com/doc.pdf",
+        },
+      },
+    ],
+    onAiRequest: (body) => { capturedBody = body; },
+    useAnthropic: true,
+  });
+
+  try {
+    const payload = JSON.stringify(makePayload({
+      event_data: { id: "pdf-1", content: "@ai and this PDF", item_id: "task-1" },
+    }));
+    const req = await signedRequest(payload);
+    const res = await handler(req);
+    assertEquals(res.status, 200);
+    await new Promise((r) => setTimeout(r, 300));
+
+    assert(capturedBody !== null, "AI should be called");
+    const messages = capturedBody!.messages as Record<string, unknown>[];
+    const lastUser = [...messages].reverse().find((m) => m.role === "user");
+    assert(lastUser, "Should have a user message");
+    assertEquals(Array.isArray(lastUser.content), true, "Should be multimodal");
+    const parts = lastUser.content as Record<string, unknown>[];
+    const imagePart = parts.find((p) => p.type === "image");
+    const docPart = parts.find((p) => p.type === "document");
+    assert(imagePart, "Should have image block from comment attachment");
+    assert(docPart, "Should have document block from PDF attachment");
+  } finally {
+    restore();
+  }
+});
+
+// ============================================================================
+// URL / fetch_url tool call e2e tests
+// ============================================================================
+
+/**
+ * Helper that mocks a full webhook flow with AI tool call support.
+ * The AI mock responds with a sequence: first a tool call, then a final response.
+ */
+function mockFullFlowWithToolCalls(options: {
+  commentsResponse?: unknown[];
+  taskDescription?: string;
+  aiToolCallResponse: Record<string, unknown>;
+  aiFinalResponse: Record<string, unknown>;
+  fetchUrlResponse?: { status: number; body: string; contentType?: string };
+  braveSearchResponse?: { status: number; body: unknown };
+  onAiRequest?: (body: Record<string, unknown>, callIndex: number) => void;
+  useAnthropic?: boolean;
+  withBraveKey?: boolean;
+}): () => void {
+  const useAnthropic = options.useAnthropic ?? false;
+  const aiHost = useAnthropic ? "api.anthropic.com" : "api.openai.com";
+  const aiBaseUrl = useAnthropic
+    ? "https://api.anthropic.com/v1"
+    : "https://api.openai.com/v1";
+
+  const prevBaseUrl = Deno.env.get("DEFAULT_AI_BASE_URL");
+  const prevApiKey = Deno.env.get("DEFAULT_AI_API_KEY");
+  const prevModel = Deno.env.get("DEFAULT_AI_MODEL");
+  const prevBraveKey = Deno.env.get("DEFAULT_BRAVE_KEY");
+
+  Deno.env.set("DEFAULT_AI_BASE_URL", aiBaseUrl);
+  Deno.env.set("DEFAULT_AI_API_KEY", "test-key");
+  Deno.env.set("DEFAULT_AI_MODEL", useAnthropic ? "claude-3-5-sonnet" : "gpt-4o-mini");
+  if (options.withBraveKey) Deno.env.set("DEFAULT_BRAVE_KEY", "test-brave-key");
+  else Deno.env.delete("DEFAULT_BRAVE_KEY");
+
+  let aiCallIndex = 0;
+  const restoreFetch = mockFetch((url, init) => {
+    // Supabase
+    if (url.includes("/rest/v1/users_config") && init?.method !== "POST" && !url.includes("rpc")) {
+      return new Response(JSON.stringify(mockUserConfig()), {
+        status: 200, headers: { "Content-Type": "application/json" },
+      });
+    }
+    if (url.includes("/rest/v1/rpc/try_claim_event")) {
+      return new Response("true", { status: 200, headers: { "Content-Type": "application/json" } });
+    }
+    if (url.includes("/rest/v1/rpc/check_rate_limit")) {
+      return new Response(JSON.stringify({ allowed: true, blocked: false, retry_after: 0 }), {
+        status: 200, headers: { "Content-Type": "application/json" },
+      });
+    }
+    if (url.includes("/rest/v1/rpc/increment_ai_requests")) {
+      return new Response("null", { status: 200, headers: { "Content-Type": "application/json" } });
+    }
+
+    let host: string;
+    try { host = new URL(url).hostname; } catch { host = ""; }
+
+    // Todoist API
+    if (host === "api.todoist.com") {
+      if (url.includes("/comments") && init?.method === "POST") {
+        return new Response(JSON.stringify({ id: "progress-1" }), {
+          status: 200, headers: { "Content-Type": "application/json" },
+        });
+      }
+      if (url.includes("/comments")) {
+        return new Response(JSON.stringify({ results: options.commentsResponse ?? [] }), {
+          status: 200, headers: { "Content-Type": "application/json" },
+        });
+      }
+      if (url.includes("/tasks/")) {
+        return new Response(JSON.stringify({
+          content: "Test task",
+          description: options.taskDescription ?? "",
+        }), {
+          status: 200, headers: { "Content-Type": "application/json" },
+        });
+      }
+    }
+
+    // Brave Search API
+    if (host === "api.search.brave.com" && options.braveSearchResponse) {
+      return new Response(JSON.stringify(options.braveSearchResponse.body), {
+        status: options.braveSearchResponse.status,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    // AI API
+    if (host === aiHost) {
+      const currentIndex = aiCallIndex++;
+      if (options.onAiRequest && init?.body) {
+        options.onAiRequest(JSON.parse(String(init.body)), currentIndex);
+      }
+      const responseBody = currentIndex === 0
+        ? options.aiToolCallResponse
+        : options.aiFinalResponse;
+      return new Response(JSON.stringify(responseBody), {
+        status: 200, headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    // External URL fetch (for fetch_url tool)
+    if (options.fetchUrlResponse) {
+      return new Response(options.fetchUrlResponse.body, {
+        status: options.fetchUrlResponse.status,
+        headers: { "Content-Type": options.fetchUrlResponse.contentType ?? "text/html" },
+      });
+    }
+
+    return new Response("{}", { status: 200, headers: { "Content-Type": "application/json" } });
+  });
+
+  return () => {
+    restoreFetch();
+    if (prevBaseUrl !== undefined) Deno.env.set("DEFAULT_AI_BASE_URL", prevBaseUrl);
+    else Deno.env.delete("DEFAULT_AI_BASE_URL");
+    if (prevApiKey !== undefined) Deno.env.set("DEFAULT_AI_API_KEY", prevApiKey);
+    else Deno.env.delete("DEFAULT_AI_API_KEY");
+    if (prevModel !== undefined) Deno.env.set("DEFAULT_AI_MODEL", prevModel);
+    else Deno.env.delete("DEFAULT_AI_MODEL");
+    if (prevBraveKey !== undefined) Deno.env.set("DEFAULT_BRAVE_KEY", prevBraveKey);
+    else Deno.env.delete("DEFAULT_BRAVE_KEY");
+  };
+}
+
+// -- OpenAI provider --
+
+t("fetch_url: AI calls fetch_url tool, gets page content, returns final answer", async () => {
+  const capturedBodies: Record<string, unknown>[] = [];
+
+  const restore = mockFullFlowWithToolCalls({
+    commentsResponse: [
+      { id: "url-1", content: "@ai summarize https://example.com/article", posted_at: "2026-01-01T00:00:00Z" },
+    ],
+    aiToolCallResponse: {
+      choices: [{
+        message: {
+          content: null,
+          tool_calls: [{
+            id: "call_1",
+            type: "function",
+            function: { name: "fetch_url", arguments: '{"url":"https://example.com/article"}' },
+          }],
+        },
+      }],
+    },
+    aiFinalResponse: {
+      choices: [{ message: { content: "Here is a summary of the article." } }],
+    },
+    fetchUrlResponse: {
+      status: 200,
+      body: "<html><body><h1>Article Title</h1><p>Article content here.</p></body></html>",
+      contentType: "text/html",
+    },
+    onAiRequest: (body, idx) => { capturedBodies[idx] = body; },
+  });
+
+  try {
+    const payload = JSON.stringify(makePayload({
+      event_data: { id: "url-1", content: "@ai summarize https://example.com/article", item_id: "task-1" },
+    }));
+    const req = await signedRequest(payload);
+    const res = await handler(req);
+    assertEquals(res.status, 200);
+    await new Promise((r) => setTimeout(r, 300));
+
+    // First AI call should have messages
+    assert(capturedBodies[0], "First AI call should happen");
+    // Second AI call should include tool result
+    assert(capturedBodies[1], "Second AI call (with tool result) should happen");
+    const secondMessages = capturedBodies[1].messages as Record<string, unknown>[];
+    const toolResultMsg = secondMessages.find((m) => m.role === "tool");
+    assert(toolResultMsg, "Should have a tool result message");
+    const toolContent = toolResultMsg.content as string;
+    assert(toolContent.includes("Article Title"), "Tool result should contain page text");
+    assert(toolContent.includes("Article content here"), "Tool result should contain page content");
+  } finally {
+    restore();
+  }
+});
+
+t("fetch_url: page returns 404 — AI receives error message", async () => {
+  const capturedBodies: Record<string, unknown>[] = [];
+
+  const restore = mockFullFlowWithToolCalls({
+    commentsResponse: [
+      { id: "url-404-1", content: "@ai check https://example.com/missing", posted_at: "2026-01-01T00:00:00Z" },
+    ],
+    aiToolCallResponse: {
+      choices: [{
+        message: {
+          content: null,
+          tool_calls: [{
+            id: "call_1",
+            type: "function",
+            function: { name: "fetch_url", arguments: '{"url":"https://example.com/missing"}' },
+          }],
+        },
+      }],
+    },
+    aiFinalResponse: {
+      choices: [{ message: { content: "The page could not be found." } }],
+    },
+    fetchUrlResponse: {
+      status: 404,
+      body: "Not Found",
+      contentType: "text/html",
+    },
+    onAiRequest: (body, idx) => { capturedBodies[idx] = body; },
+  });
+
+  try {
+    const payload = JSON.stringify(makePayload({
+      event_data: { id: "url-404-1", content: "@ai check https://example.com/missing", item_id: "task-1" },
+    }));
+    const req = await signedRequest(payload);
+    const res = await handler(req);
+    assertEquals(res.status, 200);
+    await new Promise((r) => setTimeout(r, 300));
+
+    assert(capturedBodies[1], "Second AI call should happen with tool error");
+    const secondMessages = capturedBodies[1].messages as Record<string, unknown>[];
+    const toolResultMsg = secondMessages.find((m) => m.role === "tool");
+    assert(toolResultMsg, "Should have a tool result message");
+    const toolContent = toolResultMsg.content as string;
+    assert(
+      toolContent.includes("Error") || toolContent.includes("error"),
+      "Tool result should indicate error for 404 page"
+    );
+  } finally {
+    restore();
+  }
+});
+
+t("fetch_url: private IP URL blocked by SSRF protection", async () => {
+  const capturedBodies: Record<string, unknown>[] = [];
+
+  const restore = mockFullFlowWithToolCalls({
+    commentsResponse: [
+      { id: "ssrf-url-1", content: "@ai read http://192.168.1.1/admin", posted_at: "2026-01-01T00:00:00Z" },
+    ],
+    aiToolCallResponse: {
+      choices: [{
+        message: {
+          content: null,
+          tool_calls: [{
+            id: "call_1",
+            type: "function",
+            function: { name: "fetch_url", arguments: '{"url":"http://192.168.1.1/admin"}' },
+          }],
+        },
+      }],
+    },
+    aiFinalResponse: {
+      choices: [{ message: { content: "I cannot access that URL." } }],
+    },
+    onAiRequest: (body, idx) => { capturedBodies[idx] = body; },
+  });
+
+  try {
+    const payload = JSON.stringify(makePayload({
+      event_data: { id: "ssrf-url-1", content: "@ai read http://192.168.1.1/admin", item_id: "task-1" },
+    }));
+    const req = await signedRequest(payload);
+    const res = await handler(req);
+    assertEquals(res.status, 200);
+    await new Promise((r) => setTimeout(r, 300));
+
+    assert(capturedBodies[1], "Second AI call should happen with SSRF error");
+    const secondMessages = capturedBodies[1].messages as Record<string, unknown>[];
+    const toolResultMsg = secondMessages.find((m) => m.role === "tool");
+    assert(toolResultMsg, "Should have a tool result message");
+    const toolContent = toolResultMsg.content as string;
+    assert(
+      toolContent.includes("Error") || toolContent.includes("private") || toolContent.includes("blocked"),
+      "Tool result should indicate SSRF block"
+    );
+  } finally {
+    restore();
+  }
+});
+
+// -- Anthropic provider --
+
+t("fetch_url (Anthropic): AI calls fetch_url, gets content, responds", async () => {
+  const capturedBodies: Record<string, unknown>[] = [];
+
+  const restore = mockFullFlowWithToolCalls({
+    commentsResponse: [
+      { id: "anth-url-1", content: "@ai summarize https://example.com/page", posted_at: "2026-01-01T00:00:00Z" },
+    ],
+    aiToolCallResponse: {
+      content: [
+        { type: "text", text: "Let me fetch that page." },
+        { type: "tool_use", id: "toolu_1", name: "fetch_url", input: { url: "https://example.com/page" } },
+      ],
+    },
+    aiFinalResponse: {
+      content: [{ type: "text", text: "Based on the page content, here is a summary." }],
+    },
+    fetchUrlResponse: {
+      status: 200,
+      body: "<html><body><p>Important page content.</p></body></html>",
+      contentType: "text/html",
+    },
+    onAiRequest: (body, idx) => { capturedBodies[idx] = body; },
+    useAnthropic: true,
+  });
+
+  try {
+    const payload = JSON.stringify(makePayload({
+      event_data: { id: "anth-url-1", content: "@ai summarize https://example.com/page", item_id: "task-1" },
+    }));
+    const req = await signedRequest(payload);
+    const res = await handler(req);
+    assertEquals(res.status, 200);
+    await new Promise((r) => setTimeout(r, 300));
+
+    assert(capturedBodies[0], "First AI call should happen");
+    assert(capturedBodies[1], "Second AI call with tool result should happen");
+    // Anthropic batches tool results in a user message
+    const secondMessages = capturedBodies[1].messages as Record<string, unknown>[];
+    const toolResultMsg = secondMessages.find((m) =>
+      m.role === "user" && Array.isArray(m.content) &&
+      (m.content as Record<string, unknown>[]).some((c) => c.type === "tool_result")
+    );
+    assert(toolResultMsg, "Should have tool_result in a user message (Anthropic format)");
+    const toolParts = (toolResultMsg!.content as Record<string, unknown>[]).filter(
+      (c) => c.type === "tool_result"
+    );
+    assertEquals(toolParts.length, 1, "Should have exactly one tool result");
+    const content = toolParts[0].content as string;
+    assert(content.includes("Important page content"), "Tool result should contain fetched text");
+  } finally {
+    restore();
+  }
+});
+
+t("fetch_url: binary content type is rejected", async () => {
+  const capturedBodies: Record<string, unknown>[] = [];
+
+  const restore = mockFullFlowWithToolCalls({
+    commentsResponse: [
+      { id: "bin-url-1", content: "@ai download https://example.com/file.zip", posted_at: "2026-01-01T00:00:00Z" },
+    ],
+    aiToolCallResponse: {
+      choices: [{
+        message: {
+          content: null,
+          tool_calls: [{
+            id: "call_1",
+            type: "function",
+            function: { name: "fetch_url", arguments: '{"url":"https://example.com/file.zip"}' },
+          }],
+        },
+      }],
+    },
+    aiFinalResponse: {
+      choices: [{ message: { content: "That URL contains binary content." } }],
+    },
+    fetchUrlResponse: {
+      status: 200,
+      body: "binary-content",
+      contentType: "application/zip",
+    },
+    onAiRequest: (body, idx) => { capturedBodies[idx] = body; },
+  });
+
+  try {
+    const payload = JSON.stringify(makePayload({
+      event_data: { id: "bin-url-1", content: "@ai download https://example.com/file.zip", item_id: "task-1" },
+    }));
+    const req = await signedRequest(payload);
+    const res = await handler(req);
+    assertEquals(res.status, 200);
+    await new Promise((r) => setTimeout(r, 300));
+
+    assert(capturedBodies[1], "Second AI call should happen");
+    const secondMessages = capturedBodies[1].messages as Record<string, unknown>[];
+    const toolResultMsg = secondMessages.find((m) => m.role === "tool");
+    assert(toolResultMsg, "Should have a tool result message");
+    const toolContent = toolResultMsg.content as string;
+    assert(
+      toolContent.includes("Error") || toolContent.includes("not supported") || toolContent.includes("text"),
+      "Tool result should reject binary content"
+    );
+  } finally {
+    restore();
+  }
+});
+
+t("web_search: AI calls web_search tool and gets results", async () => {
+  const capturedBodies: Record<string, unknown>[] = [];
+
+  const restore = mockFullFlowWithToolCalls({
+    commentsResponse: [
+      { id: "search-1", content: "@ai what is the weather today", posted_at: "2026-01-01T00:00:00Z" },
+    ],
+    aiToolCallResponse: {
+      choices: [{
+        message: {
+          content: null,
+          tool_calls: [{
+            id: "call_1",
+            type: "function",
+            function: { name: "web_search", arguments: '{"query":"weather today"}' },
+          }],
+        },
+      }],
+    },
+    aiFinalResponse: {
+      choices: [{ message: { content: "The weather is sunny today." } }],
+    },
+    braveSearchResponse: {
+      status: 200,
+      body: {
+        web: {
+          results: [
+            { title: "Weather Report", url: "https://weather.com", description: "Sunny, 25°C" },
+          ],
+        },
+      },
+    },
+    withBraveKey: true,
+    onAiRequest: (body, idx) => { capturedBodies[idx] = body; },
+  });
+
+  try {
+    const payload = JSON.stringify(makePayload({
+      event_data: { id: "search-1", content: "@ai what is the weather today", item_id: "task-1" },
+    }));
+    const req = await signedRequest(payload);
+    const res = await handler(req);
+    assertEquals(res.status, 200);
+    await new Promise((r) => setTimeout(r, 300));
+
+    assert(capturedBodies[1], "Second AI call should happen with search results");
+    const secondMessages = capturedBodies[1].messages as Record<string, unknown>[];
+    const toolResultMsg = secondMessages.find((m) => m.role === "tool");
+    assert(toolResultMsg, "Should have a tool result message");
+    const toolContent = toolResultMsg.content as string;
+    assert(toolContent.includes("Weather Report"), "Tool result should contain search results");
+    assert(toolContent.includes("Sunny"), "Tool result should contain search description");
   } finally {
     restore();
   }

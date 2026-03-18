@@ -78,7 +78,14 @@ export interface ImageUrlMessagePart {
   image_url: { url: string };
 }
 
-export type MultimodalContentPart = TextMessagePart | ImageUrlMessagePart;
+export interface DocumentContentPart {
+  type: "document_attachment";
+  file_name: string;
+  media_type: string;
+  data: string;
+}
+
+export type MultimodalContentPart = TextMessagePart | ImageUrlMessagePart | DocumentContentPart;
 
 export interface ChatMessage {
   role: "system" | "user" | "assistant" | "tool";
@@ -130,6 +137,11 @@ export interface AnthropicImageBlock {
   source: { type: "base64"; media_type: string; data: string };
 }
 
+export interface AnthropicDocumentBlock {
+  type: "document";
+  source: { type: "base64"; media_type: string; data: string };
+}
+
 export interface AnthropicToolResultBlock {
   type: "tool_result";
   tool_use_id: string;
@@ -140,6 +152,7 @@ export type AnthropicContentBlock =
   | AnthropicTextBlock
   | AnthropicToolUseBlock
   | AnthropicImageBlock
+  | AnthropicDocumentBlock
   | AnthropicToolResultBlock;
 
 export interface AnthropicResponse {
