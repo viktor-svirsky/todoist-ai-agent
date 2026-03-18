@@ -5,38 +5,49 @@ import {
   MAX_FETCH_CONTENT_CHARS,
 } from "./constants.ts";
 
+/** Decode HTML entities to plain characters. */
+function decodeEntities(text: string): string {
+  return text
+    .replace(/&#x([0-9a-fA-F]+);/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
+    .replace(/&#(\d+);/g, (_, dec) => String.fromCharCode(Number(dec)))
+    .replace(/&nbsp;/g, " ")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&amp;/g, "&");
+}
+
 /** Strip HTML to plain text for AI consumption. */
 export function htmlToText(html: string): string {
   let text = html;
 
-  // Remove script, style, noscript blocks
-  text = text.replace(/<script[\s>][\s\S]*?<\/script>/gi, "");
-  text = text.replace(/<style[\s>][\s\S]*?<\/style>/gi, "");
-  text = text.replace(/<noscript[\s>][\s\S]*?<\/noscript>/gi, "");
+  // Remove dangerous blocks in a loop to handle nested patterns like
+  // <scr<script>...</script>ipt> which leave <script> after one pass.
+  let prev;
+  do {
+    prev = text;
+    text = text.replace(/<script[\s>][\s\S]*?<\/script\s*>/gi, "");
+    text = text.replace(/<style[\s>][\s\S]*?<\/style\s*>/gi, "");
+    text = text.replace(/<noscript[\s>][\s\S]*?<\/noscript\s*>/gi, "");
+  } while (text !== prev);
 
   // Remove nav, header, footer (reduce boilerplate)
-  text = text.replace(/<nav[\s>][\s\S]*?<\/nav>/gi, "");
-  text = text.replace(/<header[\s>][\s\S]*?<\/header>/gi, "");
-  text = text.replace(/<footer[\s>][\s\S]*?<\/footer>/gi, "");
+  text = text.replace(/<nav[\s>][\s\S]*?<\/nav\s*>/gi, "");
+  text = text.replace(/<header[\s>][\s\S]*?<\/header\s*>/gi, "");
+  text = text.replace(/<footer[\s>][\s\S]*?<\/footer\s*>/gi, "");
 
   // Line breaks
   text = text.replace(/<br\s*\/?>/gi, "\n");
   // Block-level closing tags → newline
-  text = text.replace(/<\/(?:p|div|h[1-6]|li|tr|blockquote|section|article)>/gi, "\n");
+  text = text.replace(/<\/(?:p|div|h[1-6]|li|tr|blockquote|section|article)\s*>/gi, "\n");
 
   // Strip all remaining tags
   text = text.replace(/<[^>]+>/g, "");
 
-  // Decode HTML entities
-  text = text
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&nbsp;/g, " ")
-    .replace(/&#x([0-9a-fA-F]+);/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
-    .replace(/&#(\d+);/g, (_, dec) => String.fromCharCode(Number(dec)));
+  // Decode entities AFTER tag stripping so decoded chars can't form new tags.
+  // Decode &amp; last so &amp;lt; → &lt; does not then become <
+  text = decodeEntities(text);
 
   // Collapse whitespace
   text = text.replace(/[ \t]+/g, " ");
