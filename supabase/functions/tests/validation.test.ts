@@ -1,5 +1,5 @@
 import { assertEquals } from "@std/assert";
-import { validateSettings, isPrivateHostname, sanitizeImageMediaType, extractMarkdownImageUrls, guessMediaType } from "../_shared/validation.ts";
+import { validateSettings, isPrivateHostname, sanitizeImageMediaType, extractMarkdownImageUrls, guessMediaType, isTextFile } from "../_shared/validation.ts";
 
 // -- max_messages --
 
@@ -374,4 +374,60 @@ Deno.test("guessMediaType: defaults to png for unknown extension", () => {
 
 Deno.test("guessMediaType: defaults to png for invalid URL", () => {
   assertEquals(guessMediaType("not-a-url"), "image/png");
+});
+
+// -- isTextFile --
+
+Deno.test("isTextFile: matches by MIME type", () => {
+  assertEquals(isTextFile("text/plain", "file.bin"), true);
+  assertEquals(isTextFile("application/json", "data"), true);
+  assertEquals(isTextFile("application/javascript", "code"), true);
+  assertEquals(isTextFile("text/csv", "data"), true);
+  assertEquals(isTextFile("text/markdown", "readme"), true);
+  assertEquals(isTextFile("application/x-sh", "script"), true);
+});
+
+Deno.test("isTextFile: matches any text/* MIME type", () => {
+  assertEquals(isTextFile("text/x-custom", "file"), true);
+  assertEquals(isTextFile("text/x-python", "file"), true);
+});
+
+Deno.test("isTextFile: falls back to extension when MIME is generic", () => {
+  assertEquals(isTextFile("application/octet-stream", "script.py"), true);
+  assertEquals(isTextFile("application/octet-stream", "config.yaml"), true);
+  assertEquals(isTextFile("application/octet-stream", "install.sh"), true);
+  assertEquals(isTextFile(undefined, "notes.txt"), true);
+  assertEquals(isTextFile(undefined, "code.ts"), true);
+});
+
+Deno.test("isTextFile: rejects binary file types", () => {
+  assertEquals(isTextFile("application/pdf", "doc.pdf"), false);
+  assertEquals(isTextFile("application/vnd.ms-excel", "data.xls"), false);
+  assertEquals(isTextFile("application/zip", "archive.zip"), false);
+  assertEquals(isTextFile("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "data.xlsx"), false);
+});
+
+Deno.test("isTextFile: rejects binary extensions", () => {
+  assertEquals(isTextFile(undefined, "photo.png"), false);
+  assertEquals(isTextFile(undefined, "archive.zip"), false);
+  assertEquals(isTextFile(undefined, "doc.docx"), false);
+  assertEquals(isTextFile("application/octet-stream", "data.xlsx"), false);
+});
+
+Deno.test("isTextFile: handles no extension", () => {
+  assertEquals(isTextFile(undefined, "Makefile"), false);
+  assertEquals(isTextFile(undefined, "README"), false);
+  assertEquals(isTextFile("text/plain", "README"), true);
+});
+
+Deno.test("isTextFile: handles dotfiles", () => {
+  assertEquals(isTextFile(undefined, ".env"), true);
+  assertEquals(isTextFile(undefined, ".bashrc"), false);
+  assertEquals(isTextFile(undefined, ".gitignore"), false);
+});
+
+Deno.test("isTextFile: handles null/undefined fileName", () => {
+  assertEquals(isTextFile(undefined, null), false);
+  assertEquals(isTextFile(undefined, undefined), false);
+  assertEquals(isTextFile("text/plain", null), true);
 });

@@ -757,6 +757,7 @@ function mockFullFlowWithImages(options: {
   onAiRequest?: (body: Record<string, unknown>) => void;
   failImageDownload?: boolean;
   useAnthropic?: boolean;
+  fileDownloadResponse?: Response | (() => Response);
 } = {}): () => void {
   const useAnthropic = options.useAnthropic ?? false;
   const aiHost = useAnthropic ? "api.anthropic.com" : "api.openai.com";
@@ -825,6 +826,11 @@ function mockFullFlowWithImages(options: {
     ) {
       if (options.failImageDownload) {
         return new Response("Not Found", { status: 404 });
+      }
+      if (options.fileDownloadResponse) {
+        return typeof options.fileDownloadResponse === "function"
+          ? options.fileDownloadResponse()
+          : options.fileDownloadResponse;
       }
       return new Response(MOCK_PNG_BYTES, {
         status: 200, headers: { "Content-Type": "image/png" },
@@ -1186,9 +1192,164 @@ t("document: unsupported file type (XLSX) included as text placeholder", async (
     const parts = lastUser.content as Record<string, unknown>[];
     const textParts = parts.filter((p) => p.type === "text");
     const hasPlaceholder = textParts.some((p) =>
-      (p.text as string).includes("only PDF files are supported")
+      (p.text as string).includes("only PDF and text-based files are supported")
     );
     assertEquals(hasPlaceholder, true, "Should have unsupported file placeholder text");
+  } finally {
+    restore();
+  }
+});
+
+t("document: text file (.sh) is downloaded and injected as text content", async () => {
+  let capturedBody: Record<string, unknown> | null = null;
+  const scriptContent = '#!/bin/bash\necho "Hello World"';
+
+  const restore = mockFullFlowWithImages({
+    commentsResponse: [
+      {
+        id: "sh-1",
+        content: "@ai Review this script",
+        posted_at: "2026-01-01T00:00:00Z",
+        file_attachment: {
+          file_type: "application/x-sh",
+          file_name: "install.sh",
+          file_url: "https://files.todoist.com/install.sh",
+        },
+      },
+    ],
+    onAiRequest: (body) => { capturedBody = body; },
+    fileDownloadResponse: () => new Response(
+      new TextEncoder().encode(scriptContent),
+      { status: 200, headers: { "Content-Type": "application/x-sh" } },
+    ),
+  });
+
+  try {
+    const payload = JSON.stringify(makePayload({
+      event_data: { id: "sh-1", content: "@ai Review this script", item_id: "task-1" },
+    }));
+    const req = await signedRequest(payload);
+    const res = await handler(req);
+    assertEquals(res.status, 200);
+    await new Promise((r) => setTimeout(r, 300));
+
+    assert(capturedBody !== null, "AI should be called for text file");
+    const messages = (capturedBody!.messages ?? capturedBody!.choices) as Record<string, unknown>[];
+    const lastUser = [...messages].reverse().find((m) => m.role === "user");
+    assert(lastUser, "Should have a user message");
+    assertEquals(Array.isArray(lastUser.content), true, "Text file should produce multimodal content");
+    const parts = lastUser.content as Record<string, unknown>[];
+    const textParts = parts.filter((p) => p.type === "text");
+    const filePart = textParts.find((p) =>
+      (p.text as string).includes("[File: install.sh]")
+    );
+    assert(filePart, "Should have text part with [File: install.sh]");
+    assert((filePart!.text as string).includes(scriptContent), "Should contain the script content");
+  } finally {
+    restore();
+  }
+});
+
+t("document: text file detected by extension when MIME is octet-stream", async () => {
+  let capturedBody: Record<string, unknown> | null = null;
+  const pyContent = "print('hello')";
+
+  const restore = mockFullFlowWithImages({
+    commentsResponse: [
+      {
+        id: "py-1",
+        content: "@ai Check this",
+        posted_at: "2026-01-01T00:00:00Z",
+        file_attachment: {
+          file_type: "application/octet-stream",
+          file_name: "script.py",
+          file_url: "https://files.todoist.com/script.py",
+        },
+      },
+    ],
+    onAiRequest: (body) => { capturedBody = body; },
+    fileDownloadResponse: () => new Response(
+      new TextEncoder().encode(pyContent),
+      { status: 200, headers: { "Content-Type": "application/octet-stream" } },
+    ),
+  });
+
+  try {
+    const payload = JSON.stringify(makePayload({
+      event_data: { id: "py-1", content: "@ai Check this", item_id: "task-1" },
+    }));
+    const req = await signedRequest(payload);
+    const res = await handler(req);
+    assertEquals(res.status, 200);
+    await new Promise((r) => setTimeout(r, 300));
+
+    assert(capturedBody !== null, "AI should be called");
+    const messages = (capturedBody!.messages ?? capturedBody!.choices) as Record<string, unknown>[];
+    const lastUser = [...messages].reverse().find((m) => m.role === "user");
+    assert(lastUser, "Should have a user message");
+    const parts = lastUser.content as Record<string, unknown>[];
+    const textParts = parts.filter((p) => p.type === "text");
+    const filePart = textParts.find((p) =>
+      (p.text as string).includes("[File: script.py]")
+    );
+    assert(filePart, "Should detect .py by extension and inject text content");
+    assert((filePart!.text as string).includes(pyContent), "Should contain the Python content");
+  } finally {
+    restore();
+  }
+});
+
+t("document: text file works with OpenAI provider (no Anthropic needed)", async () => {
+  let capturedBody: Record<string, unknown> | null = null;
+  const csvContent = "name,age\nAlice,30\nBob,25";
+
+  const restore = mockFullFlowWithImages({
+    commentsResponse: [
+      {
+        id: "csv-1",
+        content: "@ai Analyze this data",
+        posted_at: "2026-01-01T00:00:00Z",
+        file_attachment: {
+          file_type: "text/csv",
+          file_name: "data.csv",
+          file_url: "https://files.todoist.com/data.csv",
+        },
+      },
+    ],
+    onAiRequest: (body) => { capturedBody = body; },
+    useAnthropic: false,
+    fileDownloadResponse: () => new Response(
+      new TextEncoder().encode(csvContent),
+      { status: 200, headers: { "Content-Type": "text/csv" } },
+    ),
+  });
+
+  try {
+    const payload = JSON.stringify(makePayload({
+      event_data: { id: "csv-1", content: "@ai Analyze this data", item_id: "task-1" },
+    }));
+    const req = await signedRequest(payload);
+    const res = await handler(req);
+    assertEquals(res.status, 200);
+    await new Promise((r) => setTimeout(r, 300));
+
+    assert(capturedBody !== null, "AI should be called");
+    const messages = capturedBody!.messages as Record<string, unknown>[];
+    const lastUser = [...messages].reverse().find((m) => m.role === "user");
+    assert(lastUser, "Should have a user message");
+    const parts = lastUser.content as Record<string, unknown>[];
+    // Text files work with OpenAI — no "requires Anthropic" placeholder
+    const textParts = parts.filter((p) => p.type === "text");
+    const filePart = textParts.find((p) =>
+      (p.text as string).includes("[File: data.csv]")
+    );
+    assert(filePart, "OpenAI should get text file content directly");
+    assert((filePart!.text as string).includes(csvContent), "Should contain CSV content");
+    // No Anthropic-only placeholder
+    const hasAnthropicPlaceholder = textParts.some((p) =>
+      (p.text as string).includes("requires Anthropic")
+    );
+    assertEquals(hasAnthropicPlaceholder, false, "Text files should not have Anthropic placeholder");
   } finally {
     restore();
   }

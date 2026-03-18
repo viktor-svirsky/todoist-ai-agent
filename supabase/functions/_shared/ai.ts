@@ -1,6 +1,6 @@
 import { braveSearch } from "./search.ts";
 import { fetchUrl } from "./fetch-url.ts";
-import { MAX_TOOL_ROUNDS, DEFAULT_MAX_TOKENS, MAX_AI_RESPONSE_BYTES, FALLBACK_STATUS_CODES } from "./constants.ts";
+import { MAX_TOOL_ROUNDS, DEFAULT_MAX_TOKENS, MAX_AI_RESPONSE_BYTES, FALLBACK_STATUS_CODES, MAX_TEXT_FILE_CHARS } from "./constants.ts";
 import * as Sentry from "@sentry/deno"; // startSpan is a no-op when Sentry is not initialized (no DSN set)
 import type {
   OpenAiResponse,
@@ -23,6 +23,7 @@ export interface DocumentAttachment {
   data: string;
   mediaType: string;
   fileName: string;
+  textContent?: string;
 }
 
 export interface AiConfig {
@@ -43,7 +44,7 @@ const SYSTEM_PROMPT = [
   "You help solve tasks by reasoning and providing clear, actionable answers.",
   "You can search the web when you need current information.",
   "You can fetch and read web pages when a user shares a URL or when you need content from a specific page.",
-  "Users may attach files (like PDFs) to their comments — you can read and analyze their contents.",
+  "Users may attach files to their comments — you can read and analyze PDFs and text-based files (.txt, .md, .csv, .json, .py, .ts, .sh, etc.).",
   "Respond concisely — your reply will be posted as a Todoist comment.",
 ].join("\n");
 
@@ -169,8 +170,17 @@ export function buildMessages(
       }
       if (documents) {
         for (const doc of documents) {
-          if (doc.data) {
-            // Supported document with content — will be converted per-provider
+          if (doc.textContent !== undefined) {
+            // Text file — inject as plain text, works with all providers
+            const truncated = doc.textContent.length > MAX_TEXT_FILE_CHARS
+              ? doc.textContent.slice(0, MAX_TEXT_FILE_CHARS) + "\n\n[Content truncated]"
+              : doc.textContent;
+            parts.push({
+              type: "text",
+              text: `[File: ${doc.fileName}]\n${truncated}`,
+            });
+          } else if (doc.data) {
+            // PDF document with content — will be converted per-provider
             parts.push({
               type: "document_attachment",
               file_name: doc.fileName,
@@ -178,10 +188,10 @@ export function buildMessages(
               data: doc.data,
             });
           } else {
-            // Unsupported file type — text placeholder for all providers
+            // Unsupported binary file — text placeholder for all providers
             parts.push({
               type: "text",
-              text: `[Attached file: ${doc.fileName} — only PDF files are supported for AI processing]`,
+              text: `[Attached file: ${doc.fileName} — only PDF and text-based files are supported for AI processing]`,
             });
           }
         }
