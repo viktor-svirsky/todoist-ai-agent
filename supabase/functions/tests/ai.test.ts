@@ -177,7 +177,62 @@ Deno.test("buildMessages: unsupported document (empty data) becomes text placeho
   assertEquals(Array.isArray(lastUserMsg.content), true);
   assertEquals(lastUserMsg.content[1], {
     type: "text",
-    text: "[Attached file: data.xls — only PDF files are supported for AI processing]",
+    text: "[Attached file: data.xls — only PDF and text-based files are supported for AI processing]",
+  });
+});
+
+Deno.test("buildMessages: text file with textContent becomes text block with [File: name] prefix", () => {
+  const messages = [{ role: "user" as const, content: "review this" }];
+  const docs = [{ data: "", mediaType: "text/plain", fileName: "notes.txt", textContent: "Hello world" }];
+  const result = buildMessages("Task", undefined, messages, undefined, null, docs);
+
+  const lastUserMsg = result[result.length - 1];
+  assertEquals(Array.isArray(lastUserMsg.content), true);
+  assertEquals(lastUserMsg.content[1], {
+    type: "text",
+    text: "[File: notes.txt]\nHello world",
+  });
+});
+
+Deno.test("buildMessages: text file truncated at 50k chars", () => {
+  const messages = [{ role: "user" as const, content: "analyze" }];
+  const longContent = "x".repeat(60_000);
+  const docs = [{ data: "", mediaType: "text/plain", fileName: "big.log", textContent: longContent }];
+  const result = buildMessages("Task", undefined, messages, undefined, null, docs);
+
+  const lastUserMsg = result[result.length - 1];
+  const textPart = lastUserMsg.content[1];
+  assertEquals(textPart.type, "text");
+  assertEquals(textPart.text.includes("[Content truncated]"), true);
+  // 50k chars + prefix + truncation suffix
+  assertEquals(textPart.text.length < 60_000, true);
+});
+
+Deno.test("buildMessages: text file + PDF combined on last user message", () => {
+  const messages = [{ role: "user" as const, content: "compare" }];
+  const docs = [
+    { data: "", mediaType: "text/plain", fileName: "notes.txt", textContent: "some text" },
+    { data: "pdfdata", mediaType: "application/pdf", fileName: "report.pdf" },
+  ];
+  const result = buildMessages("Task", undefined, messages, undefined, null, docs);
+
+  const lastUserMsg = result[result.length - 1];
+  assertEquals(Array.isArray(lastUserMsg.content), true);
+  assertEquals(lastUserMsg.content.length, 3); // text + text_file + pdf_doc
+  assertEquals(lastUserMsg.content[1].type, "text"); // text file
+  assertEquals(lastUserMsg.content[1].text, "[File: notes.txt]\nsome text");
+  assertEquals(lastUserMsg.content[2].type, "document_attachment"); // PDF
+});
+
+Deno.test("buildMessages: empty textContent string is treated as text file (not unsupported)", () => {
+  const messages = [{ role: "user" as const, content: "check" }];
+  const docs = [{ data: "", mediaType: "text/plain", fileName: "empty.txt", textContent: "" }];
+  const result = buildMessages("Task", undefined, messages, undefined, null, docs);
+
+  const lastUserMsg = result[result.length - 1];
+  assertEquals(lastUserMsg.content[1], {
+    type: "text",
+    text: "[File: empty.txt]\n",
   });
 });
 

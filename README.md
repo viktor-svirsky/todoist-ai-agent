@@ -69,7 +69,7 @@ sequenceDiagram
 | **Rate limiting** | Per-user webhook and settings rate limits with account blocking |
 | **Bring your own key** | Supports Anthropic (Claude) and any OpenAI-compatible provider, with key validation before save |
 | **Image support** | Attach images to comments for multimodal AI analysis |
-| **PDF document support** | Attach PDF files to comments — processed natively by Anthropic provider |
+| **File attachments** | Attach PDFs (Anthropic native) or text-based files (.txt, .md, .csv, .json, .py, .sh, etc.) for AI analysis |
 | **Data isolation** | Row Level Security ensures complete tenant separation |
 | **Error tracking** | Optional Sentry integration for monitoring |
 | **Accessible UI** | ARIA labels, focus management, keyboard navigation, screen reader support |
@@ -321,7 +321,7 @@ deno lint supabase/functions/   # Deno lint for Edge Functions
 | **Code scanning** | CodeQL analysis for security vulnerabilities |
 | **Dependency scanning** | Automated npm audit + Dependabot |
 | **Rate limiting** | Per-user webhook and settings rate limits |
-| **Attachment limits** | 4 MB max per image or document attachment |
+| **Attachment limits** | 4 MB max per image or document attachment, 50k char cap for text file content |
 | **URL fetch limits** | 2 MB download cap, 50k char output, 15s timeout, no redirects |
 
 ## License

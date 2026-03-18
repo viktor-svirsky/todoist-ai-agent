@@ -157,3 +157,23 @@ export function sanitizeDocumentMediaType(fileType: string | undefined): string 
   if (fileType && ALLOWED_DOCUMENT_TYPES.has(fileType)) return fileType;
   return "application/pdf";
 }
+
+import { SUPPORTED_TEXT_MIME_TYPES } from "./constants.ts";
+
+const TEXT_FILE_EXTENSIONS = new Set([
+  "txt", "md", "markdown", "csv", "json", "jsonl", "xml", "yaml", "yml",
+  "toml", "ini", "cfg", "conf", "env", "log", "tsv",
+  "sh", "bash", "zsh", "py", "js", "ts", "jsx", "tsx",
+  "html", "htm", "css", "sql",
+  "rs", "go", "rb", "php", "java", "c", "cpp", "h", "hpp",
+  "swift", "kt", "cs", "r",
+]);
+
+/** Returns true if the file should be treated as a UTF-8 text file. */
+export function isTextFile(mimeType: string | undefined, fileName: string | undefined | null): boolean {
+  if (mimeType && SUPPORTED_TEXT_MIME_TYPES.has(mimeType)) return true;
+  if (mimeType?.startsWith("text/")) return true;
+  if (!fileName) return false;
+  const ext = fileName.split(".").pop()?.toLowerCase() ?? "";
+  return TEXT_FILE_EXTENSIONS.has(ext);
+}

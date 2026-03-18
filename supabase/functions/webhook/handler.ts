@@ -18,7 +18,7 @@ import {
 import { commentsToMessages, normalizeModel } from "../_shared/messages.ts";
 import { captureException } from "../_shared/sentry.ts";
 import { uint8ToBase64, verifyHmac, decrypt, decryptIfPresent } from "../_shared/crypto.ts";
-import { sanitizeImageMediaType, sanitizeDocumentMediaType, isPrivateHostname, extractMarkdownImageUrls, guessMediaType } from "../_shared/validation.ts";
+import { sanitizeImageMediaType, sanitizeDocumentMediaType, isPrivateHostname, extractMarkdownImageUrls, guessMediaType, isTextFile } from "../_shared/validation.ts";
 import type { TodoistComment, TodoistWebhookEvent, UserConfig } from "../_shared/types.ts";
 
 // ---------------------------------------------------------------------------
@@ -146,12 +146,53 @@ async function runAiForTask(
       .filter((r): r is PromiseFulfilledResult<DocumentAttachment> => r.status === "fulfilled")
       .map((r) => r.value);
 
-    // For non-supported file types, add placeholder documents so the AI knows a file was attached
+    // Download text-based files (txt, md, csv, json, py, sh, etc.) and inject as text content
+    const textFileComments = comments.filter(
+      (c: TodoistComment) =>
+        c.file_attachment &&
+        !c.file_attachment.file_type?.startsWith("image/") &&
+        !SUPPORTED_DOCUMENT_TYPES.has(c.file_attachment.file_type ?? "") &&
+        isTextFile(c.file_attachment.file_type, c.file_attachment.file_name) &&
+        windowCommentIds.has(c.id)
+    );
+    const textFileResults = await Promise.allSettled(
+      textFileComments.map(async (c: TodoistComment) => {
+        const att = c.file_attachment!;
+        const bytes = await todoist.downloadFile(att.file_url);
+        let textContent: string;
+        try {
+          textContent = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+        } catch {
+          // Binary content disguised with text MIME type — skip as unsupported
+          return { data: "", mediaType: att.file_type, fileName: att.file_name };
+        }
+        return { data: "", mediaType: att.file_type, fileName: att.file_name, textContent };
+      })
+    );
+    if (textFileResults.some((r) => r.status === "rejected")) {
+      const rejectedTexts = textFileResults.filter((r) => r.status === "rejected");
+      console.warn("Some text file downloads failed", {
+        requestId,
+        taskId,
+        failedCount: rejectedTexts.length,
+        errors: rejectedTexts.map((r) =>
+          (r as PromiseRejectedResult).reason instanceof Error
+            ? (r as PromiseRejectedResult).reason.message
+            : String((r as PromiseRejectedResult).reason)
+        ),
+      });
+    }
+    for (const r of textFileResults) {
+      if (r.status === "fulfilled") documents.push(r.value);
+    }
+
+    // For truly unsupported binary files (docx, xlsx, zip, etc.), add placeholder
     const unsupportedFileComments = comments.filter(
       (c: TodoistComment) =>
         c.file_attachment &&
         !c.file_attachment.file_type?.startsWith("image/") &&
         !SUPPORTED_DOCUMENT_TYPES.has(c.file_attachment.file_type ?? "") &&
+        !isTextFile(c.file_attachment.file_type, c.file_attachment.file_name) &&
         windowCommentIds.has(c.id)
     );
     for (const c of unsupportedFileComments) {
