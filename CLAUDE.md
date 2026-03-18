@@ -89,6 +89,7 @@ Backend secrets go in `supabase/.env.local`. Frontend env in `frontend/.env.loca
 - `TODOIST_CLIENT_ID`, `TODOIST_CLIENT_SECRET` — OAuth app credentials
 - `ENCRYPTION_KEY` — Base64-encoded 32-byte key for AES-256-GCM
 - `DEFAULT_AI_BASE_URL`, `DEFAULT_AI_API_KEY`, `DEFAULT_AI_MODEL` — Default AI provider
+- `DEFAULT_AI_FALLBACK_MODEL` — Optional fallback model on provider overload (529/503)
 
 ## Database
 

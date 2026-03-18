@@ -1,5 +1,5 @@
 import { braveSearch } from "./search.ts";
-import { MAX_TOOL_ROUNDS, DEFAULT_MAX_TOKENS, MAX_AI_RESPONSE_BYTES } from "./constants.ts";
+import { MAX_TOOL_ROUNDS, DEFAULT_MAX_TOKENS, MAX_AI_RESPONSE_BYTES, FALLBACK_STATUS_CODES } from "./constants.ts";
 import * as Sentry from "@sentry/deno"; // startSpan is a no-op when Sentry is not initialized (no DSN set)
 import type {
   OpenAiResponse,
@@ -24,6 +24,7 @@ export interface AiConfig {
   model: string;
   timeoutMs: number;
   braveApiKey?: string;
+  fallbackModel?: string;
 }
 
 // Provider-specific messages accumulate in this array during the tool loop.
@@ -285,8 +286,90 @@ async function parseAiResponse(res: Response): Promise<any> {
 }
 
 // ---------------------------------------------------------------------------
+// Fallback detection
+// ---------------------------------------------------------------------------
+
+function isOverloadError(status: number): boolean {
+  return FALLBACK_STATUS_CODES.includes(status);
+}
+
+// ---------------------------------------------------------------------------
 // Unified executePrompt
 // ---------------------------------------------------------------------------
+
+interface FetchContext {
+  endpoint: string;
+  headers: Record<string, string>;
+  timeoutMs: number;
+}
+
+interface FallbackState {
+  activeModel: string;
+  hasFallenBack: boolean;
+  fallbackModel?: string;
+}
+
+/** Single AI API call with optional fallback on overload errors. */
+async function fetchWithFallback(
+  ctx: FetchContext,
+  body: Record<string, unknown>,
+  fallback: FallbackState,
+  round: number | "final",
+): Promise<{ res: Response; activeModel: string; hasFallenBack: boolean }> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), ctx.timeoutMs);
+
+  let res: Response;
+  try {
+    res = await Sentry.startSpan(
+      { name: "ai.chat_completion", op: "ai.chat", attributes: { "ai.model": fallback.activeModel, "ai.round": round } },
+      () =>
+        fetch(ctx.endpoint, {
+          method: "POST",
+          headers: ctx.headers,
+          body: JSON.stringify(body),
+          signal: controller.signal,
+        })
+    );
+  } finally {
+    clearTimeout(timeout);
+  }
+
+  if (!res.ok) {
+    if (!fallback.hasFallenBack && fallback.fallbackModel && isOverloadError(res.status)) {
+      console.warn("AI model overloaded, falling back", {
+        from: fallback.activeModel, to: fallback.fallbackModel, status: res.status, round,
+      });
+      const newModel = fallback.fallbackModel;
+      const fallbackBody = { ...body, model: newModel };
+      const fbController = new AbortController();
+      const fbTimeout = setTimeout(() => fbController.abort(), ctx.timeoutMs);
+      try {
+        res = await Sentry.startSpan(
+          { name: "ai.chat_completion", op: "ai.chat", attributes: { "ai.model": newModel, "ai.round": round, "ai.fallback": true } },
+          () =>
+            fetch(ctx.endpoint, {
+              method: "POST",
+              headers: ctx.headers,
+              body: JSON.stringify(fallbackBody),
+              signal: fbController.signal,
+            })
+        );
+      } finally {
+        clearTimeout(fbTimeout);
+      }
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(`AI API error ${res.status}: ${text}`);
+      }
+      return { res, activeModel: newModel, hasFallenBack: true };
+    }
+    const text = await res.text();
+    throw new Error(`AI API error ${res.status}: ${text}`);
+  }
+
+  return { res, activeModel: fallback.activeModel, hasFallenBack: fallback.hasFallenBack };
+}
 
 export async function executePrompt(
   messages: ApiMessage[],
@@ -306,97 +389,56 @@ export async function executePrompt(
   const assistantMsg = anthropic ? anthropicAssistantMessage : openaiAssistantMessage;
   const toolResultMsg = anthropic ? anthropicToolResultMessage : openaiToolResultMessage;
 
+  const ctx: FetchContext = { endpoint, headers, timeoutMs: config.timeoutMs };
+  let activeModel = config.model;
+  let hasFallenBack = false;
+
   for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
-    const body = buildBody(config.model, runMessages, DEFAULT_MAX_TOKENS, useTools);
+    const body = buildBody(activeModel, runMessages, DEFAULT_MAX_TOKENS, useTools);
+    const result = await fetchWithFallback(ctx, body, { activeModel, hasFallenBack, fallbackModel: config.fallbackModel }, round);
+    activeModel = result.activeModel;
+    hasFallenBack = result.hasFallenBack;
 
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), config.timeoutMs);
+    const data = await parseAiResponse(result.res);
+    const content = extractContent(data);
+    if (content !== undefined) {
+      return content || "(no response)";
+    }
 
-    try {
-      const res = await Sentry.startSpan(
-        {
-          name: "ai.chat_completion",
-          op: "ai.chat",
-          attributes: { "ai.model": config.model, "ai.round": round },
-        },
-        () =>
-          fetch(endpoint, {
-            method: "POST",
-            headers,
-            body: JSON.stringify(body),
-            signal: controller.signal,
-          })
-      );
+    // Has tool calls — process them in parallel
+    runMessages.push(assistantMsg(data));
 
-      if (!res.ok) {
-        const text = await res.text();
-        throw new Error(`AI API error ${res.status}: ${text}`);
+    const toolCalls = extractToolCalls(data);
+    const toolResults = await Promise.all(
+      toolCalls.map(async (tc) => ({
+        id: tc.id,
+        result: await handleToolCall(tc.name, tc.arguments, config.braveApiKey!),
+      }))
+    );
+    if (anthropic) {
+      // Anthropic requires all tool results in a single user message
+      runMessages.push({
+        role: "user",
+        content: toolResults.map((tr) => ({
+          type: "tool_result",
+          tool_use_id: tr.id,
+          content: tr.result,
+        })),
+      });
+    } else {
+      for (const tr of toolResults) {
+        runMessages.push(toolResultMsg(tr.id, tr.result));
       }
-
-      const data = await parseAiResponse(res);
-      const content = extractContent(data);
-      if (content !== undefined) {
-        return content || "(no response)";
-      }
-
-      // Has tool calls — process them in parallel
-      runMessages.push(assistantMsg(data));
-
-      const toolCalls = extractToolCalls(data);
-      const toolResults = await Promise.all(
-        toolCalls.map(async (tc) => ({
-          id: tc.id,
-          result: await handleToolCall(tc.name, tc.arguments, config.braveApiKey!),
-        }))
-      );
-      if (anthropic) {
-        // Anthropic requires all tool results in a single user message
-        runMessages.push({
-          role: "user",
-          content: toolResults.map((tr) => ({
-            type: "tool_result",
-            tool_use_id: tr.id,
-            content: tr.result,
-          })),
-        });
-      } else {
-        for (const tr of toolResults) {
-          runMessages.push(toolResultMsg(tr.id, tr.result));
-        }
-      }
-    } finally {
-      clearTimeout(timeout);
     }
   }
 
   // Exhausted tool rounds — get final response without tools
-  const finalBody = buildBody(config.model, runMessages, DEFAULT_MAX_TOKENS, false);
-  const finalController = new AbortController();
-  const finalTimeout = setTimeout(() => finalController.abort(), config.timeoutMs);
+  const finalBody = buildBody(activeModel, runMessages, DEFAULT_MAX_TOKENS, false);
+  const finalResult = await fetchWithFallback(ctx, finalBody, { activeModel, hasFallenBack, fallbackModel: config.fallbackModel }, "final");
 
-  try {
-    const res = await Sentry.startSpan(
-      { name: "ai.chat_completion", op: "ai.chat", attributes: { "ai.model": config.model, "ai.round": "final" } },
-      () =>
-        fetch(endpoint, {
-          method: "POST",
-          headers,
-          body: JSON.stringify(finalBody),
-          signal: finalController.signal,
-        })
-    );
-
-    if (!res.ok) {
-      const text = await res.text();
-      throw new Error(`AI API error ${res.status}: ${text}`);
-    }
-
-    const data = await parseAiResponse(res);
-    const content = anthropic ? anthropicExtractContent(data) : openaiExtractContent(data);
-    return content || "(no response)";
-  } finally {
-    clearTimeout(finalTimeout);
-  }
+  const data = await parseAiResponse(finalResult.res);
+  const content = anthropic ? anthropicExtractContent(data) : openaiExtractContent(data);
+  return content || "(no response)";
 }
 
 async function handleToolCall(

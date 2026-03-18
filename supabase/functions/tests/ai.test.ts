@@ -614,3 +614,388 @@ Deno.test("executePrompt (Anthropic): sends to /v1/messages endpoint", async () 
     globalThis.fetch = originalFetch;
   }
 });
+
+// ---------------------------------------------------------------------------
+// executePrompt — Fallback on overload
+// ---------------------------------------------------------------------------
+
+const FALLBACK_CONFIG = {
+  ...BASE_CONFIG,
+  fallbackModel: "fallback-model",
+};
+
+const ANTHROPIC_FALLBACK_CONFIG = {
+  baseUrl: "https://api.anthropic.com/v1",
+  apiKey: "sk-ant-test-key",
+  model: "claude-opus-4-6",
+  timeoutMs: 5000,
+  fallbackModel: "claude-sonnet-4-6",
+};
+
+function mockFetchWithCapture(responses: Array<{ status: number; body: unknown }>): { restore: () => void; bodies: Record<string, unknown>[] } {
+  const originalFetch = globalThis.fetch;
+  let callIndex = 0;
+  const bodies: Record<string, unknown>[] = [];
+  globalThis.fetch = ((_input: unknown, init?: RequestInit) => {
+    if (init?.body) bodies.push(JSON.parse(init.body as string));
+    else bodies.push({});
+    const response = responses[callIndex++] || responses[responses.length - 1];
+    return Promise.resolve(new Response(JSON.stringify(response.body), {
+      status: response.status,
+      headers: { "Content-Type": "application/json" },
+    }));
+  }) as typeof fetch;
+  return { restore: () => { globalThis.fetch = originalFetch; }, bodies };
+}
+
+Deno.test("executePrompt: fallback triggers on 529 overload", async () => {
+  const { restore, bodies } = mockFetchWithCapture([
+    { status: 529, body: { error: { message: "Overloaded" } } },
+    { status: 200, body: { choices: [{ message: { content: "Fallback response" } }] } },
+  ]);
+  try {
+    const result = await executePrompt([{ role: "system", content: "test" }], FALLBACK_CONFIG);
+    assertEquals(result, "Fallback response");
+    assertEquals(bodies[0].model, "test-model");
+    assertEquals(bodies[1].model, "fallback-model");
+  } finally {
+    restore();
+  }
+});
+
+Deno.test("executePrompt: fallback triggers on 503 service unavailable", async () => {
+  const { restore, bodies } = mockFetchWithCapture([
+    { status: 503, body: { error: { message: "Service Unavailable" } } },
+    { status: 200, body: { choices: [{ message: { content: "Fallback response" } }] } },
+  ]);
+  try {
+    const result = await executePrompt([{ role: "system", content: "test" }], FALLBACK_CONFIG);
+    assertEquals(result, "Fallback response");
+    assertEquals(bodies[0].model, "test-model");
+    assertEquals(bodies[1].model, "fallback-model");
+  } finally {
+    restore();
+  }
+});
+
+Deno.test("executePrompt: no fallback on 400 error", async () => {
+  const restore = mockFetch([
+    { status: 400, body: { error: { message: "Bad request" } } },
+  ]);
+  try {
+    await assertRejects(
+      () => executePrompt([{ role: "system", content: "test" }], FALLBACK_CONFIG),
+      Error,
+      "AI API error 400"
+    );
+  } finally {
+    restore();
+  }
+});
+
+Deno.test("executePrompt: no fallback on 401 error", async () => {
+  const restore = mockFetch([
+    { status: 401, body: { error: { message: "Unauthorized" } } },
+  ]);
+  try {
+    await assertRejects(
+      () => executePrompt([{ role: "system", content: "test" }], FALLBACK_CONFIG),
+      Error,
+      "AI API error 401"
+    );
+  } finally {
+    restore();
+  }
+});
+
+Deno.test("executePrompt: no fallback on 500 error", async () => {
+  const restore = mockFetch([
+    { status: 500, body: { error: { message: "Internal Server Error" } } },
+  ]);
+  try {
+    await assertRejects(
+      () => executePrompt([{ role: "system", content: "test" }], FALLBACK_CONFIG),
+      Error,
+      "AI API error 500"
+    );
+  } finally {
+    restore();
+  }
+});
+
+Deno.test("executePrompt: no fallback when fallbackModel not configured", async () => {
+  const restore = mockFetch([
+    { status: 529, body: { error: { message: "Overloaded" } } },
+  ]);
+  try {
+    await assertRejects(
+      () => executePrompt([{ role: "system", content: "test" }], BASE_CONFIG),
+      Error,
+      "AI API error 529"
+    );
+  } finally {
+    restore();
+  }
+});
+
+Deno.test("executePrompt: fallback also fails — throws fallback error", async () => {
+  const restore = mockFetch([
+    { status: 529, body: { error: { message: "Overloaded" } } },
+    { status: 500, body: { error: { message: "Fallback also failed" } } },
+  ]);
+  try {
+    await assertRejects(
+      () => executePrompt([{ role: "system", content: "test" }], FALLBACK_CONFIG),
+      Error,
+      "AI API error 500"
+    );
+  } finally {
+    restore();
+  }
+});
+
+Deno.test("executePrompt: no double fallback — second overload throws", async () => {
+  const originalFetch = globalThis.fetch;
+  let callIndex = 0;
+  const responses = [
+    // Round 0: primary overloaded → triggers fallback
+    { status: 529, body: { error: { message: "Overloaded" } } },
+    // Fallback succeeds on round 0 with tool call
+    {
+      status: 200,
+      body: {
+        choices: [{
+          message: {
+            content: null,
+            tool_calls: [{ id: "call_1", type: "function", function: { name: "web_search", arguments: '{"query":"test"}' } }],
+          },
+        }],
+      },
+    },
+    // Brave search result
+    { status: 200, body: { web: { results: [{ title: "R1", url: "https://r1.com", description: "d1" }] } } },
+    // Round 1: fallback also overloaded — should throw (already fallen back)
+    { status: 529, body: { error: { message: "Overloaded again" } } },
+  ];
+  globalThis.fetch = ((_input: unknown, _init?: RequestInit) => {
+    const response = responses[callIndex++] || responses[responses.length - 1];
+    return Promise.resolve(new Response(JSON.stringify(response.body), {
+      status: response.status,
+      headers: { "Content-Type": "application/json" },
+    }));
+  }) as typeof fetch;
+  try {
+    await assertRejects(
+      () => executePrompt([{ role: "system", content: "test" }], { ...FALLBACK_CONFIG, braveApiKey: "brave-key" }),
+      Error,
+      "AI API error 529"
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+Deno.test("executePrompt: mid-tool-loop fallback — primary succeeds round 1, fails round 2", async () => {
+  const originalFetch = globalThis.fetch;
+  let callIndex = 0;
+  const bodies: Record<string, unknown>[] = [];
+  const responses = [
+    // Round 0: primary model returns tool call
+    {
+      status: 200,
+      body: {
+        choices: [{
+          message: {
+            content: null,
+            tool_calls: [{ id: "call_1", type: "function", function: { name: "web_search", arguments: '{"query":"test"}' } }],
+          },
+        }],
+      },
+    },
+    // Brave search result
+    { status: 200, body: { web: { results: [{ title: "R1", url: "https://r1.com", description: "d1" }] } } },
+    // Round 1: primary model overloaded
+    { status: 529, body: { error: { message: "Overloaded" } } },
+    // Fallback model succeeds
+    { status: 200, body: { choices: [{ message: { content: "Fallback answer" } }] } },
+  ];
+  globalThis.fetch = ((_input: unknown, init?: RequestInit) => {
+    if (init?.body) bodies.push(JSON.parse(init.body as string));
+    else bodies.push({});
+    const response = responses[callIndex++] || responses[responses.length - 1];
+    return Promise.resolve(new Response(JSON.stringify(response.body), {
+      status: response.status,
+      headers: { "Content-Type": "application/json" },
+    }));
+  }) as typeof fetch;
+  try {
+    const config = { ...FALLBACK_CONFIG, braveApiKey: "brave-key" };
+    const result = await executePrompt([{ role: "system", content: "test" }], config);
+    assertEquals(result, "Fallback answer");
+    // First AI call used primary model
+    assertEquals(bodies[0].model, "test-model");
+    // Second AI call (round 1) used primary model (before fallback)
+    assertEquals(bodies[2].model, "test-model");
+    // Third AI call (fallback retry) used fallback model
+    assertEquals(bodies[3].model, "fallback-model");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+Deno.test("executePrompt: fallback does not mutate original config", async () => {
+  const { restore } = mockFetchWithCapture([
+    { status: 529, body: { error: { message: "Overloaded" } } },
+    { status: 200, body: { choices: [{ message: { content: "ok" } }] } },
+  ]);
+  try {
+    const config = { ...FALLBACK_CONFIG };
+    const originalModel = config.model;
+    await executePrompt([{ role: "system", content: "test" }], config);
+    assertEquals(config.model, originalModel);
+  } finally {
+    restore();
+  }
+});
+
+Deno.test("executePrompt: final response fallback on 529", async () => {
+  const originalFetch = globalThis.fetch;
+  let callIndex = 0;
+  const bodies: Record<string, unknown>[] = [];
+  const responses = [
+    // Rounds 0,1,2: tool calls exhaust MAX_TOOL_ROUNDS
+    {
+      status: 200,
+      body: {
+        choices: [{
+          message: {
+            content: null,
+            tool_calls: [{ id: "call_1", type: "function", function: { name: "web_search", arguments: '{"query":"q1"}' } }],
+          },
+        }],
+      },
+    },
+    { status: 200, body: { web: { results: [] } } },
+    {
+      status: 200,
+      body: {
+        choices: [{
+          message: {
+            content: null,
+            tool_calls: [{ id: "call_2", type: "function", function: { name: "web_search", arguments: '{"query":"q2"}' } }],
+          },
+        }],
+      },
+    },
+    { status: 200, body: { web: { results: [] } } },
+    {
+      status: 200,
+      body: {
+        choices: [{
+          message: {
+            content: null,
+            tool_calls: [{ id: "call_3", type: "function", function: { name: "web_search", arguments: '{"query":"q3"}' } }],
+          },
+        }],
+      },
+    },
+    { status: 200, body: { web: { results: [] } } },
+    // Final response: primary overloaded
+    { status: 529, body: { error: { message: "Overloaded" } } },
+    // Fallback final response
+    { status: 200, body: { choices: [{ message: { content: "Fallback final" } }] } },
+  ];
+  globalThis.fetch = ((_input: unknown, init?: RequestInit) => {
+    if (init?.body) bodies.push(JSON.parse(init.body as string));
+    else bodies.push({});
+    const response = responses[callIndex++] || responses[responses.length - 1];
+    return Promise.resolve(new Response(JSON.stringify(response.body), {
+      status: response.status,
+      headers: { "Content-Type": "application/json" },
+    }));
+  }) as typeof fetch;
+  try {
+    const config = { ...FALLBACK_CONFIG, braveApiKey: "brave-key" };
+    const result = await executePrompt([{ role: "system", content: "test" }], config);
+    assertEquals(result, "Fallback final");
+    // Final request uses primary model, then fallback
+    assertEquals(bodies[6].model, "test-model");
+    assertEquals(bodies[7].model, "fallback-model");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+Deno.test("executePrompt (Anthropic): fallback triggers on 529", async () => {
+  const { restore, bodies } = mockFetchWithCapture([
+    { status: 529, body: { error: { message: "Overloaded" } } },
+    { status: 200, body: { content: [{ type: "text", text: "Anthropic fallback" }] } },
+  ]);
+  try {
+    const result = await executePrompt([{ role: "user", content: "test" }], ANTHROPIC_FALLBACK_CONFIG);
+    assertEquals(result, "Anthropic fallback");
+    assertEquals(bodies[0].model, "claude-opus-4-6");
+    assertEquals(bodies[1].model, "claude-sonnet-4-6");
+  } finally {
+    restore();
+  }
+});
+
+Deno.test("executePrompt (Anthropic): final response fallback after exhausted tool rounds", async () => {
+  const originalFetch = globalThis.fetch;
+  let callIndex = 0;
+  const bodies: Record<string, unknown>[] = [];
+  const responses = [
+    // Rounds 0,1,2: tool calls exhaust MAX_TOOL_ROUNDS (Anthropic format)
+    {
+      status: 200,
+      body: {
+        content: [
+          { type: "tool_use", id: "toolu_1", name: "web_search", input: { query: "q1" } },
+        ],
+      },
+    },
+    { status: 200, body: { web: { results: [] } } },
+    {
+      status: 200,
+      body: {
+        content: [
+          { type: "tool_use", id: "toolu_2", name: "web_search", input: { query: "q2" } },
+        ],
+      },
+    },
+    { status: 200, body: { web: { results: [] } } },
+    {
+      status: 200,
+      body: {
+        content: [
+          { type: "tool_use", id: "toolu_3", name: "web_search", input: { query: "q3" } },
+        ],
+      },
+    },
+    { status: 200, body: { web: { results: [] } } },
+    // Final response: primary overloaded
+    { status: 529, body: { error: { message: "Overloaded" } } },
+    // Fallback final response (Anthropic format)
+    { status: 200, body: { content: [{ type: "text", text: "Anthropic fallback final" }] } },
+  ];
+  globalThis.fetch = ((_input: unknown, init?: RequestInit) => {
+    if (init?.body) bodies.push(JSON.parse(init.body as string));
+    else bodies.push({});
+    const response = responses[callIndex++] || responses[responses.length - 1];
+    return Promise.resolve(new Response(JSON.stringify(response.body), {
+      status: response.status,
+      headers: { "Content-Type": "application/json" },
+    }));
+  }) as typeof fetch;
+  try {
+    const config = { ...ANTHROPIC_FALLBACK_CONFIG, braveApiKey: "brave-key" };
+    const result = await executePrompt([{ role: "user", content: "test" }], config);
+    assertEquals(result, "Anthropic fallback final");
+    // Final request uses primary model, then fallback
+    assertEquals(bodies[6].model, "claude-opus-4-6");
+    assertEquals(bodies[7].model, "claude-sonnet-4-6");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
