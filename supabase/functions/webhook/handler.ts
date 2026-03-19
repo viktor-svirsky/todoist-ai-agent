@@ -299,6 +299,7 @@ async function runAiForTask(
       timeoutMs: 120_000,
       braveApiKey:
         user.custom_brave_key ||
+        Deno.env.get("DEFAULT_BRAVE_API_KEY") ||
         Deno.env.get("DEFAULT_BRAVE_KEY") ||
         undefined,
       fallbackModel,
