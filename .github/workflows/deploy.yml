@@ -74,7 +74,7 @@ jobs:
         run: deno lint supabase/functions/
 
       - name: Test
-        run: deno test supabase/functions/tests/ --no-check --allow-env --allow-read
+        run: deno test supabase/functions/tests/ --no-check --allow-env --allow-read --ignore=supabase/functions/tests/e2e/
 
   deploy-functions:
     needs: [validate-secrets, test-deno, test-frontend]
@@ -188,3 +188,24 @@ jobs:
           name: playwright-report
           path: frontend/playwright-report/
           retention-days: 7
+
+  e2e-backend:
+    needs: [health-check]
+    runs-on: ubuntu-latest
+    env:
+      TODOIST_TEST_TOKEN: ${{ secrets.TODOIST_TEST_TOKEN }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: denoland/setup-deno@v2
+
+      - name: E2E integration tests (real HTTP)
+        run: deno test supabase/functions/tests/e2e/ --no-check --allow-env --allow-net --allow-read --ignore=supabase/functions/tests/e2e/post-deploy.e2e.test.ts
+        env:
+          DEFAULT_BRAVE_API_KEY: ${{ secrets.DEFAULT_BRAVE_API_KEY }}
+
+      - name: Post-deploy E2E tests (Todoist API)
+        if: ${{ env.TODOIST_TEST_TOKEN != '' }}
+        run: deno test supabase/functions/tests/e2e/post-deploy.e2e.test.ts --no-check --allow-env --allow-net --allow-read
+        env:
+          E2E_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}

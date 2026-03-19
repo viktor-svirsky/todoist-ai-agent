@@ -255,11 +255,17 @@ npm test                    # Run Deno test suite
 ### Running Tests
 
 ```bash
-# All tests
+# Unit + integration tests (mocked HTTP)
 npm test
 
+# E2E integration tests (real HTTP — requires network)
+npm run test:e2e
+
+# Post-deploy E2E tests (requires TODOIST_TEST_TOKEN)
+TODOIST_TEST_TOKEN=xxx npm run test:e2e:post-deploy
+
 # With coverage
-deno test supabase/functions/tests/ --no-check --allow-env --allow-read --coverage
+deno test supabase/functions/tests/ --no-check --allow-env --allow-read --coverage --ignore=supabase/functions/tests/e2e/
 
 # Specific test file
 deno test supabase/functions/tests/crypto.test.ts --no-check --allow-env --allow-read
@@ -267,7 +273,7 @@ deno test supabase/functions/tests/crypto.test.ts --no-check --allow-env --allow
 
 ### Test Coverage
 
-434 tests covering all shared modules and handlers:
+458+ tests covering all shared modules, handlers, and e2e integration:
 
 | Module | Tests | What's covered |
 |--------|-------|----------------|
@@ -287,6 +293,8 @@ deno test supabase/functions/tests/crypto.test.ts --no-check --allow-env --allow
 | **search.ts** | 6 | Brave Search: result mapping, params, headers, empty/error responses |
 | **sentry.ts** | 6 | `withSentry` wrapper, error handling, `captureException` no-op |
 | **auth-start** | 4 | OAuth initiation, CORS, state signing, error handling |
+| **e2e integration** | 24+ | Real HTTP: `fetchUrl` against live pages (httpbin, Wikipedia, GitHub), `braveSearch` with real API, tool call pipeline, redirect following, SSRF blocking |
+| **e2e post-deploy** | 4 | Full Todoist flow: AI response, URL fetching, web search, error handling via real webhook |
 
 ### Linting
 
@@ -299,9 +307,9 @@ deno lint supabase/functions/   # Deno lint for Edge Functions
 
 | Workflow | Trigger | What it does |
 |----------|---------|--------------|
-| **CI** | Push & PR to `main` | Lint, test & build frontend; run Deno tests |
+| **CI** | Push & PR to `main` | Lint, test & build frontend; run Deno tests; e2e integration tests (real HTTP) |
 | **CodeQL** | Push & PR to `main`, weekly | Code scanning for security vulnerabilities |
-| **Deploy** | Push to `main` | Validate secrets, deploy Edge Functions + frontend, post-deploy health check, E2E smoke tests |
+| **Deploy** | Push to `main` | Validate secrets, deploy Edge Functions + frontend, post-deploy health check, E2E smoke tests, backend e2e (real HTTP + Todoist flow) |
 | **Security Audit** | Push & PR to `main`, weekly | Run `npm audit` on frontend deps; Deno type-check, lockfile verification, and npm audit on backend deps |
 | **Dependabot** | Weekly (Monday) | Open PRs for outdated npm packages and GitHub Actions |
 

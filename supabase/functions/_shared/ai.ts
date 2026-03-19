@@ -596,7 +596,7 @@ export async function executePrompt(
   return content ? formatLinksForTodoist(content) : "(no response)";
 }
 
-async function handleToolCall(
+export async function handleToolCall(
   name: string,
   argsJson: string,
   braveApiKey?: string
