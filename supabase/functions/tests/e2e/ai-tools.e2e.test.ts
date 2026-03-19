@@ -12,13 +12,13 @@ import { handleToolCall } from "../../_shared/ai.ts";
 
 const BRAVE_API_KEY = Deno.env.get("DEFAULT_BRAVE_API_KEY") || Deno.env.get("DEFAULT_BRAVE_KEY") || "";
 
-function t(name: string, fn: () => Promise<void>, requiresBrave = false) {
+function t(name: string, fn: () => Promise<void>, shouldIgnore = false) {
   Deno.test({
     name,
     fn,
     sanitizeOps: false,
     sanitizeResources: false,
-    ignore: requiresBrave && !BRAVE_API_KEY,
+    ignore: shouldIgnore,
   });
 }
 
@@ -91,7 +91,7 @@ t("e2e tool web_search: returns formatted search results", async () => {
   assertEquals(result.startsWith("No results"), false, "Should find results for 'Deno runtime'");
   // Results should be markdown-formatted
   assertStringIncludes(result, "](http");
-}, true);
+}, !BRAVE_API_KEY);
 
 t("e2e tool web_search: returns error without API key", async () => {
   const result = await handleToolCall(
@@ -109,7 +109,7 @@ t("e2e tool web_search: empty query returns error", async () => {
     BRAVE_API_KEY,
   );
   assertStringIncludes(result, "Error");
-}, true);
+}, !BRAVE_API_KEY);
 
 // ---------------------------------------------------------------------------
 // Proxy-prefixed tool names (some proxies rename tools)
@@ -131,6 +131,83 @@ t("e2e tool proxy_web_search: handles proxy-prefixed search", async () => {
   );
   assertStringIncludes(result, "not configured");
 });
+
+// ---------------------------------------------------------------------------
+// Proxy tool name compatibility — verify AI provider returns names we handle
+// ---------------------------------------------------------------------------
+
+const AI_PROXY_URL = Deno.env.get("DEFAULT_AI_BASE_URL") || "";
+const AI_PROXY_KEY = Deno.env.get("DEFAULT_AI_API_KEY") || "";
+const KNOWN_TOOL_NAMES = ["web_search", "fetch_url"];
+
+/**
+ * Calls the real AI proxy with tools and a prompt that forces a tool call.
+ * Verifies the returned tool name (after normalization) matches one we handle.
+ * This catches proxy renaming issues (e.g. proxy_fetch_url) before they hit production.
+ */
+t("e2e tool names: AI proxy returns tool names compatible with handleToolCall", async () => {
+  const tools = [
+    {
+      type: "function",
+      function: {
+        name: "fetch_url",
+        description: "Fetch a URL",
+        parameters: { type: "object", properties: { url: { type: "string" } }, required: ["url"] },
+      },
+    },
+    {
+      type: "function",
+      function: {
+        name: "web_search",
+        description: "Search the web",
+        parameters: { type: "object", properties: { query: { type: "string" } }, required: ["query"] },
+      },
+    },
+  ];
+
+  const res = await fetch(`${AI_PROXY_URL}/chat/completions`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${AI_PROXY_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: Deno.env.get("DEFAULT_AI_MODEL") || "claude-sonnet-4-6",
+      messages: [
+        { role: "system", content: "You must use tools to answer. Always use fetch_url for URLs." },
+        { role: "user", content: "Fetch https://example.com" },
+      ],
+      max_tokens: 200,
+      tools,
+    }),
+  });
+
+  assertEquals(res.ok, true, `AI proxy should return 200, got ${res.status}`);
+  const data = await res.json();
+  const toolCalls = data.choices?.[0]?.message?.tool_calls || [];
+  assertEquals(toolCalls.length > 0, true, "AI should return at least one tool call");
+
+  for (const tc of toolCalls) {
+    const rawName = tc.function?.name || tc.name || "";
+    const normalized = rawName.replace(/^proxy_/, "");
+    const isKnown = KNOWN_TOOL_NAMES.includes(normalized);
+    assertEquals(
+      isKnown,
+      true,
+      `Proxy returned tool name "${rawName}" (normalized: "${normalized}") which is not in ${JSON.stringify(KNOWN_TOOL_NAMES)}. ` +
+      `Either add it to handleToolCall or fix the proxy config.`,
+    );
+    // Also verify handleToolCall doesn't return "Unknown tool" for the raw name
+    const result = await handleToolCall(rawName, tc.function?.arguments || "{}", undefined);
+    assertEquals(
+      result.startsWith("Unknown tool"),
+      false,
+      `handleToolCall should recognize "${rawName}" but returned: ${result.slice(0, 100)}`,
+    );
+  }
+
+  console.log(`  Proxy tool names: ${toolCalls.map((tc: Record<string, Record<string, string>>) => tc.function?.name).join(", ")}`);
+}, !AI_PROXY_URL || !AI_PROXY_KEY);
 
 // ---------------------------------------------------------------------------
 // Unknown tool

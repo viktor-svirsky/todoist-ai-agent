@@ -1,7 +1,7 @@
 /**
  * Post-deploy E2E tests — tests the FULL flow via Todoist API.
  *
- * Creates a real Todoist task, adds comments with @ai trigger,
+ * Creates real Todoist tasks, adds comments with @ai trigger,
  * waits for the AI agent to respond, and verifies the response.
  *
  * Run with:
@@ -12,9 +12,7 @@
  * - TODOIST_TEST_TOKEN: API token for a test Todoist account connected to the deployed agent
  * - The test account must have completed the OAuth flow on the deployed app
  * - The deployed agent must be running (health check should pass first)
- *
- * Note: The deployed agent rate-limits to 10 requests per 120 seconds per user.
- * These tests use a single task with sequential comments to minimize webhook triggers.
+ * - The test account should have rate_limit_max_requests raised (e.g. 50) in the DB
  */
 
 import { assert, assertEquals } from "@std/assert";
@@ -88,7 +86,6 @@ async function deleteTask(taskId: string): Promise<void> {
 
 /**
  * Poll for an AI response comment on a task.
- * Looks for a comment starting with AI_INDICATOR that isn't the progress indicator.
  * Returns the stripped AI response content, or null if timed out.
  */
 async function waitForAiResponse(
@@ -101,7 +98,6 @@ async function waitForAiResponse(
   while (Date.now() - startTime < timeoutMs) {
     const comments = await getComments(taskId);
 
-    // Look for AI comments that appeared after our trigger
     for (const c of comments) {
       if (c.id === triggerCommentId) continue;
       if (!c.content.startsWith(AI_INDICATOR)) continue;
@@ -115,6 +111,15 @@ async function waitForAiResponse(
   }
 
   return null;
+}
+
+/** Assert AI responded successfully (not null, not empty, not an error). */
+function assertAiSuccess(response: string | null, context: string): string {
+  assert(response !== null, `${context}: AI should respond within timeout (check: tunnel up? rate limit?)`);
+  assert(response!.length > 0, `${context}: AI response should not be empty`);
+  assert(!response!.startsWith(ERROR_PREFIX), `${context}: AI returned an error: ${response!.slice(0, 300)}`);
+  assert(response !== "(no response)", `${context}: AI returned empty content`);
+  return response!;
 }
 
 // ---------------------------------------------------------------------------
@@ -141,13 +146,11 @@ t("e2e post-deploy: auth-start redirects to Todoist OAuth", async () => {
   const params = new URL(location).searchParams;
   assert(params.has("client_id"), "OAuth redirect should include client_id");
   assert(params.has("state"), "OAuth redirect should include CSRF state");
-  assert(params.has("scope"), "OAuth redirect should include scope");
   assertEquals(params.get("scope"), "data:read_write");
   console.log(`  auth-start redirects to Todoist OAuth with client_id=${params.get("client_id")}`);
 });
 
-t("e2e post-deploy: test user exists in database after onboarding", async () => {
-  // Get the test user's Todoist ID
+t("e2e post-deploy: test user is onboarded and active", async () => {
   const userRes = await fetch(`${TODOIST_API}/user`, {
     headers: { Authorization: `Bearer ${TODOIST_TOKEN}` },
   });
@@ -155,72 +158,118 @@ t("e2e post-deploy: test user exists in database after onboarding", async () => 
   const userData = await userRes.json();
   const todoistUserId = String(userData.id);
 
-  // Verify the user exists in the deployed Supabase DB via the settings endpoint
-  // The settings endpoint requires auth — we use the webhook as a proxy check:
-  // if the AI responds to @ai, the user is onboarded (token decrypts, config exists)
-  // This is already verified by the AI tests below, but let's also check the user
-  // exists by looking at the Todoist API — if we can create tasks, the account is active
-  const taskRes = await fetch(`${TODOIST_API}/tasks`, {
+  const taskRes = await todoistFetch("/tasks", {
     method: "POST",
-    headers: {
-      Authorization: `Bearer ${TODOIST_TOKEN}`,
-      "Content-Type": "application/json",
-    },
     body: JSON.stringify({ content: "[E2E] Onboarding check" }),
   });
-  assert(taskRes.ok, "Test account should be able to create tasks (active Todoist account)");
+  assert(taskRes.ok, "Test account should be able to create tasks");
   const task = await taskRes.json();
-  console.log(`  Test user ${todoistUserId} is onboarded (Todoist account active)`);
-
-  // Cleanup
-  await fetch(`${TODOIST_API}/tasks/${task.id}`, {
-    method: "DELETE",
-    headers: { Authorization: `Bearer ${TODOIST_TOKEN}` },
-  });
+  console.log(`  Test user ${todoistUserId} is onboarded`);
+  await deleteTask(task.id);
 });
 
 // ---------------------------------------------------------------------------
-// AI Features — one test per feature, each uses its own isolated task
+// AI Features — comprehensive e2e for each capability
 // ---------------------------------------------------------------------------
 
 t("e2e post-deploy: AI responds to basic @ai comment", async () => {
-  const taskId = await createTask("[E2E Test] Basic AI response");
+  const taskId = await createTask("[E2E] Basic AI response");
   try {
     const commentId = await addComment(taskId, "@ai Say exactly: e2e-test-ok");
-
-    const response = await waitForAiResponse(taskId, commentId);
-    assert(response !== null, "AI should respond within timeout (check: tunnel up? rate limit?)");
-    assert(response!.length > 0, "AI response should not be empty");
-    assert(
-      !response!.startsWith(ERROR_PREFIX),
-      `AI returned an error: ${response!.slice(0, 300)}`,
+    const response = assertAiSuccess(
+      await waitForAiResponse(taskId, commentId),
+      "Basic response",
     );
-    console.log(`  AI response: ${response!.slice(0, 200)}`);
+    console.log(`  AI response: ${response.slice(0, 200)}`);
   } finally {
     await deleteTask(taskId);
   }
 });
 
-t("e2e post-deploy: AI fetches URL and responds with page content", async () => {
-  const taskId = await createTask("[E2E Test] URL fetching");
+t("e2e post-deploy: AI fetches URL and extracts page content", async () => {
+  const taskId = await createTask("[E2E] URL fetching");
   try {
     const commentId = await addComment(
       taskId,
-      "@ai Fetch https://example.com and tell me the domain name mentioned on the page",
+      "@ai Fetch https://example.com and tell me the main heading on the page",
     );
-
-    const response = await waitForAiResponse(taskId, commentId);
-    assert(response !== null, "AI should respond within timeout (check: tunnel up? rate limit?)");
-    assert(response!.length > 0, "AI response should not be empty");
+    const response = assertAiSuccess(
+      await waitForAiResponse(taskId, commentId),
+      "URL fetch",
+    );
+    const lower = response.toLowerCase();
     assert(
-      !response!.startsWith(ERROR_PREFIX),
-      `AI returned an error: ${response!.slice(0, 300)}`,
+      lower.includes("example") || lower.includes("domain"),
+      `AI should reference page content. Got: ${response.slice(0, 300)}`,
     );
-    // example.com page content mentions "Example Domain"
-    const lower = response!.toLowerCase();
-    const mentionsContent = lower.includes("example") || lower.includes("domain") || lower.includes("iana");
-    assert(mentionsContent, `AI should reference page content. Got: ${response!.slice(0, 300)}`);
-    console.log(`  AI response: ${response!.slice(0, 200)}`);
+    console.log(`  AI response: ${response.slice(0, 200)}`);
+  } finally {
+    await deleteTask(taskId);
+  }
+});
+
+t("e2e post-deploy: AI performs web search and returns results", async () => {
+  const taskId = await createTask("[E2E] Web search");
+  try {
+    const commentId = await addComment(
+      taskId,
+      "@ai Search the web for Supabase Edge Functions and give me a one-sentence summary",
+    );
+    const response = assertAiSuccess(
+      await waitForAiResponse(taskId, commentId),
+      "Web search",
+    );
+    const lower = response.toLowerCase();
+    assert(
+      lower.includes("supabase") || lower.includes("edge") || lower.includes("function"),
+      `AI should reference Supabase. Got: ${response.slice(0, 300)}`,
+    );
+    console.log(`  AI response: ${response.slice(0, 200)}`);
+  } finally {
+    await deleteTask(taskId);
+  }
+});
+
+t("e2e post-deploy: AI handles error URL gracefully", async () => {
+  const taskId = await createTask("[E2E] Error URL handling");
+  try {
+    const commentId = await addComment(
+      taskId,
+      "@ai Read https://httpbin.org/status/500 and describe what happened",
+    );
+    const response = assertAiSuccess(
+      await waitForAiResponse(taskId, commentId),
+      "Error URL",
+    );
+    const lower = response.toLowerCase();
+    assert(
+      lower.includes("500") || lower.includes("error") || lower.includes("server"),
+      `AI should mention the error. Got: ${response.slice(0, 300)}`,
+    );
+    console.log(`  AI response: ${response.slice(0, 200)}`);
+  } finally {
+    await deleteTask(taskId);
+  }
+});
+
+t("e2e post-deploy: AI reads and reviews a complex real-world page", async () => {
+  const taskId = await createTask("[E2E] Complex page review");
+  try {
+    const commentId = await addComment(
+      taskId,
+      "@ai review and provide details of Keeper.sh",
+    );
+    const response = assertAiSuccess(
+      await waitForAiResponse(taskId, commentId),
+      "Complex page",
+    );
+    const lower = response.toLowerCase();
+    assert(
+      lower.includes("keeper") || lower.includes("calendar") || lower.includes("sync"),
+      `AI should reference Keeper.sh content. Got: ${response.slice(0, 300)}`,
+    );
+    assert(response.length > 200, "Complex page review should be detailed");
+    console.log(`  AI response: ${response.slice(0, 200)}`);
   } finally {
     await deleteTask(taskId);
   }
