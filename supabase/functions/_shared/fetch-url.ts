@@ -110,6 +110,56 @@ export function htmlToText(html: string): string {
   return text.trim();
 }
 
+const MAX_REDIRECTS = 5;
+
+/** Follow redirects manually, validating each hop against SSRF rules. */
+async function fetchWithRedirects(
+  url: string,
+  signal: AbortSignal,
+): Promise<Response> {
+  let currentUrl = url;
+  const visited = new Set<string>();
+
+  for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
+    if (visited.has(currentUrl)) {
+      throw new Error("Redirect loop detected.");
+    }
+    visited.add(currentUrl);
+
+    const res = await fetch(currentUrl, {
+      redirect: "manual",
+      signal,
+      headers: {
+        "User-Agent": "TodoistAIAgent/1.0",
+        "Accept": "text/html,application/xhtml+xml,text/plain",
+      },
+    });
+
+    if (res.status >= 300 && res.status < 400) {
+      await res.body?.cancel(); // release connection
+      const location = res.headers.get("location");
+      if (!location) throw new Error("Redirect without Location header.");
+
+      // Resolve relative redirects
+      const nextUrl = new URL(location, currentUrl);
+
+      if (nextUrl.protocol !== "https:" && nextUrl.protocol !== "http:") {
+        throw new Error("Redirect to non-HTTP protocol blocked.");
+      }
+      if (isPrivateHostname(nextUrl.hostname)) {
+        throw new Error("Redirect to private/internal host blocked.");
+      }
+
+      currentUrl = nextUrl.href;
+      continue;
+    }
+
+    return res;
+  }
+
+  throw new Error(`Too many redirects (max ${MAX_REDIRECTS}).`);
+}
+
 /** Fetch a URL and extract its text content. */
 export async function fetchUrl(url: string): Promise<string> {
   // Validate URL
@@ -132,14 +182,7 @@ export async function fetchUrl(url: string): Promise<string> {
   const timeout = setTimeout(() => controller.abort(), FETCH_URL_TIMEOUT_MS);
 
   try {
-    const res = await fetch(parsed.href, {
-      redirect: "error",
-      signal: controller.signal,
-      headers: {
-        "User-Agent": "TodoistAIAgent/1.0",
-        "Accept": "text/html,application/xhtml+xml,text/plain",
-      },
-    });
+    const res = await fetchWithRedirects(parsed.href, controller.signal);
 
     if (!res.ok) {
       return `Error: HTTP ${res.status} fetching URL.`;
@@ -198,9 +241,6 @@ export async function fetchUrl(url: string): Promise<string> {
   } catch (error) {
     if (error instanceof DOMException && error.name === "AbortError") {
       return "Error: request timed out.";
-    }
-    if (error instanceof TypeError && String(error).includes("redirect")) {
-      return "Error: URL redirected, which is not followed for security reasons.";
     }
     const message = error instanceof Error ? error.message : "Unknown error";
     return `Error fetching URL: ${message}`;

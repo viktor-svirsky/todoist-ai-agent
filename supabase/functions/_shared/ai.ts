@@ -45,6 +45,7 @@ const SYSTEM_PROMPT = [
   "You can search the web when you need current information.",
   "You can fetch and read web pages when a user shares a URL or when you need content from a specific page.",
   "Users may attach files to their comments — you can read and analyze PDFs and text-based files (.txt, .md, .csv, .json, .py, .ts, .sh, etc.).",
+  "When including URLs in your response, always format them as markdown links: [descriptive text](url) — never post bare URLs.",
   "Respond concisely — your reply will be posted as a Todoist comment.",
 ].join("\n");
 
@@ -68,7 +69,7 @@ const OPENAI_FETCH_TOOL = {
   type: "function" as const,
   function: {
     name: "fetch_url",
-    description: "Fetch and read the text content of a web page. Returns the extracted text (HTML is stripped). Redirects are blocked for security. Only works with text-based pages (HTML, plain text).",
+    description: "Fetch and read the text content of a web page. Returns the extracted text (HTML is stripped). Redirects are followed safely (up to 5 hops). Only works with text-based pages (HTML, plain text).",
     parameters: {
       type: "object",
       properties: {
@@ -94,7 +95,7 @@ const ANTHROPIC_SEARCH_TOOL = {
 
 const ANTHROPIC_FETCH_TOOL = {
   name: "fetch_url",
-  description: "Fetch and read the text content of a web page. Returns the extracted text (HTML is stripped). Redirects are blocked for security. Only works with text-based pages (HTML, plain text).",
+  description: "Fetch and read the text content of a web page. Returns the extracted text (HTML is stripped). Redirects are followed safely (up to 5 hops). Only works with text-based pages (HTML, plain text).",
   input_schema: {
     type: "object",
     properties: {
@@ -103,6 +104,56 @@ const ANTHROPIC_FETCH_TOOL = {
     required: ["url"],
   },
 };
+
+// ---------------------------------------------------------------------------
+// Link formatting for Todoist comments
+// ---------------------------------------------------------------------------
+
+/**
+ * Convert bare URLs in text to markdown links [domain](url).
+ * Skips URLs already inside markdown link syntax [text](url).
+ * Handles URLs with balanced parentheses (e.g., Wikipedia).
+ */
+export function formatLinksForTodoist(text: string): string {
+  // Match bare URLs. Allow parentheses in the URL body so Wikipedia-style URLs work.
+  // Character class excludes whitespace, angle brackets, and square brackets only.
+  return text.replace(
+    /(?<!\]\()(?<!\[)(https?:\/\/[^\s\]<>]+)/g,
+    (match, _url, offset) => {
+      // Check if this URL is already the target of a markdown link: [text](URL)
+      const before = text.slice(Math.max(0, offset - 2), offset);
+      if (before.endsWith("](")) return match;
+
+      // Strip trailing punctuation that's likely not part of the URL,
+      // but preserve balanced parentheses (common in Wikipedia URLs).
+      let url = match;
+      let trailing = "";
+      const trailingMatch = match.match(/([.,;:!?]+)$/);
+      if (trailingMatch) {
+        url = match.slice(0, -trailingMatch[1].length);
+        trailing = trailingMatch[1];
+      }
+      // Strip trailing closing parens only if unbalanced in the URL
+      while (url.endsWith(")")) {
+        const opens = (url.match(/\(/g) || []).length;
+        const closes = (url.match(/\)/g) || []).length;
+        if (closes > opens) {
+          trailing = ")" + trailing;
+          url = url.slice(0, -1);
+        } else {
+          break;
+        }
+      }
+
+      try {
+        const hostname = new URL(url).hostname.replace(/^www\./, "");
+        return `[${hostname}](${url})${trailing}`;
+      } catch {
+        return `[${url}](${url})${trailing}`;
+      }
+    },
+  );
+}
 
 // ---------------------------------------------------------------------------
 // Provider detection
@@ -502,7 +553,7 @@ export async function executePrompt(
     const data = await parseAiResponse(result.res);
     const content = extractContent(data);
     if (content !== undefined) {
-      return content || "(no response)";
+      return content ? formatLinksForTodoist(content) : "(no response)";
     }
 
     // Has tool calls — process them in parallel
@@ -538,7 +589,7 @@ export async function executePrompt(
 
   const data = await parseAiResponse(finalResult.res);
   const content = anthropic ? anthropicExtractContent(data) : openaiExtractContent(data);
-  return content || "(no response)";
+  return content ? formatLinksForTodoist(content) : "(no response)";
 }
 
 async function handleToolCall(
@@ -559,7 +610,7 @@ async function handleToolCall(
       const results = await braveSearch(braveApiKey, query, count);
       if (results.length === 0) return "No results found.";
       return results
-        .map((r) => `**${r.title}**\n${r.url}\n${r.description}`)
+        .map((r) => `[${r.title}](${r.url})\n${r.description}`)
         .join("\n\n");
     }
 

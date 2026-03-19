@@ -267,15 +267,15 @@ deno test supabase/functions/tests/crypto.test.ts --no-check --allow-env --allow
 
 ### Test Coverage
 
-400 tests covering all shared modules and handlers:
+434 tests covering all shared modules and handlers:
 
 | Module | Tests | What's covered |
 |--------|-------|----------------|
-| **ai.ts** | 70 | `buildMessages` (custom prompts, images, documents, edge cases), `executePrompt` (OpenAI + Anthropic providers, tool calls, multi-tool batching, model fallback on overload, fetch_url tool, document block conversion) |
+| **ai.ts** | 86 | `buildMessages` (custom prompts, images, documents, edge cases), `executePrompt` (OpenAI + Anthropic providers, tool calls, multi-tool batching, model fallback on overload, fetch_url tool, document block conversion), `formatLinksForTodoist` (bare URL conversion, markdown link preservation, edge cases) |
 | **validation.ts** | 58 | All settings fields: type checks, boundaries, nulls, multi-field errors, SSRF prevention |
 | **messages.ts** | 42 | Comment parsing, trigger word stripping, special chars, image/file attachments, normalize helpers |
 | **webhook** | 42 | HMAC verification, rate limiting, idempotency, request validation, image/document downloads, fetch_url/web_search tool call e2e |
-| **fetch-url.ts** | 31 | `htmlToText` (tag stripping, entity decoding, whitespace), `fetchUrl` (SSRF blocking, content-type filtering, size limits, error handling) |
+| **fetch-url.ts** | 34 | `htmlToText` (tag stripping, entity decoding, whitespace), `fetchUrl` (SSRF blocking, redirect following with SSRF validation, content-type filtering, size limits, error handling) |
 | **rate-limit.ts** | 29 | Config parsing, env overrides, rate limit checks, account blocking |
 | **settings** | 27 | CRUD operations, auth, rate limiting, field validation, API key validation |
 | **crypto.ts** | 22 | AES-256-GCM encrypt/decrypt round-trips, HMAC verification, OAuth state signing/verification |
@@ -322,7 +322,7 @@ deno lint supabase/functions/   # Deno lint for Edge Functions
 | **Dependency scanning** | Automated npm audit + Dependabot |
 | **Rate limiting** | Per-user webhook and settings rate limits |
 | **Attachment limits** | 4 MB max per image or document attachment, 50k char cap for text file content |
-| **URL fetch limits** | 2 MB download cap, 50k char output, 15s timeout, no redirects |
+| **URL fetch limits** | 2 MB download cap, 50k char output, 15s timeout, safe redirect following (max 5 hops with SSRF validation) |
 
 ## License
 
