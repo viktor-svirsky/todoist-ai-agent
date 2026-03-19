@@ -10,7 +10,9 @@
     "functions:serve": "npx supabase functions serve --env-file supabase/.env.local",
     "frontend:dev": "cd frontend && npm run dev",
     "frontend:build": "cd frontend && npm run build",
-    "test": "npx deno test supabase/functions/tests/ --no-check --allow-env --allow-read",
+    "test": "npx deno test supabase/functions/tests/ --no-check --allow-env --allow-read --ignore=supabase/functions/tests/e2e/",
+    "test:e2e": "npx deno test supabase/functions/tests/e2e/ --no-check --allow-env --allow-net --allow-read --ignore=supabase/functions/tests/e2e/post-deploy.e2e.test.ts",
+    "test:e2e:post-deploy": "npx deno test supabase/functions/tests/e2e/post-deploy.e2e.test.ts --no-check --allow-env --allow-net --allow-read",
     "test:frontend": "cd frontend && npm test"
   },
   "devDependencies": {}

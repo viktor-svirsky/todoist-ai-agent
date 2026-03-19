@@ -58,10 +58,15 @@ npm run functions:serve          # Reads supabase/.env.local
 # Frontend dev server
 npm run frontend:dev
 
-# Run all Deno tests (backend)
+# Run all Deno tests (backend, mocked HTTP)
 npm test
 # Single test file
 deno test supabase/functions/tests/crypto.test.ts --no-check --allow-env --allow-read
+
+# E2E integration tests (real HTTP calls — requires network)
+npm run test:e2e
+# Post-deploy E2E (requires TODOIST_TEST_TOKEN env var)
+TODOIST_TEST_TOKEN=xxx npm run test:e2e:post-deploy
 
 # Frontend tests (Vitest)
 cd frontend && npm test
@@ -97,6 +102,10 @@ Schema managed via sequential SQL migrations in `supabase/migrations/`. Main tab
 
 ## CI
 
-GitHub Actions runs on push/PR to `main`:
+GitHub Actions runs on PR to `main`:
 - `frontend` job: Node 22, `npm ci`, lint, test (Vitest), build
-- `deno-tests` job: Deno, runs `deno test supabase/functions/tests/ --no-check --allow-env`
+- `deno-tests` job: Deno, lint + unit/integration tests (e2e excluded)
+- `e2e-integration` job: Deno, real HTTP e2e tests (`DEFAULT_BRAVE_API_KEY` required for search tests)
+
+Deploy workflow (push to `main`) additionally runs:
+- `e2e-backend` job: real HTTP e2e + post-deploy Todoist flow tests (`TODOIST_TEST_TOKEN` required)
