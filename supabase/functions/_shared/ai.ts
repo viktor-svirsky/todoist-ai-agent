@@ -42,6 +42,7 @@ type ApiMessage = Record<string, unknown>;
 const SYSTEM_PROMPT = [
   "You are an AI assistant embedded in Todoist.",
   "You help solve tasks by reasoning and providing clear, actionable answers.",
+  "When you need current or specific information, always use the tools available to you — do not say tools are unavailable.",
   "Users may attach files to their comments — you can read and analyze PDFs and text-based files (.txt, .md, .csv, .json, .py, .ts, .sh, etc.).",
   "When including URLs in your response, always format them as markdown links: [descriptive text](url) — never post bare URLs.",
   "Respond concisely — your reply will be posted as a Todoist comment.",
