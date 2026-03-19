@@ -4,6 +4,9 @@
  *
  * Requires: DEFAULT_BRAVE_API_KEY env var set to a valid Brave Search API key.
  * Skips gracefully if the key is not available.
+ *
+ * Note: Brave free tier has strict rate limits (~1 req/s).
+ * All assertions are consolidated into a single test to avoid 429 errors.
  */
 
 import { assertEquals } from "@std/assert";
@@ -11,53 +14,34 @@ import { braveSearch } from "../../_shared/search.ts";
 
 const BRAVE_API_KEY = Deno.env.get("DEFAULT_BRAVE_API_KEY") || Deno.env.get("DEFAULT_BRAVE_KEY") || "";
 
-function t(name: string, fn: () => Promise<void>) {
-  Deno.test({
-    name,
-    fn,
-    sanitizeOps: false,
-    sanitizeResources: false,
-    ignore: !BRAVE_API_KEY,
-  });
-}
+Deno.test({
+  name: "e2e braveSearch: returns valid, relevant results from real API",
+  fn: async () => {
+    const results = await braveSearch(BRAVE_API_KEY, "Supabase edge functions", 3);
 
-// ---------------------------------------------------------------------------
-// braveSearch — real API calls
-// ---------------------------------------------------------------------------
+    // Returns results
+    assertEquals(results.length > 0, true, "Should return at least one result");
+    assertEquals(results.length <= 3, true, "Should respect count parameter");
 
-t("e2e braveSearch: returns results for a common query", async () => {
-  const results = await braveSearch(BRAVE_API_KEY, "Deno JavaScript runtime", 3);
-  assertEquals(results.length > 0, true, "Should return at least one result");
-  for (const r of results) {
-    assertEquals(typeof r.title, "string", "Result should have a title");
-    assertEquals(typeof r.url, "string", "Result should have a URL");
-    assertEquals(typeof r.description, "string", "Result should have a description");
-    assertEquals(r.title.length > 0, true, "Title should not be empty");
-    assertEquals(r.url.startsWith("http"), true, "URL should start with http");
-  }
-});
+    // Results have correct shape
+    for (const r of results) {
+      assertEquals(typeof r.title, "string", "Result should have a title");
+      assertEquals(typeof r.url, "string", "Result should have a URL");
+      assertEquals(typeof r.description, "string", "Result should have a description");
+      assertEquals(r.title.length > 0, true, "Title should not be empty");
+      assertEquals(r.url.startsWith("http"), true, "URL should start with http");
+    }
 
-t("e2e braveSearch: respects count parameter", async () => {
-  const results = await braveSearch(BRAVE_API_KEY, "TypeScript programming language", 2);
-  assertEquals(results.length <= 2, true, "Should return at most 2 results");
-  assertEquals(results.length > 0, true, "Should return at least 1 result");
-});
-
-t("e2e braveSearch: handles query with special characters", async () => {
-  const results = await braveSearch(BRAVE_API_KEY, "what is 2+2?", 3);
-  // Should not throw — special chars should be URL-encoded
-  assertEquals(Array.isArray(results), true, "Should return an array");
-});
-
-t("e2e braveSearch: returns results relevant to query", async () => {
-  const results = await braveSearch(BRAVE_API_KEY, "Supabase edge functions documentation", 5);
-  assertEquals(results.length > 0, true, "Should return results");
-  // At least one result should mention Supabase
-  const hasRelevant = results.some(
-    (r) =>
-      r.title.toLowerCase().includes("supabase") ||
-      r.description.toLowerCase().includes("supabase") ||
-      r.url.includes("supabase"),
-  );
-  assertEquals(hasRelevant, true, "At least one result should be relevant to Supabase");
+    // Results are relevant
+    const hasRelevant = results.some(
+      (r) =>
+        r.title.toLowerCase().includes("supabase") ||
+        r.description.toLowerCase().includes("supabase") ||
+        r.url.includes("supabase"),
+    );
+    assertEquals(hasRelevant, true, "At least one result should be relevant to Supabase");
+  },
+  sanitizeOps: false,
+  sanitizeResources: false,
+  ignore: !BRAVE_API_KEY,
 });
