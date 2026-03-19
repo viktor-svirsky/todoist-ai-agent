@@ -1689,13 +1689,13 @@ function mockFullFlowWithToolCalls(options: {
   const prevBaseUrl = Deno.env.get("DEFAULT_AI_BASE_URL");
   const prevApiKey = Deno.env.get("DEFAULT_AI_API_KEY");
   const prevModel = Deno.env.get("DEFAULT_AI_MODEL");
-  const prevBraveKey = Deno.env.get("DEFAULT_BRAVE_KEY");
+  const prevBraveKey = Deno.env.get("DEFAULT_BRAVE_API_KEY");
 
   Deno.env.set("DEFAULT_AI_BASE_URL", aiBaseUrl);
   Deno.env.set("DEFAULT_AI_API_KEY", "test-key");
   Deno.env.set("DEFAULT_AI_MODEL", useAnthropic ? "claude-3-5-sonnet" : "gpt-4o-mini");
-  if (options.withBraveKey) Deno.env.set("DEFAULT_BRAVE_KEY", "test-brave-key");
-  else Deno.env.delete("DEFAULT_BRAVE_KEY");
+  if (options.withBraveKey) Deno.env.set("DEFAULT_BRAVE_API_KEY", "test-brave-key");
+  else Deno.env.delete("DEFAULT_BRAVE_API_KEY");
 
   let aiCallIndex = 0;
   const restoreFetch = mockFetch((url, init) => {
@@ -1783,8 +1783,8 @@ function mockFullFlowWithToolCalls(options: {
     else Deno.env.delete("DEFAULT_AI_API_KEY");
     if (prevModel !== undefined) Deno.env.set("DEFAULT_AI_MODEL", prevModel);
     else Deno.env.delete("DEFAULT_AI_MODEL");
-    if (prevBraveKey !== undefined) Deno.env.set("DEFAULT_BRAVE_KEY", prevBraveKey);
-    else Deno.env.delete("DEFAULT_BRAVE_KEY");
+    if (prevBraveKey !== undefined) Deno.env.set("DEFAULT_BRAVE_API_KEY", prevBraveKey);
+    else Deno.env.delete("DEFAULT_BRAVE_API_KEY");
   };
 }
 
