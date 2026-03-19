@@ -207,3 +207,5 @@ jobs:
       - name: Post-deploy E2E tests (Todoist API)
         if: ${{ env.TODOIST_TEST_TOKEN != '' }}
         run: deno test supabase/functions/tests/e2e/post-deploy.e2e.test.ts --no-check --allow-env --allow-net --allow-read
+        env:
+          E2E_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
