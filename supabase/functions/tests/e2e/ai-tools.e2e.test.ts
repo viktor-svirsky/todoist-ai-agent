@@ -12,13 +12,13 @@ import { handleToolCall } from "../../_shared/ai.ts";
 
 const BRAVE_API_KEY = Deno.env.get("DEFAULT_BRAVE_API_KEY") || Deno.env.get("DEFAULT_BRAVE_KEY") || "";
 
-function t(name: string, fn: () => Promise<void>, requiresBrave = false) {
+function t(name: string, fn: () => Promise<void>, shouldIgnore = false) {
   Deno.test({
     name,
     fn,
     sanitizeOps: false,
     sanitizeResources: false,
-    ignore: requiresBrave && !BRAVE_API_KEY,
+    ignore: shouldIgnore,
   });
 }
 
@@ -91,7 +91,7 @@ t("e2e tool web_search: returns formatted search results", async () => {
   assertEquals(result.startsWith("No results"), false, "Should find results for 'Deno runtime'");
   // Results should be markdown-formatted
   assertStringIncludes(result, "](http");
-}, true);
+}, !BRAVE_API_KEY);
 
 t("e2e tool web_search: returns error without API key", async () => {
   const result = await handleToolCall(
@@ -109,7 +109,7 @@ t("e2e tool web_search: empty query returns error", async () => {
     BRAVE_API_KEY,
   );
   assertStringIncludes(result, "Error");
-}, true);
+}, !BRAVE_API_KEY);
 
 // ---------------------------------------------------------------------------
 // Proxy-prefixed tool names (some proxies rename tools)
