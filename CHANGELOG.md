@@ -1,5 +1,32 @@
 # Changelog
 
+## [1.4.1](https://github.com/viktor-svirsky/todoist-ai-agent/compare/v1.3.0...v1.4.1) (2026-03-19)
+
+### Features
+
+* add fetch_url tool for reading web page content ([#185](https://github.com/viktor-svirsky/todoist-ai-agent/issues/185))
+* add PDF file attachment support via Anthropic native documents ([#187](https://github.com/viktor-svirsky/todoist-ai-agent/issues/187))
+* add text-based file attachment support (.txt, .md, .csv, .json, .py, .sh, etc.) ([#188](https://github.com/viktor-svirsky/todoist-ai-agent/issues/188))
+* use Anthropic built-in web search when no Brave key configured ([#200](https://github.com/viktor-svirsky/todoist-ai-agent/issues/200))
+* fall back to Sonnet 4.6 when Opus 4.6 is overloaded ([#183](https://github.com/viktor-svirsky/todoist-ai-agent/issues/183))
+* add comprehensive e2e test suite — real HTTP, AI API, and post-deploy Todoist flow ([#202](https://github.com/viktor-svirsky/todoist-ai-agent/issues/202), [#206](https://github.com/viktor-svirsky/todoist-ai-agent/issues/206), [#207](https://github.com/viktor-svirsky/todoist-ai-agent/issues/207))
+
+### Bug Fixes
+
+* handle proxy-prefixed tool names (proxy_fetch_url, proxy_web_search) ([#205](https://github.com/viktor-svirsky/todoist-ai-agent/issues/205))
+* make links clickable in AI responses and follow redirects safely ([#195](https://github.com/viktor-svirsky/todoist-ai-agent/issues/195))
+* prevent SSRF via redirect and OOM on description image download ([#178](https://github.com/viktor-svirsky/todoist-ai-agent/issues/178))
+* AI doesn't see images in comments or task descriptions ([#176](https://github.com/viktor-svirsky/todoist-ai-agent/issues/176))
+* handle 401 on settings page after account disconnect ([#190](https://github.com/viktor-svirsky/todoist-ai-agent/issues/190))
+* stop AI from claiming tools are unavailable ([#197](https://github.com/viktor-svirsky/todoist-ai-agent/issues/197))
+
+### Testing
+
+* 460+ unit/integration tests + 24 e2e integration tests (real HTTP)
+* 15 AI API e2e tests (text files, PDF, images, URL fetch, web search, multi-tool)
+* 8 post-deploy e2e tests (health, auth, onboarding, full Todoist webhook flow)
+* Proxy tool name compatibility test
+
 ## [1.2.0](https://github.com/viktor-svirsky/todoist-ai-agent/compare/todoist-ai-agent-v1.1.0...todoist-ai-agent-v1.2.0) (2026-03-07)
 
 
