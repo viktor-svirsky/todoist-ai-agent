@@ -601,8 +601,10 @@ export async function handleToolCall(
   argsJson: string,
   braveApiKey?: string
 ): Promise<string> {
+  // Some proxies prefix tool names (e.g. "proxy_web_search") — normalize
+  const toolName = name.replace(/^proxy_/, "");
   try {
-    if (name === "web_search") {
+    if (toolName === "web_search") {
       if (!braveApiKey) return "Error: web search is not configured.";
       const args = JSON.parse(argsJson);
       const query = typeof args.query === "string" ? args.query.slice(0, 500) : "";
@@ -618,14 +620,14 @@ export async function handleToolCall(
         .join("\n\n");
     }
 
-    if (name === "fetch_url") {
+    if (toolName === "fetch_url") {
       const args = JSON.parse(argsJson);
       const url = typeof args.url === "string" ? args.url.trim() : "";
       if (!url) return "Error: URL is required.";
       return await fetchUrl(url);
     }
 
-    return `Unknown tool: ${name}`;
+    return `Unknown tool: ${toolName}`;
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
     console.error("Tool call failed", { tool: name, error: message });
