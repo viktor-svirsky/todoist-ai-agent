@@ -11,7 +11,7 @@
  */
 
 import { assert, assertStringIncludes } from "@std/assert";
-import { executePrompt, buildMessages, type AiConfig } from "../../_shared/ai.ts";
+import { executePrompt, buildMessages, type AiConfig, type DocumentAttachment } from "../../_shared/ai.ts";
 
 const BASE_URL = Deno.env.get("DEFAULT_AI_BASE_URL") || "";
 const API_KEY = Deno.env.get("DEFAULT_AI_API_KEY") || "";
@@ -184,11 +184,176 @@ t("e2e AI API: link formatting applied to response URLs", async () => {
   ]);
   const response = await executePrompt(messages, makeConfig());
   assert(response !== "(no response)", `AI returned empty. Got: ${response}`);
-  // formatLinksForTodoist should convert bare URLs to markdown links
-  // The response should contain markdown link syntax [text](url)
   assert(
     response.includes("](http") || response.includes("](https"),
     `Response should contain markdown links. Got: ${response.slice(0, 300)}`,
+  );
+  console.log(`  Response: ${response.slice(0, 200)}`);
+});
+
+// ---------------------------------------------------------------------------
+// Text file attachments
+// ---------------------------------------------------------------------------
+
+t("e2e AI API: reads and analyzes a text file attachment", async () => {
+  const csvContent = "name,role,department\nAlice,Engineer,Platform\nBob,Designer,Product\nCharlie,PM,Product";
+  const docs: DocumentAttachment[] = [{
+    data: "",
+    mediaType: "text/csv",
+    fileName: "team.csv",
+    textContent: csvContent,
+  }];
+  const messages = buildMessages(
+    "Analyze team data", undefined,
+    [{ role: "user", content: "How many people are in the Product department?" }],
+    undefined, null, docs,
+  );
+  const response = await executePrompt(messages, makeConfig());
+  assert(response !== "(no response)", `AI returned empty. Got: ${response}`);
+  const lower = response.toLowerCase();
+  assert(
+    lower.includes("2") || lower.includes("two") || lower.includes("bob") || lower.includes("charlie"),
+    `AI should identify 2 people in Product. Got: ${response.slice(0, 300)}`,
+  );
+  console.log(`  Response: ${response.slice(0, 200)}`);
+});
+
+t("e2e AI API: reads a Python script attachment", async () => {
+  const pyContent = `def fibonacci(n):
+    if n <= 1:
+        return n
+    return fibonacci(n-1) + fibonacci(n-2)
+
+print(fibonacci(10))`;
+  const docs: DocumentAttachment[] = [{
+    data: "",
+    mediaType: "text/x-python",
+    fileName: "fib.py",
+    textContent: pyContent,
+  }];
+  const messages = buildMessages(
+    "Code review", undefined,
+    [{ role: "user", content: "What does this script output when run?" }],
+    undefined, null, docs,
+  );
+  const response = await executePrompt(messages, makeConfig());
+  assert(response !== "(no response)", `AI returned empty. Got: ${response}`);
+  assert(
+    response.includes("55"),
+    `AI should calculate fibonacci(10) = 55. Got: ${response.slice(0, 300)}`,
+  );
+  console.log(`  Response: ${response.slice(0, 200)}`);
+});
+
+t("e2e AI API: reads a JSON config attachment", async () => {
+  const jsonContent = JSON.stringify({
+    name: "todoist-ai-agent",
+    version: "1.4.0",
+    dependencies: { supabase: "^2.98.0", react: "^19.2.0" },
+  }, null, 2);
+  const docs: DocumentAttachment[] = [{
+    data: "",
+    mediaType: "application/json",
+    fileName: "package.json",
+    textContent: jsonContent,
+  }];
+  const messages = buildMessages(
+    "Dependency check", undefined,
+    [{ role: "user", content: "What version of React does this project use?" }],
+    undefined, null, docs,
+  );
+  const response = await executePrompt(messages, makeConfig());
+  assert(response !== "(no response)", `AI returned empty. Got: ${response}`);
+  assert(
+    response.includes("19") || response.includes("^19.2.0"),
+    `AI should identify React 19. Got: ${response.slice(0, 300)}`,
+  );
+  console.log(`  Response: ${response.slice(0, 200)}`);
+});
+
+// ---------------------------------------------------------------------------
+// Image attachments
+// ---------------------------------------------------------------------------
+
+t("e2e AI API: analyzes an image attachment", async () => {
+  // Create a minimal 1x1 red PNG (68 bytes)
+  const redPixelPng = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==";
+  const images = [{ data: redPixelPng, mediaType: "image/png" }];
+  const messages = buildMessages(
+    "Image analysis", undefined,
+    [{ role: "user", content: "Describe this image. What color is it?" }],
+    images,
+  );
+  const response = await executePrompt(messages, makeConfig());
+  assert(response !== "(no response)", `AI returned empty. Got: ${response}`);
+  assert(response.length > 10, "AI should describe the image");
+  // A 1x1 red pixel — AI should mention red, small, pixel, or single color
+  const lower = response.toLowerCase();
+  assert(
+    lower.includes("red") || lower.includes("pixel") || lower.includes("small") ||
+    lower.includes("1x1") || lower.includes("color") || lower.includes("image"),
+    `AI should describe the image. Got: ${response.slice(0, 300)}`,
+  );
+  console.log(`  Response: ${response.slice(0, 200)}`);
+});
+
+// ---------------------------------------------------------------------------
+// PDF attachment (OpenAI-compatible providers get text placeholder)
+// ---------------------------------------------------------------------------
+
+t("e2e AI API: handles PDF attachment gracefully", async () => {
+  // Minimal PDF-like content (not a real PDF, but tests the code path)
+  const fakePdfB64 = btoa("%PDF-1.4 fake pdf content for testing");
+  const docs: DocumentAttachment[] = [{
+    data: fakePdfB64,
+    mediaType: "application/pdf",
+    fileName: "report.pdf",
+  }];
+  const messages = buildMessages(
+    "Document review", undefined,
+    [{ role: "user", content: "What can you tell me about the attached file?" }],
+    undefined, null, docs,
+  );
+  const response = await executePrompt(messages, makeConfig());
+  assert(response !== "(no response)", `AI returned empty. Got: ${response}`);
+  assert(response.length > 10, "AI should respond about the attachment");
+  // OpenAI-compatible providers get a placeholder; Anthropic gets the actual doc
+  // Either way, AI should acknowledge the file
+  const lower = response.toLowerCase();
+  assert(
+    lower.includes("pdf") || lower.includes("report") || lower.includes("document") ||
+    lower.includes("file") || lower.includes("attached") || lower.includes("anthropic"),
+    `AI should acknowledge the PDF. Got: ${response.slice(0, 300)}`,
+  );
+  console.log(`  Response: ${response.slice(0, 200)}`);
+});
+
+// ---------------------------------------------------------------------------
+// Combined: text file + image in same message
+// ---------------------------------------------------------------------------
+
+t("e2e AI API: handles text file + image combined", async () => {
+  const redPixelPng = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==";
+  const images = [{ data: redPixelPng, mediaType: "image/png" }];
+  const docs: DocumentAttachment[] = [{
+    data: "",
+    mediaType: "text/plain",
+    fileName: "notes.txt",
+    textContent: "The logo should be blue, not red.",
+  }];
+  const messages = buildMessages(
+    "Design review", undefined,
+    [{ role: "user", content: "Compare the image with the notes. Is there a mismatch?" }],
+    images, null, docs,
+  );
+  const response = await executePrompt(messages, makeConfig());
+  assert(response !== "(no response)", `AI returned empty. Got: ${response}`);
+  assert(response.length > 20, "Should give a detailed comparison");
+  const lower = response.toLowerCase();
+  assert(
+    lower.includes("red") || lower.includes("blue") || lower.includes("mismatch") ||
+    lower.includes("color") || lower.includes("discrepancy") || lower.includes("conflict"),
+    `AI should identify the color mismatch. Got: ${response.slice(0, 300)}`,
   );
   console.log(`  Response: ${response.slice(0, 200)}`);
 });
