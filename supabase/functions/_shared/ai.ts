@@ -518,11 +518,16 @@ export async function executePrompt(
   const anthropic = isAnthropicUrl(config.baseUrl);
   const runMessages = [...messages];
 
-  // Build tools list: fetch_url is always available, web_search requires Brave API key
+  // Build tools list: fetch_url is always available, web_search varies by provider
   const tools: Record<string, unknown>[] = [];
   if (anthropic) {
     tools.push(ANTHROPIC_FETCH_TOOL);
-    if (config.braveApiKey) tools.push(ANTHROPIC_SEARCH_TOOL);
+    if (config.braveApiKey) {
+      tools.push(ANTHROPIC_SEARCH_TOOL);
+    } else {
+      // Anthropic built-in web search — server-side, no API key needed
+      tools.push({ type: "web_search_20250305", name: "web_search" });
+    }
   } else {
     tools.push(OPENAI_FETCH_TOOL);
     if (config.braveApiKey) tools.push(OPENAI_SEARCH_TOOL);

@@ -1181,7 +1181,7 @@ Deno.test("executePrompt: both fetch_url and web_search included with braveApiKe
   }
 });
 
-Deno.test("executePrompt (Anthropic): fetch_url tool always included", async () => {
+Deno.test("executePrompt (Anthropic): fetch_url and built-in web_search always included", async () => {
   let capturedBody: Record<string, unknown> = {};
   const originalFetch = globalThis.fetch;
   globalThis.fetch = ((_input: unknown, init?: RequestInit) => {
@@ -1196,7 +1196,10 @@ Deno.test("executePrompt (Anthropic): fetch_url tool always included", async () 
     assertEquals(Array.isArray(tools), true);
     const toolNames = tools.map((t) => t.name);
     assertEquals(toolNames.includes("fetch_url"), true);
-    assertEquals(toolNames.includes("web_search"), false);
+    // Built-in Anthropic web search included when no braveApiKey
+    assertEquals(toolNames.includes("web_search"), true);
+    const webSearchTool = tools.find((t) => t.name === "web_search");
+    assertEquals(webSearchTool!.type, "web_search_20250305");
   } finally {
     globalThis.fetch = originalFetch;
   }
