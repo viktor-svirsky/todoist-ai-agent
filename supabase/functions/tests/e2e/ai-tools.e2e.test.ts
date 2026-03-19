@@ -112,6 +112,27 @@ t("e2e tool web_search: empty query returns error", async () => {
 }, true);
 
 // ---------------------------------------------------------------------------
+// Proxy-prefixed tool names (some proxies rename tools)
+// ---------------------------------------------------------------------------
+
+t("e2e tool proxy_fetch_url: handles proxy-prefixed tool name", async () => {
+  const result = await handleToolCall(
+    "proxy_fetch_url",
+    JSON.stringify({ url: "https://example.com" }),
+  );
+  assertStringIncludes(result, "Example Domain");
+});
+
+t("e2e tool proxy_web_search: handles proxy-prefixed search", async () => {
+  const result = await handleToolCall(
+    "proxy_web_search",
+    JSON.stringify({ query: "test" }),
+    undefined,
+  );
+  assertStringIncludes(result, "not configured");
+});
+
+// ---------------------------------------------------------------------------
 // Unknown tool
 // ---------------------------------------------------------------------------
 
