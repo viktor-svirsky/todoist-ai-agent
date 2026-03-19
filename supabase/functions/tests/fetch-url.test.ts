@@ -251,14 +251,94 @@ Deno.test("fetchUrl: rejects page exceeding MAX_FETCH_BYTES via content-length",
   }
 });
 
-Deno.test("fetchUrl: handles redirect error gracefully", async () => {
+Deno.test("fetchUrl: follows redirects and returns content", async () => {
   const originalFetch = globalThis.fetch;
-  globalThis.fetch = ((_input: unknown, _init?: RequestInit) => {
-    return Promise.reject(new TypeError("Failed to fetch: redirect mode is set to error"));
+  let callCount = 0;
+  globalThis.fetch = ((input: unknown, _init?: RequestInit) => {
+    const url = String(input);
+    callCount++;
+    if (url === "https://example.com/redirect") {
+      return Promise.resolve(new Response("", {
+        status: 301,
+        headers: { "Location": "https://example.com/final" },
+      }));
+    }
+    if (url === "https://example.com/final") {
+      return Promise.resolve(new Response("<p>Final page</p>", {
+        status: 200,
+        headers: { "content-type": "text/html" },
+      }));
+    }
+    return Promise.reject(new Error(`Unexpected fetch: ${url}`));
   }) as typeof fetch;
   try {
     const result = await fetchUrl("https://example.com/redirect");
-    assertStringIncludes(result, "redirect");
+    assertStringIncludes(result, "Final page");
+    assertEquals(callCount, 2);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+Deno.test("fetchUrl: blocks redirect to private host", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = ((input: unknown, _init?: RequestInit) => {
+    const url = String(input);
+    if (url === "https://example.com/ssrf") {
+      return Promise.resolve(new Response("", {
+        status: 302,
+        headers: { "Location": "http://169.254.169.254/latest/meta-data/" },
+      }));
+    }
+    return Promise.reject(new Error(`Unexpected fetch: ${url}`));
+  }) as typeof fetch;
+  try {
+    const result = await fetchUrl("https://example.com/ssrf");
+    assertStringIncludes(result, "private/internal host blocked");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+Deno.test("fetchUrl: blocks redirect loop", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = ((input: unknown, _init?: RequestInit) => {
+    const url = String(input);
+    if (url === "https://example.com/loop-a") {
+      return Promise.resolve(new Response("", {
+        status: 302,
+        headers: { "Location": "https://example.com/loop-b" },
+      }));
+    }
+    if (url === "https://example.com/loop-b") {
+      return Promise.resolve(new Response("", {
+        status: 302,
+        headers: { "Location": "https://example.com/loop-a" },
+      }));
+    }
+    return Promise.reject(new Error(`Unexpected fetch: ${url}`));
+  }) as typeof fetch;
+  try {
+    const result = await fetchUrl("https://example.com/loop-a");
+    assertStringIncludes(result, "Redirect loop detected");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+Deno.test("fetchUrl: limits maximum redirects", async () => {
+  const originalFetch = globalThis.fetch;
+  let counter = 0;
+  globalThis.fetch = ((_input: unknown, _init?: RequestInit) => {
+    counter++;
+    return Promise.resolve(new Response("", {
+      status: 302,
+      headers: { "Location": `https://example.com/hop-${counter}` },
+    }));
+  }) as typeof fetch;
+  try {
+    const result = await fetchUrl("https://example.com/start");
+    assertStringIncludes(result, "Too many redirects");
   } finally {
     globalThis.fetch = originalFetch;
   }

@@ -1,5 +1,5 @@
 import { assertEquals, assertStringIncludes, assertRejects } from "@std/assert";
-import { buildMessages, executePrompt, isAnthropicUrl } from "../_shared/ai.ts";
+import { buildMessages, executePrompt, isAnthropicUrl, formatLinksForTodoist } from "../_shared/ai.ts";
 
 Deno.test("buildMessages: starts with system message containing task content", () => {
   const result = buildMessages("Buy milk", undefined, []);
@@ -1341,6 +1341,103 @@ Deno.test("executePrompt (Anthropic): document_attachment converted to Anthropic
     globalThis.fetch = originalFetch;
   }
 });
+
+// ---------------------------------------------------------------------------
+// formatLinksForTodoist
+// ---------------------------------------------------------------------------
+
+Deno.test("formatLinksForTodoist: converts bare HTTPS URL to markdown link", () => {
+  const result = formatLinksForTodoist("Check https://www.keeper.sh/ for details");
+  assertEquals(result, "Check [keeper.sh](https://www.keeper.sh/) for details");
+});
+
+Deno.test("formatLinksForTodoist: converts bare HTTP URL to markdown link", () => {
+  const result = formatLinksForTodoist("Visit http://example.com for info");
+  assertEquals(result, "Visit [example.com](http://example.com) for info");
+});
+
+Deno.test("formatLinksForTodoist: preserves existing markdown links", () => {
+  const input = "Check [Keeper](https://www.keeper.sh/) for details";
+  assertEquals(formatLinksForTodoist(input), input);
+});
+
+Deno.test("formatLinksForTodoist: handles URL with trailing period", () => {
+  const result = formatLinksForTodoist("Visit https://example.com.");
+  assertEquals(result, "Visit [example.com](https://example.com).");
+});
+
+Deno.test("formatLinksForTodoist: handles URL with trailing comma", () => {
+  const result = formatLinksForTodoist("See https://example.com, and more");
+  assertEquals(result, "See [example.com](https://example.com), and more");
+});
+
+Deno.test("formatLinksForTodoist: handles multiple bare URLs", () => {
+  const result = formatLinksForTodoist("Check https://a.com and https://b.com");
+  assertEquals(result, "Check [a.com](https://a.com) and [b.com](https://b.com)");
+});
+
+Deno.test("formatLinksForTodoist: mixed markdown and bare URLs", () => {
+  const result = formatLinksForTodoist("See [Link](https://a.com) and https://b.com");
+  assertEquals(result, "See [Link](https://a.com) and [b.com](https://b.com)");
+});
+
+Deno.test("formatLinksForTodoist: no URLs — returns unchanged", () => {
+  const input = "No links here, just plain text.";
+  assertEquals(formatLinksForTodoist(input), input);
+});
+
+Deno.test("formatLinksForTodoist: URL with path preserved", () => {
+  const result = formatLinksForTodoist("See https://example.com/path/to/page for details");
+  assertEquals(result, "See [example.com](https://example.com/path/to/page) for details");
+});
+
+Deno.test("formatLinksForTodoist: URL with query string preserved", () => {
+  const result = formatLinksForTodoist("See https://example.com/search?q=test for results");
+  assertEquals(result, "See [example.com](https://example.com/search?q=test) for results");
+});
+
+Deno.test("formatLinksForTodoist: strips www from display text", () => {
+  const result = formatLinksForTodoist("Visit https://www.example.com");
+  assertEquals(result, "Visit [example.com](https://www.example.com)");
+});
+
+Deno.test("formatLinksForTodoist: URL at start of text", () => {
+  const result = formatLinksForTodoist("https://example.com is a great site");
+  assertEquals(result, "[example.com](https://example.com) is a great site");
+});
+
+Deno.test("formatLinksForTodoist: URL at end of text", () => {
+  const result = formatLinksForTodoist("Visit https://example.com");
+  assertEquals(result, "Visit [example.com](https://example.com)");
+});
+
+Deno.test("formatLinksForTodoist: Wikipedia URL with balanced parentheses preserved", () => {
+  const result = formatLinksForTodoist("See https://en.wikipedia.org/wiki/Foo_(bar) for info");
+  assertEquals(result, "See [en.wikipedia.org](https://en.wikipedia.org/wiki/Foo_(bar)) for info");
+});
+
+Deno.test("formatLinksForTodoist: URL with unbalanced trailing paren stripped", () => {
+  const result = formatLinksForTodoist("(see https://example.com)");
+  assertEquals(result, "(see [example.com](https://example.com))");
+});
+
+Deno.test("formatLinksForTodoist: executePrompt applies formatting to response", async () => {
+  const restore = mockFetch([{
+    status: 200,
+    body: { choices: [{ message: { content: "Visit https://www.keeper.sh/ for password management" } }] },
+  }]);
+  try {
+    const messages = [{ role: "system", content: "You are helpful" }];
+    const result = await executePrompt(messages, BASE_CONFIG);
+    assertEquals(result, "Visit [keeper.sh](https://www.keeper.sh/) for password management");
+  } finally {
+    restore();
+  }
+});
+
+// ---------------------------------------------------------------------------
+// executePrompt — Document attachment conversion per provider
+// ---------------------------------------------------------------------------
 
 Deno.test("executePrompt (OpenAI): document_attachment converted to text placeholder", async () => {
   let capturedBody: Record<string, unknown> = {};
