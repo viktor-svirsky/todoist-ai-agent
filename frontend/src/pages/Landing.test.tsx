@@ -46,14 +46,16 @@ describe("Landing: rendering", () => {
   it("renders heading and connect button", () => {
     renderLanding();
     expect(screen.getByText("Todoist AI Agent")).toBeInTheDocument();
-    expect(screen.getByText("Connect Todoist")).toBeInTheDocument();
+    expect(
+      screen.getAllByText(/Connect Todoist/).length,
+    ).toBeGreaterThanOrEqual(1);
   });
 
   it("renders feature list items", () => {
     renderLanding();
-    expect(screen.getByText(/Comment/)).toBeInTheDocument();
-    expect(screen.getByText(/Web search/)).toBeInTheDocument();
-    expect(screen.getByText(/Bring your own AI key/)).toBeInTheDocument();
+    const featureList = screen.getByRole("list", { name: "Features" });
+    const items = featureList.querySelectorAll("li");
+    expect(items.length).toBe(6);
   });
 
   it("renders GitHub links", () => {
@@ -61,6 +63,50 @@ describe("Landing: rendering", () => {
     expect(screen.getByText("GitHub")).toBeInTheDocument();
     expect(screen.getByText("Report a Bug")).toBeInTheDocument();
     expect(screen.getByText("Request a Feature")).toBeInTheDocument();
+  });
+});
+
+// ============================================================================
+// Sections
+// ============================================================================
+
+describe("Landing: sections", () => {
+  it("renders hero section with main heading", () => {
+    renderLanding();
+    expect(screen.getByText("Todoist AI Agent")).toBeInTheDocument();
+    expect(
+      screen.getByText(/AI assistant that lives inside your Todoist/),
+    ).toBeInTheDocument();
+  });
+
+  it("renders features section with heading", () => {
+    renderLanding();
+    expect(
+      screen.getByText("Everything You Need from an AI for Todoist"),
+    ).toBeInTheDocument();
+  });
+
+  it("renders how it works section", () => {
+    renderLanding();
+    expect(screen.getByText("How It Works")).toBeInTheDocument();
+    expect(screen.getByText("Connect Your Todoist")).toBeInTheDocument();
+  });
+
+  it("renders FAQ section with expandable items", () => {
+    renderLanding();
+    expect(
+      screen.getByText("Frequently Asked Questions"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("Is Todoist AI Agent free?"),
+    ).toBeInTheDocument();
+  });
+
+  it("renders CTA section", () => {
+    renderLanding();
+    expect(
+      screen.getByText("Ready to Add AI to Your Todoist?"),
+    ).toBeInTheDocument();
   });
 });
 
@@ -97,7 +143,8 @@ describe("Landing: connect button", () => {
     const user = userEvent.setup();
     renderLanding();
 
-    await user.click(screen.getByText("Connect Todoist"));
+    const buttons = screen.getAllByText(/Connect Todoist/);
+    await user.click(buttons[0]);
 
     expect(sessionStorage.getItem("oauth_pending")).toBe("true");
   });
@@ -106,21 +153,42 @@ describe("Landing: connect button", () => {
     const user = userEvent.setup();
     renderLanding();
 
-    await user.click(screen.getByText("Connect Todoist"));
+    const buttons = screen.getAllByText(/Connect Todoist/);
+    await user.click(buttons[0]);
 
-    expect(screen.getByText("Redirecting...")).toBeInTheDocument();
-    expect(screen.getByText("Redirecting...").closest("button")).toBeDisabled();
+    const redirecting = screen.getAllByText("Redirecting...");
+    expect(redirecting.length).toBeGreaterThanOrEqual(1);
+    expect(redirecting[0].closest("button")).toBeDisabled();
   });
 
   it("button has aria-busy while connecting", async () => {
     const user = userEvent.setup();
     renderLanding();
 
-    await user.click(screen.getByText("Connect Todoist"));
+    const buttons = screen.getAllByText(/Connect Todoist/);
+    await user.click(buttons[0]);
 
-    expect(
-      screen.getByText("Redirecting...").closest("button"),
-    ).toHaveAttribute("aria-busy", "true");
+    const redirecting = screen.getAllByText("Redirecting...");
+    expect(redirecting[0].closest("button")).toHaveAttribute(
+      "aria-busy",
+      "true",
+    );
+  });
+
+  it("both hero and CTA buttons reflect connecting state", async () => {
+    const user = userEvent.setup();
+    renderLanding();
+
+    const buttons = screen.getAllByText(/Connect Todoist/);
+    expect(buttons.length).toBe(2);
+
+    await user.click(buttons[0]);
+
+    const redirecting = screen.getAllByText("Redirecting...");
+    expect(redirecting.length).toBe(2);
+    redirecting.forEach((el) => {
+      expect(el.closest("button")).toBeDisabled();
+    });
   });
 });
 
@@ -167,9 +235,15 @@ describe("Landing: accessibility", () => {
 
   it("emoji icons are hidden from screen readers", () => {
     renderLanding();
-    const emojis = screen.getAllByText(/💬|🔍|🔑/);
+    const emojis = screen.getAllByText(/💬|🔍|🧠|🔑|🖼️|⚡/);
     emojis.forEach((el) => {
       expect(el).toHaveAttribute("aria-hidden", "true");
     });
+  });
+
+  it("FAQ items are accessible with details/summary", () => {
+    renderLanding();
+    const details = document.querySelectorAll("details");
+    expect(details.length).toBe(6);
   });
 });
