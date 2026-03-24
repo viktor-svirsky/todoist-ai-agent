@@ -12,11 +12,11 @@ test.describe("Welcome: auth guard", () => {
   });
 
   test("renders nothing while checking session", async ({ page }) => {
-    // Hold getSession so the page stays in loading state
-    await page.route("**/auth/v1/token**", () => {});
+    // Block the token refresh so getSession never resolves
+    await page.route("**/auth/v1/token**", (route) => route.abort());
     await page.goto("/welcome");
-    // The main landmark should not be present yet
-    await expect(page.getByRole("main")).not.toBeVisible();
+    // No session resolved yet — component returns null
+    await expect(page.getByRole("main")).not.toBeAttached();
   });
 });
 

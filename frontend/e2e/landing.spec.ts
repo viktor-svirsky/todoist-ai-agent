@@ -27,6 +27,7 @@ test.describe("Landing page", () => {
     const buttons = page.getByRole("button", { name: /Connect Todoist/ });
     await expect(buttons).toHaveCount(2);
     await expect(buttons.first()).toBeEnabled();
+    await expect(buttons.last()).toBeEnabled();
   });
 
   test("renders footer links with target blank", async ({ page }) => {

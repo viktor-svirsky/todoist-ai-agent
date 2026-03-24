@@ -190,6 +190,8 @@ test.describe("Settings: tab navigation", () => {
     await expect(page.locator("#custom-prompt")).toBeVisible();
     // Advanced fields should not be visible
     await expect(page.locator("#ai-base-url")).not.toBeVisible();
+    await expect(page.locator("#ai-api-key")).not.toBeVisible();
+    await expect(page.locator("#ai-model")).not.toBeVisible();
     await expect(page.locator("#brave-key")).not.toBeVisible();
   });
 
@@ -285,12 +287,14 @@ test.describe("Settings: tab navigation", () => {
 
     // Fill Basic fields
     await page.locator("#trigger-word").fill("@bot");
+    await page.locator("#custom-prompt").fill("Be concise");
 
     // Fill Advanced fields
     await switchToAdvanced(page);
     await page.locator("#ai-base-url").fill("https://api.example.com");
     await page.locator("#ai-api-key").fill("sk-test");
     await page.locator("#ai-model").fill("gpt-4");
+    await page.locator("#brave-key").fill("BSA-test");
 
     // Switch back to Basic and save
     await page.getByRole("tab", { name: "Basic" }).click();
@@ -305,9 +309,11 @@ test.describe("Settings: tab navigation", () => {
     const request = await requestPromise;
     const body = JSON.parse(request.postData()!);
     expect(body.trigger_word).toBe("@bot");
+    expect(body.custom_prompt).toBe("Be concise");
     expect(body.custom_ai_base_url).toBe("https://api.example.com");
     expect(body.custom_ai_api_key).toBe("sk-test");
     expect(body.custom_ai_model).toBe("gpt-4");
+    expect(body.custom_brave_key).toBe("BSA-test");
   });
 });
 
