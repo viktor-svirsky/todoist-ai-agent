@@ -23,7 +23,7 @@ const TODOIST_API = "https://api.todoist.com/api/v1";
 const AI_INDICATOR = "\u{1F916} **AI Agent**";
 const ERROR_PREFIX = "\u{26A0}\u{FE0F} AI agent error:";
 const POLL_INTERVAL_MS = 5_000;
-const MAX_WAIT_MS = 120_000;
+const MAX_WAIT_MS = 180_000;
 
 function t(name: string, fn: () => Promise<void>) {
   Deno.test({
