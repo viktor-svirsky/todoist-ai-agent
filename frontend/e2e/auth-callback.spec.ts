@@ -96,7 +96,7 @@ test.describe("Auth callback", () => {
     await page.goto(
       `/auth/callback#access_token=${EXPIRED_JWT}&refresh_token=test-ref`,
     );
-    await page.waitForURL("**/settings");
+    await page.waitForURL("**/welcome");
   });
 
   test("redirects to error when setSession fails", async ({ page }) => {

@@ -1,6 +1,8 @@
 import { supabase } from "../lib/supabase";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import PageFooter from "../components/PageFooter";
+import StepList from "../components/StepList";
 
 function HeroSection({
   onConnect,
@@ -175,26 +177,7 @@ function HowItWorksSection() {
           Three steps to add AI to your Todoist workflow.
         </p>
 
-        <ol className="mt-12 space-y-8" aria-label="Steps">
-          {steps.map((item) => (
-            <li key={item.step} className="flex gap-6 items-start">
-              <span
-                className="shrink-0 w-12 h-12 rounded-full bg-red-500 text-white font-bold text-xl flex items-center justify-center"
-                aria-hidden="true"
-              >
-                {item.step}
-              </span>
-              <div>
-                <h3 className="text-lg font-semibold text-gray-900">
-                  {item.title}
-                </h3>
-                <p className="mt-1 text-gray-600 leading-relaxed">
-                  {item.description}
-                </p>
-              </div>
-            </li>
-          ))}
-        </ol>
+        <StepList steps={steps} ariaLabel="Steps" />
       </div>
     </section>
   );
@@ -304,40 +287,6 @@ function CTASection({
   );
 }
 
-function FooterLinks() {
-  return (
-    <footer className="py-8 bg-gray-50">
-      <p className="text-center text-xs text-gray-400">
-        <a
-          href="https://github.com/viktor-svirsky/todoist-ai-agent"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="hover:text-gray-600 transition-colors"
-        >
-          GitHub
-        </a>
-        {" · "}
-        <a
-          href="https://github.com/viktor-svirsky/todoist-ai-agent/issues/new?template=bug_report.yml"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="hover:text-gray-600 transition-colors"
-        >
-          Report a Bug
-        </a>
-        {" · "}
-        <a
-          href="https://github.com/viktor-svirsky/todoist-ai-agent/issues/new?template=feature_request.yml"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="hover:text-gray-600 transition-colors"
-        >
-          Request a Feature
-        </a>
-      </p>
-    </footer>
-  );
-}
 
 export default function Landing() {
   const navigate = useNavigate();
@@ -371,7 +320,7 @@ export default function Landing() {
       <HowItWorksSection />
       <FAQSection />
       <CTASection onConnect={handleConnect} connecting={connecting} />
-      <FooterLinks />
+      <PageFooter />
     </main>
   );
 }

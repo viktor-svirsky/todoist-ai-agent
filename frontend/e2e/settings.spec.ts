@@ -15,6 +15,10 @@ async function gotoSettings(
   await page.goto("/settings");
 }
 
+async function switchToAdvanced(page: Page) {
+  await page.getByRole("tab", { name: "Advanced" }).click();
+}
+
 // =============================================================================
 // Auth & Loading
 // =============================================================================
@@ -131,6 +135,8 @@ test.describe("Settings: form display", () => {
     });
     await expect(page.locator("#trigger-word")).toHaveValue("@bot");
     await expect(page.locator("#custom-prompt")).toHaveValue("Be helpful");
+
+    await switchToAdvanced(page);
     await expect(page.locator("#ai-base-url")).toHaveValue(
       "https://api.example.com",
     );
@@ -221,6 +227,7 @@ test.describe("Settings: custom prompt", () => {
 test.describe("Settings: AI provider", () => {
   test("shows provider section with info links", async ({ page }) => {
     await gotoSettings(page);
+    await switchToAdvanced(page);
     await expect(page.getByText("AI Provider", { exact: true })).toBeVisible();
     for (const name of ["Anthropic", "OpenAI", "OpenRouter", "Groq"]) {
       await expect(page.getByRole("link", { name })).toBeVisible();
@@ -229,6 +236,7 @@ test.describe("Settings: AI provider", () => {
 
   test("Test Connection hidden when AI fields empty", async ({ page }) => {
     await gotoSettings(page);
+    await switchToAdvanced(page);
     await expect(
       page.getByRole("button", { name: "Test Connection" }),
     ).not.toBeVisible();
@@ -238,6 +246,7 @@ test.describe("Settings: AI provider", () => {
     page,
   }) => {
     await gotoSettings(page);
+    await switchToAdvanced(page);
     await page.locator("#ai-base-url").fill("https://api.openai.com/v1");
     await page.locator("#ai-api-key").fill("sk-test");
     await page.locator("#ai-model").fill("gpt-4");
@@ -248,6 +257,7 @@ test.describe("Settings: AI provider", () => {
 
   test("Test Connection success shows green message", async ({ page }) => {
     await gotoSettings(page, { testResult: { valid: true } });
+    await switchToAdvanced(page);
     await page.locator("#ai-base-url").fill("https://api.openai.com/v1");
     await page.locator("#ai-api-key").fill("sk-test");
     await page.locator("#ai-model").fill("gpt-4");
@@ -259,6 +269,7 @@ test.describe("Settings: AI provider", () => {
     await gotoSettings(page, {
       testResult: { valid: false, error: "Invalid API key" },
     });
+    await switchToAdvanced(page);
     await page.locator("#ai-base-url").fill("https://api.openai.com/v1");
     await page.locator("#ai-api-key").fill("sk-bad");
     await page.locator("#ai-model").fill("gpt-4");
@@ -268,6 +279,7 @@ test.describe("Settings: AI provider", () => {
 
   test("Test result clears when AI field changes", async ({ page }) => {
     await gotoSettings(page, { testResult: { valid: true } });
+    await switchToAdvanced(page);
     await page.locator("#ai-base-url").fill("https://api.openai.com/v1");
     await page.locator("#ai-api-key").fill("sk-test");
     await page.locator("#ai-model").fill("gpt-4");
@@ -281,6 +293,7 @@ test.describe("Settings: AI provider", () => {
 
   test("password visibility toggle for AI API key", async ({ page }) => {
     await gotoSettings(page);
+    await switchToAdvanced(page);
     const input = page.locator("#ai-api-key");
     await expect(input).toHaveAttribute("type", "password");
     await page
@@ -299,6 +312,7 @@ test.describe("Settings: AI provider", () => {
     page,
   }) => {
     await gotoSettings(page, { settings: { has_custom_ai_key: true } });
+    await switchToAdvanced(page);
     await expect(
       page.getByRole("button", { name: "Reset AI Settings" }),
     ).toBeVisible();
@@ -332,6 +346,7 @@ test.describe("Settings: AI provider", () => {
       }
     });
     await page.goto("/settings");
+    await switchToAdvanced(page);
     await expect(page.locator("#ai-base-url")).toHaveValue(
       "https://api.example.com",
     );
@@ -357,6 +372,7 @@ test.describe("Settings: AI provider", () => {
       }
     });
     await page.goto("/settings");
+    await switchToAdvanced(page);
     await page.getByRole("button", { name: "Reset AI Settings" }).click();
     await expect(page.getByText("Failed to reset AI settings")).toBeVisible();
   });
@@ -369,6 +385,7 @@ test.describe("Settings: AI provider", () => {
 test.describe("Settings: web search", () => {
   test("shows web search section with Brave link", async ({ page }) => {
     await gotoSettings(page);
+    await switchToAdvanced(page);
     await expect(page.getByText("Web Search", { exact: true })).toBeVisible();
     await expect(
       page.getByRole("link", { name: "Brave Search API" }),
@@ -377,6 +394,7 @@ test.describe("Settings: web search", () => {
 
   test("password visibility toggle for Brave key", async ({ page }) => {
     await gotoSettings(page);
+    await switchToAdvanced(page);
     const input = page.locator("#brave-key");
     await expect(input).toHaveAttribute("type", "password");
     const braveSection = page.locator("fieldset", {
@@ -390,6 +408,7 @@ test.describe("Settings: web search", () => {
     page,
   }) => {
     await gotoSettings(page, { settings: { has_custom_brave_key: true } });
+    await switchToAdvanced(page);
     await expect(
       page.getByRole("button", { name: "Reset Search Key" }),
     ).toBeVisible();
@@ -399,6 +418,7 @@ test.describe("Settings: web search", () => {
     page,
   }) => {
     await gotoSettings(page);
+    await switchToAdvanced(page);
     await expect(
       page.getByRole("button", { name: "Reset Search Key" }),
     ).not.toBeVisible();
@@ -424,6 +444,7 @@ test.describe("Settings: web search", () => {
       }
     });
     await page.goto("/settings");
+    await switchToAdvanced(page);
     await page.getByRole("button", { name: "Reset Search Key" }).click();
     await expect(
       page.getByRole("button", { name: "Reset Search Key" }),
@@ -447,6 +468,7 @@ test.describe("Settings: web search", () => {
       }
     });
     await page.goto("/settings");
+    await switchToAdvanced(page);
     await page.getByRole("button", { name: "Reset Search Key" }).click();
     await expect(page.getByText("Failed to reset search key")).toBeVisible();
   });
@@ -495,6 +517,7 @@ test.describe("Settings: save", () => {
     await gotoSettings(page);
     await page.locator("#trigger-word").fill("@bot");
     await page.locator("#custom-prompt").fill("Be concise");
+    await switchToAdvanced(page);
     await page.locator("#ai-base-url").fill("https://api.example.com");
     await page.locator("#ai-api-key").fill("sk-test123");
     await page.locator("#ai-model").fill("gpt-4");

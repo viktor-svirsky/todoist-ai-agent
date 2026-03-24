@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabase";
+import PageFooter from "../components/PageFooter";
 
 interface UserSettings {
   trigger_word: string;
@@ -24,35 +25,31 @@ function SkeletonBlock({ className = "" }: { className?: string }) {
 function SettingsSkeleton() {
   return (
     <div
-      className="min-h-screen bg-gray-100 flex flex-col items-center py-8 sm:py-12 px-4 sm:px-6"
       role="status"
       aria-label="Loading settings"
       aria-busy="true"
     >
-      <div className="max-w-lg w-full bg-white rounded-2xl shadow-xl p-8 sm:p-10 space-y-6">
-        <SkeletonBlock className="h-8 w-32" />
-        <div className="space-y-2">
+      <div className="bg-gradient-to-b from-gray-50 to-white py-12 sm:py-16">
+        <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
+          <SkeletonBlock className="h-10 w-40" />
+        </div>
+      </div>
+      <div className="border-b border-gray-200 bg-white">
+        <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 flex gap-4 py-3">
+          <SkeletonBlock className="h-6 w-16" />
+          <SkeletonBlock className="h-6 w-24" />
+        </div>
+      </div>
+      <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-6">
+        <div className="rounded-2xl bg-gray-50 p-6 space-y-4">
           <SkeletonBlock className="h-4 w-24" />
           <SkeletonBlock className="h-10 w-full" />
-          <SkeletonBlock className="h-3 w-56" />
-        </div>
-        <div className="space-y-2">
           <SkeletonBlock className="h-4 w-36" />
           <SkeletonBlock className="h-24 w-full" />
         </div>
-        <div className="rounded-xl bg-gray-50 p-5 space-y-4">
-          <SkeletonBlock className="h-4 w-24" />
-          <SkeletonBlock className="h-10 w-full" />
-          <SkeletonBlock className="h-10 w-full" />
-          <SkeletonBlock className="h-10 w-full" />
-        </div>
-        <div className="rounded-xl bg-gray-50 p-5 space-y-4">
-          <SkeletonBlock className="h-4 w-28" />
-          <SkeletonBlock className="h-10 w-full" />
-        </div>
         <SkeletonBlock className="h-12 w-full" />
-        <span className="sr-only">Loading settings...</span>
       </div>
+      <span className="sr-only">Loading settings...</span>
     </div>
   );
 }
@@ -164,7 +161,7 @@ function PasswordInput({
       <button
         type="button"
         onClick={() => setVisible(!visible)}
-        className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 rounded"
+        className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-500 rounded"
         aria-label={visible ? "Hide password" : "Show password"}
       >
         {visible ? (
@@ -200,6 +197,15 @@ export default function Settings() {
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<{ valid: boolean; error?: string } | null>(null);
   const testAbortRef = useRef<AbortController | null>(null);
+
+  const [activeTab, setActiveTab] = useState<"basic" | "advanced">("basic");
+
+  function handleTabChange(tab: "basic" | "advanced") {
+    setActiveTab(tab);
+    if (tab === "basic") {
+      setTestResult(null);
+    }
+  }
 
   async function loadSettings(token: string) {
     try {
@@ -392,13 +398,50 @@ export default function Settings() {
     }
   }
 
+  async function handleResetAi() {
+    testAbortRef.current?.abort();
+    setTesting(false);
+    setTestResult(null);
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) return;
+    const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/settings`, {
+      method: "PUT",
+      headers: { Authorization: `Bearer ${session.access_token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ custom_ai_base_url: null, custom_ai_api_key: null, custom_ai_model: null }),
+    });
+    if (!res.ok) {
+      setMessage("Failed to reset AI settings. Please try again.");
+      return;
+    }
+    setAiBaseUrl("");
+    setAiApiKey("");
+    setAiModel("");
+    await loadSettings(session.access_token);
+  }
+
+  async function handleResetBraveKey() {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) return;
+    const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/settings`, {
+      method: "PUT",
+      headers: { Authorization: `Bearer ${session.access_token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ custom_brave_key: null }),
+    });
+    if (!res.ok) {
+      setMessage("Failed to reset search key. Please try again.");
+      return;
+    }
+    setBraveKey("");
+    await loadSettings(session.access_token);
+  }
+
   if (error) {
     return (
       <main
-        className="min-h-screen bg-gray-100 flex items-center justify-center px-4 sm:px-6"
+        className="min-h-screen bg-white flex items-center justify-center px-4 sm:px-6"
         role="main"
       >
-        <div className="bg-white rounded-2xl shadow-xl p-8 sm:p-10 space-y-4 text-center">
+        <div className="rounded-2xl bg-gray-50 p-8 sm:p-10 space-y-4 text-center max-w-md">
           <p className="text-red-600" role="alert">{error}</p>
           <button
             onClick={() => {
@@ -411,7 +454,7 @@ export default function Settings() {
                 loadSettings(session.access_token);
               });
             }}
-            className="py-2 px-4 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-xl transition-colors cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
+            className="py-2 px-4 bg-red-500 hover:bg-red-600 text-white font-medium rounded-xl transition-colors cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-500"
           >
             Retry
           </button>
@@ -424,213 +467,84 @@ export default function Settings() {
     return <SettingsSkeleton />;
   }
 
-  const inputClasses = "mt-1.5 w-full px-3.5 py-2.5 border border-gray-300 rounded-xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-shadow focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500";
+  const inputClasses = "mt-1.5 w-full px-3.5 py-2.5 border border-gray-300 rounded-xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-shadow focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-500";
   const isSuccess = message === "Settings saved.";
 
   return (
-    <main
-      className="min-h-screen bg-gray-100 flex flex-col items-center py-8 sm:py-12 px-4 sm:px-6"
-      role="main"
-      aria-labelledby="settings-heading"
-    >
-      <div className="max-w-lg w-full bg-white rounded-2xl shadow-xl p-8 sm:p-10 space-y-6">
-        <div className="flex items-center justify-between">
-          <h1 id="settings-heading" className="text-2xl sm:text-3xl font-bold text-gray-900">Settings</h1>
+    <main role="main" aria-labelledby="settings-heading">
+      {/* Hero header */}
+      <section className="bg-gradient-to-b from-gray-50 to-white py-12 sm:py-16">
+        <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-between">
+          <h1
+            id="settings-heading"
+            className="text-3xl sm:text-4xl font-extrabold bg-gradient-to-r from-red-500 to-violet-600 bg-clip-text text-transparent"
+          >
+            Settings
+          </h1>
           <button
             onClick={handleLogout}
-            className="text-sm text-gray-500 hover:text-gray-700 font-medium transition-colors cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 rounded px-2 py-1"
+            className="text-sm text-gray-500 hover:text-gray-700 font-medium transition-colors cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-500 rounded px-2 py-1"
             aria-label="Sign out"
           >
             Sign Out
           </button>
         </div>
+      </section>
 
-        <div>
-          <label htmlFor="trigger-word" className="block text-sm font-medium text-gray-700">Trigger word</label>
-          <input
-            id="trigger-word"
-            type="text"
-            value={triggerWord}
-            onChange={(e) => setTriggerWord(e.target.value)}
-            className={`${inputClasses} font-mono`}
-            placeholder="@ai"
-            aria-describedby="trigger-word-desc"
-          />
-          <p id="trigger-word-desc" className="mt-1.5 text-xs text-gray-500">
-            The agent responds when this word appears in a comment.
-          </p>
-        </div>
-
-        <div>
-          <label htmlFor="custom-prompt" className="block text-sm font-medium text-gray-700">Custom Instructions</label>
-          <textarea
-            id="custom-prompt"
-            value={customPrompt}
-            onChange={(e) => setCustomPrompt(e.target.value)}
-            className={`${inputClasses} resize-y min-h-[100px]`}
-            placeholder="e.g. I live in Berlin. Respond in German. Keep answers short and practical."
-            maxLength={2000}
-            rows={4}
-            aria-describedby="custom-prompt-desc custom-prompt-count"
-          />
-          <div className="mt-1.5 flex justify-between">
-            <p id="custom-prompt-desc" className="text-xs text-gray-500">
-              Personal context the AI will use when responding.
-            </p>
-            <p id="custom-prompt-count" className="text-xs text-gray-400" aria-live="polite">{customPrompt.length}/2000</p>
-          </div>
-        </div>
-
-        <fieldset className="rounded-xl bg-gray-50 p-5 space-y-4">
-          <legend className="sr-only">AI Provider Settings</legend>
-          <div>
-            <p className="text-sm font-semibold text-gray-800">AI Provider</p>
-            <p className="mt-1 text-xs text-gray-500 leading-relaxed">
-              Optional. Supports Anthropic and any OpenAI-compatible provider.
-              Get a key from{" "}
-              <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">Anthropic</a>,{" "}
-              <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">OpenAI</a>,{" "}
-              <a href="https://openrouter.ai/keys" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">OpenRouter</a>, or{" "}
-              <a href="https://console.groq.com/keys" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">Groq</a>.
-            </p>
-          </div>
-
-          <div>
-            <label htmlFor="ai-base-url" className="block text-sm text-gray-600">Base URL</label>
-            <input
-              id="ai-base-url"
-              type="text"
-              value={aiBaseUrl}
-              onChange={(e) => { setAiBaseUrl(e.target.value); setTestResult(null); testAbortRef.current?.abort(); }}
-              className={inputClasses}
-              placeholder="https://api.openai.com/v1"
-            />
-          </div>
-
-          <div>
-            <label htmlFor="ai-api-key" className="block text-sm text-gray-600">API Key</label>
-            <PasswordInput
-              id="ai-api-key"
-              value={aiApiKey}
-              onChange={(v) => { setAiApiKey(v); setTestResult(null); testAbortRef.current?.abort(); }}
-              className={inputClasses}
-              placeholder={settings.has_custom_ai_key ? "••••••••  (key set)" : "sk-..."}
-              ariaLabel="AI provider API key"
-            />
-          </div>
-
-          <div>
-            <label htmlFor="ai-model" className="block text-sm text-gray-600">Model</label>
-            <input
-              id="ai-model"
-              type="text"
-              value={aiModel}
-              onChange={(e) => { setAiModel(e.target.value); setTestResult(null); testAbortRef.current?.abort(); }}
-              className={inputClasses}
-              placeholder="gpt-4o-mini"
-            />
-          </div>
-
-          <div className="flex items-center gap-2 flex-wrap">
-            {aiBaseUrl && aiApiKey && aiModel && (
-              <div className="space-y-2">
-                <button
-                  type="button"
-                  onClick={handleTestKey}
-                  disabled={testing}
-                  className="py-2 px-4 bg-gray-100 hover:bg-gray-200 disabled:bg-gray-100 text-gray-700 text-sm font-medium rounded-xl transition-colors cursor-pointer disabled:cursor-not-allowed focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gray-500"
-                  aria-busy={testing}
-                >
-                  {testing ? "Testing..." : "Test Connection"}
-                </button>
-              </div>
-            )}
-            {(settings.has_custom_ai_key || aiBaseUrl || aiApiKey || aiModel) && (
-              <button
-                type="button"
-                onClick={async () => {
-                  testAbortRef.current?.abort();
-                  setTesting(false);
-                  setTestResult(null);
-                  const { data: { session } } = await supabase.auth.getSession();
-                  if (!session) return;
-                  const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/settings`, {
-                    method: "PUT",
-                    headers: { Authorization: `Bearer ${session.access_token}`, "Content-Type": "application/json" },
-                    body: JSON.stringify({ custom_ai_base_url: null, custom_ai_api_key: null, custom_ai_model: null }),
-                  });
-                  if (!res.ok) {
-                    setMessage("Failed to reset AI settings. Please try again.");
-                    return;
-                  }
-                  setAiBaseUrl("");
-                  setAiApiKey("");
-                  setAiModel("");
-                  await loadSettings(session.access_token);
-                }}
-                className="py-2 px-4 bg-red-50 hover:bg-red-100 text-red-600 text-sm font-medium rounded-xl transition-colors cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-500"
-              >
-                Reset AI Settings
-              </button>
-            )}
-          </div>
-          {aiBaseUrl && aiApiKey && aiModel && testResult && (
-            <p
-              className={`text-xs ${testResult.valid ? "text-green-600" : "text-red-600"}`}
-              role="status"
-              aria-live="polite"
-            >
-              {testResult.valid ? "Connection successful — key is valid." : testResult.error}
-            </p>
-          )}
-        </fieldset>
-
-        <fieldset className="rounded-xl bg-gray-50 p-5 space-y-4">
-          <legend className="sr-only">Web Search Settings</legend>
-          <div>
-            <p className="text-sm font-semibold text-gray-800">Web Search</p>
-            <p className="mt-1 text-xs text-gray-500 leading-relaxed">
-              Optional. Get a free key from{" "}
-              <a href="https://brave.com/search/api/" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">Brave Search API</a>.
-            </p>
-          </div>
-
-          <div>
-            <label htmlFor="brave-key" className="block text-sm text-gray-600">Brave Search API Key</label>
-            <PasswordInput
-              id="brave-key"
-              value={braveKey}
-              onChange={setBraveKey}
-              className={inputClasses}
-              placeholder={settings.has_custom_brave_key ? "••••••••  (key set)" : "BSA..."}
-              ariaLabel="Brave Search API key"
-            />
-          </div>
-          {settings.has_custom_brave_key && !braveKey && (
+      {/* Tab bar */}
+      <div className="border-b border-gray-200 bg-white">
+        <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
+          {/* eslint-disable-next-line jsx-a11y/interactive-supports-focus */}
+          <div
+            role="tablist"
+            aria-label="Settings sections"
+            className="flex gap-0"
+            onKeyDown={(e) => {
+              if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
+                e.preventDefault();
+                const next = activeTab === "basic" ? "advanced" : "basic";
+                handleTabChange(next);
+                document.getElementById(`${next}-tab`)?.focus();
+              }
+            }}
+          >
             <button
-              type="button"
-              onClick={async () => {
-                const { data: { session } } = await supabase.auth.getSession();
-                if (!session) return;
-                const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/settings`, {
-                  method: "PUT",
-                  headers: { Authorization: `Bearer ${session.access_token}`, "Content-Type": "application/json" },
-                  body: JSON.stringify({ custom_brave_key: null }),
-                });
-                if (!res.ok) {
-                  setMessage("Failed to reset search key. Please try again.");
-                  return;
-                }
-                setBraveKey("");
-                await loadSettings(session.access_token);
-              }}
-              className="py-2 px-4 bg-red-50 hover:bg-red-100 text-red-600 text-sm font-medium rounded-xl transition-colors cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-500"
+              role="tab"
+              tabIndex={activeTab === "basic" ? 0 : -1}
+              aria-selected={activeTab === "basic"}
+              aria-controls="basic-panel"
+              id="basic-tab"
+              onClick={() => handleTabChange("basic")}
+              className={`py-3 px-5 text-sm font-medium border-b-2 transition-colors cursor-pointer ${
+                activeTab === "basic"
+                  ? "border-red-500 text-red-600"
+                  : "border-transparent text-gray-500 hover:text-gray-700"
+              }`}
             >
-              Reset Search Key
+              Basic
             </button>
-          )}
-        </fieldset>
+            <button
+              role="tab"
+              tabIndex={activeTab === "advanced" ? 0 : -1}
+              aria-selected={activeTab === "advanced"}
+              aria-controls="advanced-panel"
+              id="advanced-tab"
+              onClick={() => handleTabChange("advanced")}
+              className={`py-3 px-5 text-sm font-medium border-b-2 transition-colors cursor-pointer ${
+                activeTab === "advanced"
+                  ? "border-red-500 text-red-600"
+                  : "border-transparent text-gray-500 hover:text-gray-700"
+              }`}
+            >
+              Advanced
+            </button>
+          </div>
+        </div>
+      </div>
 
+      {/* Content */}
+      <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-8">
+        {/* Status message */}
         {message && (
           <div
             className={`p-3 rounded-xl text-sm text-center ${isSuccess ? "bg-green-50 text-green-600" : "bg-red-50 text-red-600"}`}
@@ -641,15 +555,182 @@ export default function Settings() {
           </div>
         )}
 
+        {/* Basic tab */}
+        {activeTab === "basic" && (
+          <div id="basic-panel" role="tabpanel" aria-labelledby="basic-tab" className="space-y-8">
+            <div className="rounded-2xl bg-gray-50 p-6 space-y-6">
+              <div>
+                <label htmlFor="trigger-word" className="block text-sm font-medium text-gray-700">Trigger word</label>
+                <input
+                  id="trigger-word"
+                  type="text"
+                  value={triggerWord}
+                  onChange={(e) => setTriggerWord(e.target.value)}
+                  className={`${inputClasses} font-mono`}
+                  placeholder="@ai"
+                  aria-describedby="trigger-word-desc"
+                />
+                <p id="trigger-word-desc" className="mt-1.5 text-xs text-gray-500">
+                  The agent responds when this word appears in a comment.
+                </p>
+              </div>
+
+              <div>
+                <label htmlFor="custom-prompt" className="block text-sm font-medium text-gray-700">Custom Instructions</label>
+                <textarea
+                  id="custom-prompt"
+                  value={customPrompt}
+                  onChange={(e) => setCustomPrompt(e.target.value)}
+                  className={`${inputClasses} resize-y min-h-[100px]`}
+                  placeholder="e.g. I live in Berlin. Respond in German. Keep answers short and practical."
+                  maxLength={2000}
+                  rows={4}
+                  aria-describedby="custom-prompt-desc custom-prompt-count"
+                />
+                <div className="mt-1.5 flex justify-between">
+                  <p id="custom-prompt-desc" className="text-xs text-gray-500">
+                    Personal context the AI will use when responding.
+                  </p>
+                  <p id="custom-prompt-count" className="text-xs text-gray-400" aria-live="polite">{customPrompt.length}/2000</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Advanced tab */}
+        {activeTab === "advanced" && (
+          <div id="advanced-panel" role="tabpanel" aria-labelledby="advanced-tab" className="space-y-8">
+            <fieldset className="rounded-2xl bg-gray-50 p-6 space-y-4">
+              <legend className="sr-only">AI Provider Settings</legend>
+              <div>
+                <p className="text-sm font-semibold text-gray-800">AI Provider</p>
+                <p className="mt-1 text-xs text-gray-500 leading-relaxed">
+                  Optional. Supports Anthropic and any OpenAI-compatible provider.
+                  Get a key from{" "}
+                  <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener noreferrer" className="text-red-500 hover:underline">Anthropic</a>,{" "}
+                  <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener noreferrer" className="text-red-500 hover:underline">OpenAI</a>,{" "}
+                  <a href="https://openrouter.ai/keys" target="_blank" rel="noopener noreferrer" className="text-red-500 hover:underline">OpenRouter</a>, or{" "}
+                  <a href="https://console.groq.com/keys" target="_blank" rel="noopener noreferrer" className="text-red-500 hover:underline">Groq</a>.
+                </p>
+              </div>
+
+              <div>
+                <label htmlFor="ai-base-url" className="block text-sm text-gray-600">Base URL</label>
+                <input
+                  id="ai-base-url"
+                  type="text"
+                  value={aiBaseUrl}
+                  onChange={(e) => { setAiBaseUrl(e.target.value); setTestResult(null); testAbortRef.current?.abort(); }}
+                  className={inputClasses}
+                  placeholder="https://api.openai.com/v1"
+                />
+              </div>
+
+              <div>
+                <label htmlFor="ai-api-key" className="block text-sm text-gray-600">API Key</label>
+                <PasswordInput
+                  id="ai-api-key"
+                  value={aiApiKey}
+                  onChange={(v) => { setAiApiKey(v); setTestResult(null); testAbortRef.current?.abort(); }}
+                  className={inputClasses}
+                  placeholder={settings.has_custom_ai_key ? "••••••••  (key set)" : "sk-..."}
+                  ariaLabel="AI provider API key"
+                />
+              </div>
+
+              <div>
+                <label htmlFor="ai-model" className="block text-sm text-gray-600">Model</label>
+                <input
+                  id="ai-model"
+                  type="text"
+                  value={aiModel}
+                  onChange={(e) => { setAiModel(e.target.value); setTestResult(null); testAbortRef.current?.abort(); }}
+                  className={inputClasses}
+                  placeholder="gpt-4o-mini"
+                />
+              </div>
+
+              <div className="flex items-center gap-2 flex-wrap">
+                {aiBaseUrl && aiApiKey && aiModel && (
+                  <div className="space-y-2">
+                    <button
+                      type="button"
+                      onClick={handleTestKey}
+                      disabled={testing}
+                      className="py-2 px-4 bg-gray-100 hover:bg-gray-200 disabled:bg-gray-100 text-gray-700 text-sm font-medium rounded-xl transition-colors cursor-pointer disabled:cursor-not-allowed focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gray-500"
+                      aria-busy={testing}
+                    >
+                      {testing ? "Testing..." : "Test Connection"}
+                    </button>
+                  </div>
+                )}
+                {(settings.has_custom_ai_key || aiBaseUrl || aiApiKey || aiModel) && (
+                  <button
+                    type="button"
+                    onClick={handleResetAi}
+                    className="py-2 px-4 bg-red-50 hover:bg-red-100 text-red-600 text-sm font-medium rounded-xl transition-colors cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-500"
+                  >
+                    Reset AI Settings
+                  </button>
+                )}
+              </div>
+              {aiBaseUrl && aiApiKey && aiModel && testResult && (
+                <p
+                  className={`text-xs ${testResult.valid ? "text-green-600" : "text-red-600"}`}
+                  role="status"
+                  aria-live="polite"
+                >
+                  {testResult.valid ? "Connection successful — key is valid." : testResult.error}
+                </p>
+              )}
+            </fieldset>
+
+            <fieldset className="rounded-2xl bg-gray-50 p-6 space-y-4">
+              <legend className="sr-only">Web Search Settings</legend>
+              <div>
+                <p className="text-sm font-semibold text-gray-800">Web Search</p>
+                <p className="mt-1 text-xs text-gray-500 leading-relaxed">
+                  Optional. Get a free key from{" "}
+                  <a href="https://brave.com/search/api/" target="_blank" rel="noopener noreferrer" className="text-red-500 hover:underline">Brave Search API</a>.
+                </p>
+              </div>
+
+              <div>
+                <label htmlFor="brave-key" className="block text-sm text-gray-600">Brave Search API Key</label>
+                <PasswordInput
+                  id="brave-key"
+                  value={braveKey}
+                  onChange={setBraveKey}
+                  className={inputClasses}
+                  placeholder={settings.has_custom_brave_key ? "••••••••  (key set)" : "BSA..."}
+                  ariaLabel="Brave Search API key"
+                />
+              </div>
+              {settings.has_custom_brave_key && !braveKey && (
+                <button
+                  type="button"
+                  onClick={handleResetBraveKey}
+                  className="py-2 px-4 bg-red-50 hover:bg-red-100 text-red-600 text-sm font-medium rounded-xl transition-colors cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-500"
+                >
+                  Reset Search Key
+                </button>
+              )}
+            </fieldset>
+          </div>
+        )}
+
+        {/* Save button — always visible */}
         <button
           onClick={handleSave}
           disabled={saving}
-          className="w-full py-3 px-4 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-semibold rounded-xl shadow-sm hover:shadow-md transition-all cursor-pointer disabled:cursor-not-allowed focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
+          className="w-full py-3 px-4 bg-red-500 hover:bg-red-600 disabled:bg-red-300 text-white font-semibold rounded-xl shadow-sm hover:shadow-md transition-all cursor-pointer disabled:cursor-not-allowed focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-500"
           aria-busy={saving}
         >
           {saving ? "Saving..." : "Save Settings"}
         </button>
 
+        {/* Danger zone */}
         <div className="pt-4 border-t border-gray-200">
           <button
             onClick={() => setShowDeleteModal(true)}
@@ -658,15 +739,9 @@ export default function Settings() {
             Disconnect & Delete Account
           </button>
         </div>
-
-        <p className="text-center text-xs text-gray-400">
-          <a href="https://github.com/viktor-svirsky/todoist-ai-agent" target="_blank" rel="noopener noreferrer" className="hover:text-gray-600 transition-colors">GitHub</a>
-          {" · "}
-          <a href="https://github.com/viktor-svirsky/todoist-ai-agent/issues/new?template=bug_report.yml" target="_blank" rel="noopener noreferrer" className="hover:text-gray-600 transition-colors">Report a Bug</a>
-          {" · "}
-          <a href="https://github.com/viktor-svirsky/todoist-ai-agent/issues/new?template=feature_request.yml" target="_blank" rel="noopener noreferrer" className="hover:text-gray-600 transition-colors">Request a Feature</a>
-        </p>
       </div>
+
+      <PageFooter />
 
       <ConfirmModal
         open={showDeleteModal}

@@ -61,7 +61,7 @@ sequenceDiagram
 
 | Feature | Description |
 |---------|-------------|
-| **Self-service onboarding** | Connect via Todoist OAuth in one click |
+| **Self-service onboarding** | Connect via Todoist OAuth in one click, with a guided welcome page |
 | **Trigger word** | Customizable per user (default: `@ai`) |
 | **Web search** | Real-time information via Brave Search API |
 | **URL reading** | Fetch and read web page content from links shared in comments |
@@ -80,6 +80,7 @@ sequenceDiagram
 graph LR
     subgraph Frontend ["Frontend (Cloudflare Pages)"]
         LP[Landing Page]
+        WP2[Welcome Page]
         SP[Settings Page]
     end
 
@@ -155,10 +156,14 @@ todoist-ai-agent/
 │       └── tests/                  # Deno test suite
 ├── frontend/
 │   └── src/
+│       ├── components/
+│       │   ├── PageFooter.tsx      # Shared footer links
+│       │   └── StepList.tsx        # Reusable step-list component
 │       ├── pages/
 │       │   ├── Landing.tsx         # OAuth initiation
 │       │   ├── AuthCallback.tsx    # OAuth completion
-│       │   └── Settings.tsx        # User preferences
+│       │   ├── Welcome.tsx         # Post-OAuth onboarding
+│       │   └── Settings.tsx        # User preferences (Basic/Advanced tabs)
 │       └── lib/supabase.ts         # Supabase client
 ├── .env.example                    # Environment template
 ├── deno.json                       # Deno configuration
