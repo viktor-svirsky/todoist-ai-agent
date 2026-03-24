@@ -172,6 +172,11 @@ t("e2e post-deploy: test user is onboarded and active", async () => {
 // AI Features — comprehensive e2e for each capability
 // ---------------------------------------------------------------------------
 
+// Cooldown between AI tests to avoid webhook rate limits and allow
+// the previous request to fully complete before triggering the next one.
+const COOLDOWN_MS = 10_000;
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
 t("e2e post-deploy: AI responds to basic @ai comment", async () => {
   const taskId = await createTask("[E2E] Basic AI response");
   try {
@@ -187,6 +192,7 @@ t("e2e post-deploy: AI responds to basic @ai comment", async () => {
 });
 
 t("e2e post-deploy: AI fetches URL and extracts page content", async () => {
+  await sleep(COOLDOWN_MS);
   const taskId = await createTask("[E2E] URL fetching");
   try {
     const commentId = await addComment(
@@ -209,6 +215,7 @@ t("e2e post-deploy: AI fetches URL and extracts page content", async () => {
 });
 
 t("e2e post-deploy: AI performs web search and returns results", async () => {
+  await sleep(COOLDOWN_MS);
   const taskId = await createTask("[E2E] Web search");
   try {
     const commentId = await addComment(
@@ -231,6 +238,7 @@ t("e2e post-deploy: AI performs web search and returns results", async () => {
 });
 
 t("e2e post-deploy: AI handles error URL gracefully", async () => {
+  await sleep(COOLDOWN_MS);
   const taskId = await createTask("[E2E] Error URL handling");
   try {
     const commentId = await addComment(
@@ -253,6 +261,7 @@ t("e2e post-deploy: AI handles error URL gracefully", async () => {
 });
 
 t("e2e post-deploy: AI reads and reviews a complex real-world page", async () => {
+  await sleep(COOLDOWN_MS);
   const taskId = await createTask("[E2E] Complex page review");
   try {
     const commentId = await addComment(
