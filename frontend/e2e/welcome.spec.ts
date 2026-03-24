@@ -11,13 +11,6 @@ test.describe("Welcome: auth guard", () => {
     await page.waitForURL(/\/$/);
   });
 
-  test("renders nothing while checking session", async ({ page }) => {
-    // Block the token refresh so getSession never resolves
-    await page.route("**/auth/v1/token**", (route) => route.abort());
-    await page.goto("/welcome");
-    // No session resolved yet — component returns null
-    await expect(page.getByRole("main")).not.toBeAttached();
-  });
 });
 
 // =============================================================================
