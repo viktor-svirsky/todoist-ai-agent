@@ -8,25 +8,25 @@ test.describe("Landing page", () => {
       "Todoist AI Agent",
     );
     await expect(
-      page.getByText("An AI assistant that lives in your Todoist"),
+      page.getByText("An AI assistant that lives inside your Todoist"),
     ).toBeVisible();
   });
 
-  test("renders features list with 3 items", async ({ page }) => {
+  test("renders features list with 6 items", async ({ page }) => {
     await page.goto("/");
     const features = page.locator('ul[aria-label="Features"]');
     await expect(features).toBeVisible();
-    await expect(features.locator("li")).toHaveCount(3);
-    await expect(page.getByText(/Comment/)).toBeVisible();
-    await expect(page.getByText("Web search included")).toBeVisible();
-    await expect(page.getByText("Bring your own AI key")).toBeVisible();
+    await expect(features.locator("li")).toHaveCount(6);
+    await expect(page.getByText("Natural Conversations")).toBeVisible();
+    await expect(page.getByText("Built-in Web Search")).toBeVisible();
+    await expect(page.getByText("Bring Your Own Key")).toBeVisible();
   });
 
-  test("renders Connect Todoist button", async ({ page }) => {
+  test("renders Connect Todoist buttons", async ({ page }) => {
     await page.goto("/");
-    const button = page.getByRole("button", { name: "Connect Todoist" });
-    await expect(button).toBeVisible();
-    await expect(button).toBeEnabled();
+    const buttons = page.getByRole("button", { name: /Connect Todoist/ });
+    await expect(buttons).toHaveCount(2);
+    await expect(buttons.first()).toBeEnabled();
   });
 
   test("renders footer links with target blank", async ({ page }) => {
