@@ -35,7 +35,7 @@ export default function AuthCallback() {
         if (error) {
           navigate("/?error=session_failed");
         } else {
-          navigate("/settings");
+          navigate("/welcome");
         }
       });
 

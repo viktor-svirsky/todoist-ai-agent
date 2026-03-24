@@ -146,7 +146,7 @@ describe("AuthCallback: successful auth", () => {
       "#access_token=test-access&refresh_token=test-refresh",
     );
     await vi.waitFor(() =>
-      expect(mockNavigate).toHaveBeenCalledWith("/settings"),
+      expect(mockNavigate).toHaveBeenCalledWith("/welcome"),
     );
   });
 });
@@ -207,7 +207,7 @@ describe("AuthCallback: timeout", () => {
     );
 
     await vi.waitFor(() =>
-      expect(mockNavigate).toHaveBeenCalledWith("/settings"),
+      expect(mockNavigate).toHaveBeenCalledWith("/welcome"),
     );
 
     // Advance past the 10s timeout — it should NOT fire

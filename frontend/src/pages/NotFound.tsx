@@ -19,7 +19,7 @@ export default function NotFound() {
         </p>
         <Link
           to="/"
-          className="inline-block mt-2 py-2.5 px-6 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl shadow-sm hover:shadow-md transition-all focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
+          className="inline-block mt-2 py-2.5 px-6 bg-red-500 hover:bg-red-600 text-white font-semibold rounded-xl shadow-sm hover:shadow-md transition-all focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-500"
         >
           Go Home
         </Link>
