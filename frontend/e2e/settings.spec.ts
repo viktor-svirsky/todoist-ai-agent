@@ -170,6 +170,148 @@ test.describe("Settings: form display", () => {
 });
 
 // =============================================================================
+// Tab navigation
+// =============================================================================
+
+test.describe("Settings: tab navigation", () => {
+  test("Basic tab is active by default", async ({ page }) => {
+    await gotoSettings(page);
+    const basicTab = page.getByRole("tab", { name: "Basic" });
+    const advancedTab = page.getByRole("tab", { name: "Advanced" });
+    await expect(basicTab).toHaveAttribute("aria-selected", "true");
+    await expect(advancedTab).toHaveAttribute("aria-selected", "false");
+  });
+
+  test("Basic tab shows trigger word and custom instructions", async ({
+    page,
+  }) => {
+    await gotoSettings(page);
+    await expect(page.locator("#trigger-word")).toBeVisible();
+    await expect(page.locator("#custom-prompt")).toBeVisible();
+    // Advanced fields should not be visible
+    await expect(page.locator("#ai-base-url")).not.toBeVisible();
+    await expect(page.locator("#brave-key")).not.toBeVisible();
+  });
+
+  test("Advanced tab shows AI provider and web search", async ({ page }) => {
+    await gotoSettings(page);
+    await switchToAdvanced(page);
+    await expect(page.locator("#ai-base-url")).toBeVisible();
+    await expect(page.locator("#ai-api-key")).toBeVisible();
+    await expect(page.locator("#ai-model")).toBeVisible();
+    await expect(page.locator("#brave-key")).toBeVisible();
+    // Basic fields should not be visible
+    await expect(page.locator("#trigger-word")).not.toBeVisible();
+    await expect(page.locator("#custom-prompt")).not.toBeVisible();
+  });
+
+  test("switching tabs updates aria-selected", async ({ page }) => {
+    await gotoSettings(page);
+    const basicTab = page.getByRole("tab", { name: "Basic" });
+    const advancedTab = page.getByRole("tab", { name: "Advanced" });
+
+    await advancedTab.click();
+    await expect(advancedTab).toHaveAttribute("aria-selected", "true");
+    await expect(basicTab).toHaveAttribute("aria-selected", "false");
+
+    await basicTab.click();
+    await expect(basicTab).toHaveAttribute("aria-selected", "true");
+    await expect(advancedTab).toHaveAttribute("aria-selected", "false");
+  });
+
+  test("Arrow keys navigate between tabs", async ({ page }) => {
+    await gotoSettings(page);
+    const basicTab = page.getByRole("tab", { name: "Basic" });
+    const advancedTab = page.getByRole("tab", { name: "Advanced" });
+
+    await basicTab.focus();
+    await page.keyboard.press("ArrowRight");
+    await expect(advancedTab).toHaveAttribute("aria-selected", "true");
+    await expect(page.locator("#ai-base-url")).toBeVisible();
+
+    await page.keyboard.press("ArrowLeft");
+    await expect(basicTab).toHaveAttribute("aria-selected", "true");
+    await expect(page.locator("#trigger-word")).toBeVisible();
+  });
+
+  test("Save Settings button visible on both tabs", async ({ page }) => {
+    await gotoSettings(page);
+    await expect(
+      page.getByRole("button", { name: "Save Settings" }),
+    ).toBeVisible();
+    await switchToAdvanced(page);
+    await expect(
+      page.getByRole("button", { name: "Save Settings" }),
+    ).toBeVisible();
+  });
+
+  test("Disconnect button visible on both tabs", async ({ page }) => {
+    await gotoSettings(page);
+    await expect(
+      page.getByRole("button", { name: "Disconnect & Delete Account" }),
+    ).toBeVisible();
+    await switchToAdvanced(page);
+    await expect(
+      page.getByRole("button", { name: "Disconnect & Delete Account" }),
+    ).toBeVisible();
+  });
+
+  test("field values preserved across tab switches", async ({ page }) => {
+    await gotoSettings(page);
+    await page.locator("#trigger-word").fill("@bot");
+    await page.locator("#custom-prompt").fill("Be helpful");
+
+    await switchToAdvanced(page);
+    await page.locator("#ai-base-url").fill("https://api.example.com");
+    await page.locator("#ai-model").fill("gpt-4");
+
+    // Switch back and verify Basic fields preserved
+    await page.getByRole("tab", { name: "Basic" }).click();
+    await expect(page.locator("#trigger-word")).toHaveValue("@bot");
+    await expect(page.locator("#custom-prompt")).toHaveValue("Be helpful");
+
+    // Switch forward and verify Advanced fields preserved
+    await switchToAdvanced(page);
+    await expect(page.locator("#ai-base-url")).toHaveValue(
+      "https://api.example.com",
+    );
+    await expect(page.locator("#ai-model")).toHaveValue("gpt-4");
+  });
+
+  test("save from Basic tab includes Advanced tab fields", async ({
+    page,
+  }) => {
+    await gotoSettings(page);
+
+    // Fill Basic fields
+    await page.locator("#trigger-word").fill("@bot");
+
+    // Fill Advanced fields
+    await switchToAdvanced(page);
+    await page.locator("#ai-base-url").fill("https://api.example.com");
+    await page.locator("#ai-api-key").fill("sk-test");
+    await page.locator("#ai-model").fill("gpt-4");
+
+    // Switch back to Basic and save
+    await page.getByRole("tab", { name: "Basic" }).click();
+
+    const requestPromise = page.waitForRequest(
+      (req) =>
+        req.url().includes("/functions/v1/settings") &&
+        req.method() === "PUT",
+    );
+    await page.getByRole("button", { name: "Save Settings" }).click();
+
+    const request = await requestPromise;
+    const body = JSON.parse(request.postData()!);
+    expect(body.trigger_word).toBe("@bot");
+    expect(body.custom_ai_base_url).toBe("https://api.example.com");
+    expect(body.custom_ai_api_key).toBe("sk-test");
+    expect(body.custom_ai_model).toBe("gpt-4");
+  });
+});
+
+// =============================================================================
 // Trigger word
 // =============================================================================
 
