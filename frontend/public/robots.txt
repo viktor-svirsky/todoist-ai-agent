@@ -1,0 +1,6 @@
+User-agent: *
+Allow: /
+Disallow: /settings
+Disallow: /auth/
+
+Sitemap: https://todoist-ai-agent.pages.dev/sitemap.xml
