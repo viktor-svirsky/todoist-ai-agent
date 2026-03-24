@@ -93,6 +93,14 @@ async function waitForAiResponse(
   triggerCommentId: string,
   timeoutMs = MAX_WAIT_MS,
 ): Promise<string | null> {
+  // Snapshot existing AI comments before polling so retries don't pick up stale responses
+  const existingBefore = await getComments(taskId);
+  const existingAiIds = new Set(
+    existingBefore
+      .filter((c) => c.content.startsWith(AI_INDICATOR) && c.id !== triggerCommentId)
+      .map((c) => c.id)
+  );
+
   const startTime = Date.now();
 
   while (Date.now() - startTime < timeoutMs) {
@@ -100,6 +108,7 @@ async function waitForAiResponse(
 
     for (const c of comments) {
       if (c.id === triggerCommentId) continue;
+      if (existingAiIds.has(c.id)) continue;
       if (!c.content.startsWith(AI_INDICATOR)) continue;
       if (c.content === `${AI_INDICATOR}\n\n_Reviewing..._`) continue;
 
@@ -120,6 +129,30 @@ function assertAiSuccess(response: string | null, context: string): string {
   assert(!response!.startsWith(ERROR_PREFIX), `${context}: AI returned an error: ${response!.slice(0, 300)}`);
   assert(response !== "(no response)", `${context}: AI returned empty content`);
   return response!;
+}
+
+const MAX_RETRIES = 3;
+
+/**
+ * Post a comment and wait for AI response, retrying with a fresh comment
+ * if the first attempt times out (handles Supabase edge function throttling
+ * and Todoist webhook delivery failures).
+ */
+async function triggerAndWait(
+  taskId: string,
+  content: string,
+  context: string,
+): Promise<string> {
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    const commentId = await addComment(taskId, content);
+    const response = await waitForAiResponse(taskId, commentId);
+    if (response !== null) return assertAiSuccess(response, context);
+    if (attempt < MAX_RETRIES) {
+      console.log(`  ${context}: no response on attempt ${attempt}, retrying...`);
+      await sleep(COOLDOWN_MS);
+    }
+  }
+  return assertAiSuccess(null, context); // will throw
 }
 
 // ---------------------------------------------------------------------------
@@ -180,11 +213,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 t("e2e post-deploy: AI responds to basic @ai comment", async () => {
   const taskId = await createTask("[E2E] Basic AI response");
   try {
-    const commentId = await addComment(taskId, "@ai Say exactly: e2e-test-ok");
-    const response = assertAiSuccess(
-      await waitForAiResponse(taskId, commentId),
-      "Basic response",
-    );
+    const response = await triggerAndWait(taskId, "@ai Say exactly: e2e-test-ok", "Basic response");
     console.log(`  AI response: ${response.slice(0, 200)}`);
   } finally {
     await deleteTask(taskId);
@@ -195,12 +224,9 @@ t("e2e post-deploy: AI fetches URL and extracts page content", async () => {
   await sleep(COOLDOWN_MS);
   const taskId = await createTask("[E2E] URL fetching");
   try {
-    const commentId = await addComment(
+    const response = await triggerAndWait(
       taskId,
       "@ai Fetch https://example.com and tell me the main heading on the page",
-    );
-    const response = assertAiSuccess(
-      await waitForAiResponse(taskId, commentId),
       "URL fetch",
     );
     const lower = response.toLowerCase();
@@ -218,12 +244,9 @@ t("e2e post-deploy: AI performs web search and returns results", async () => {
   await sleep(COOLDOWN_MS);
   const taskId = await createTask("[E2E] Web search");
   try {
-    const commentId = await addComment(
+    const response = await triggerAndWait(
       taskId,
       "@ai Search the web for Supabase Edge Functions and give me a one-sentence summary",
-    );
-    const response = assertAiSuccess(
-      await waitForAiResponse(taskId, commentId),
       "Web search",
     );
     const lower = response.toLowerCase();
@@ -241,12 +264,9 @@ t("e2e post-deploy: AI handles error URL gracefully", async () => {
   await sleep(COOLDOWN_MS);
   const taskId = await createTask("[E2E] Error URL handling");
   try {
-    const commentId = await addComment(
+    const response = await triggerAndWait(
       taskId,
       "@ai Read https://httpbin.org/status/500 and describe what happened",
-    );
-    const response = assertAiSuccess(
-      await waitForAiResponse(taskId, commentId),
       "Error URL",
     );
     const lower = response.toLowerCase();
@@ -264,12 +284,9 @@ t("e2e post-deploy: AI reads and reviews a complex real-world page", async () =>
   await sleep(COOLDOWN_MS);
   const taskId = await createTask("[E2E] Complex page review");
   try {
-    const commentId = await addComment(
+    const response = await triggerAndWait(
       taskId,
       "@ai review and provide details of Keeper.sh",
-    );
-    const response = assertAiSuccess(
-      await waitForAiResponse(taskId, commentId),
       "Complex page",
     );
     const lower = response.toLowerCase();
