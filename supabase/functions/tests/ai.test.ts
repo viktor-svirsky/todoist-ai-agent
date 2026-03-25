@@ -1,4 +1,4 @@
-import { assertEquals, assertStringIncludes, assertRejects } from "@std/assert";
+import { assert, assertEquals, assertStringIncludes, assertRejects } from "@std/assert";
 import { buildMessages, executePrompt, isAnthropicUrl, formatLinksForTodoist } from "../_shared/ai.ts";
 
 Deno.test("buildMessages: starts with system message containing task content", () => {
@@ -281,6 +281,29 @@ Deno.test("buildMessages: multiple documents all attached to last user message",
 Deno.test("buildMessages: system prompt includes file support mention", () => {
   const result = buildMessages("Task", undefined, []);
   assertStringIncludes(result[0].content, "attach files");
+});
+
+// Model identity in system prompt
+
+Deno.test("buildMessages: model name included in system prompt when provided", () => {
+  const result = buildMessages("Task", undefined, [], undefined, null, undefined, "claude-opus-4-6");
+  assertStringIncludes(result[0].content as string, "You are powered by claude-opus-4-6.");
+});
+
+Deno.test("buildMessages: model name not included when omitted", () => {
+  const result = buildMessages("Task", undefined, []);
+  const content = result[0].content as string;
+  assertEquals(content.includes("You are powered by"), false);
+});
+
+Deno.test("buildMessages: model name appears before custom prompt and task context", () => {
+  const result = buildMessages("Buy milk", undefined, [], undefined, "Be helpful", undefined, "claude-sonnet-4-6");
+  const content = result[0].content as string;
+  const modelIdx = content.indexOf("You are powered by claude-sonnet-4-6.");
+  const customIdx = content.indexOf("User's custom instructions:");
+  const taskIdx = content.indexOf('Current task:');
+  assert(modelIdx < customIdx, "model identity should appear before custom prompt");
+  assert(modelIdx < taskIdx, "model identity should appear before task context");
 });
 
 // ---------------------------------------------------------------------------

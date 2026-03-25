@@ -178,6 +178,7 @@ export function buildMessages(
   images?: ImageAttachment[],
   customPrompt?: string | null,
   documents?: DocumentAttachment[],
+  modelName?: string,
 ): ApiMessage[] {
   const taskContext = [
     `Current task: "${taskContent}"`,
@@ -185,6 +186,9 @@ export function buildMessages(
   ].filter(Boolean).join("\n");
 
   const systemParts = [SYSTEM_PROMPT];
+  if (modelName) {
+    systemParts.push(`You are powered by ${modelName}.`);
+  }
   if (customPrompt) {
     systemParts.push(`User's custom instructions:\n${customPrompt}`);
   }

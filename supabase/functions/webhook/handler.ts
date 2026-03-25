@@ -1,6 +1,6 @@
 import { createServiceClient } from "../_shared/supabase.ts";
 import { TodoistClient } from "../_shared/todoist.ts";
-import { buildMessages, executePrompt, isAnthropicUrl, type DocumentAttachment } from "../_shared/ai.ts";
+import { buildMessages, executePrompt, type DocumentAttachment } from "../_shared/ai.ts";
 import {
   AI_INDICATOR,
   ERROR_PREFIX,
@@ -284,9 +284,10 @@ async function runAiForTask(
       DEFAULT_AI_MODEL
     );
 
-    // Fallback only for the default Anthropic model (no custom overrides)
+    // Fallback only for default config (no user-custom URL/model overrides)
+    // Works with both direct Anthropic API and proxy URLs
     // Empty env var disables fallback; unset env var uses the hardcoded default
-    const fallbackModel = (isAnthropicUrl(resolvedBaseUrl) && resolvedModel === DEFAULT_AI_MODEL)
+    const fallbackModel = (!user.custom_ai_base_url && resolvedModel === DEFAULT_AI_MODEL)
       ? (Deno.env.get("DEFAULT_AI_FALLBACK_MODEL") ?? DEFAULT_AI_FALLBACK_MODEL) || undefined
       : undefined;
 
@@ -312,6 +313,7 @@ async function runAiForTask(
       images.length > 0 ? images : undefined,
       user.custom_prompt,
       documents.length > 0 ? documents : undefined,
+      resolvedModel,
     );
     const response = await executePrompt(apiMessages, aiConfig);
 
