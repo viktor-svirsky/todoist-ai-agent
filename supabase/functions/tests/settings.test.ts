@@ -643,6 +643,31 @@ t("settingsHandler: PUT normalizes trailing slashes on base URL", async () => {
 // DELETE
 // ============================================================================
 
+t("settingsHandler: PUT returns 500 on database update failure", async () => {
+  const restore = mockFetch(authedMock((url, init) => {
+    if (url.includes("/rest/v1/users_config") && init?.method === "PATCH") {
+      return new Response(
+        JSON.stringify({ message: "connection refused", code: "PGRST301" }),
+        { status: 500, headers: { "Content-Type": "application/json" } },
+      );
+    }
+    return null;
+  }));
+  try {
+    const req = new Request("http://localhost/settings", {
+      method: "PUT",
+      headers: { Authorization: "Bearer valid-jwt", "Content-Type": "application/json" },
+      body: JSON.stringify({ trigger_word: "@bot" }),
+    });
+    const res = await handler(req);
+    assertEquals(res.status, 500);
+    const body = await res.json();
+    assertEquals(body.error, "Failed to update settings");
+  } finally {
+    restore();
+  }
+});
+
 t("settingsHandler: DELETE removes account and returns ok", async () => {
   const restore = mockFetch(authedMock());
   try {
@@ -654,6 +679,30 @@ t("settingsHandler: DELETE removes account and returns ok", async () => {
     assertEquals(res.status, 200);
     const body = await res.json();
     assertEquals(body.ok, true);
+  } finally {
+    restore();
+  }
+});
+
+t("settingsHandler: DELETE returns 500 on deletion failure", async () => {
+  const restore = mockFetch(authedMock((url, init) => {
+    if (url.includes("/auth/v1/admin/users/") && init?.method === "DELETE") {
+      return new Response(
+        JSON.stringify({ msg: "user not found" }),
+        { status: 404, headers: { "Content-Type": "application/json" } },
+      );
+    }
+    return null;
+  }));
+  try {
+    const req = new Request("http://localhost/settings", {
+      method: "DELETE",
+      headers: { Authorization: "Bearer valid-jwt" },
+    });
+    const res = await handler(req);
+    assertEquals(res.status, 500);
+    const body = await res.json();
+    assertEquals(body.error, "Failed to delete account");
   } finally {
     restore();
   }

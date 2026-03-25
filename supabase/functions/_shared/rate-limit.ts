@@ -2,6 +2,7 @@ import {
   RATE_LIMIT_MAX_REQUESTS,
   RATE_LIMIT_WINDOW_SECONDS,
 } from "./constants.ts";
+import { captureException } from "./sentry.ts";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -111,6 +112,7 @@ export async function checkRateLimitByTodoistId(
       userId,
       error: error instanceof Object && "message" in error ? (error as { message: string }).message : String(error ?? "no data returned"),
     });
+    await captureException(error ?? new Error("Rate limit RPC returned no data"));
     return { allowed: true, blocked: false, retry_after: 0 };
   }
 
@@ -138,6 +140,7 @@ export async function checkRateLimitByUuid(
       userId,
       error: error instanceof Object && "message" in error ? (error as { message: string }).message : String(error ?? "no data returned"),
     });
+    await captureException(error ?? new Error("Rate limit RPC returned no data"));
     return { allowed: true, blocked: false, retry_after: 0 };
   }
 

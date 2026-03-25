@@ -2,6 +2,7 @@ import { braveSearch } from "./search.ts";
 import { fetchUrl } from "./fetch-url.ts";
 import { MAX_TOOL_ROUNDS, DEFAULT_MAX_TOKENS, MAX_AI_RESPONSE_BYTES, FALLBACK_STATUS_CODES, MAX_TEXT_FILE_CHARS } from "./constants.ts";
 import * as Sentry from "@sentry/deno"; // startSpan is a no-op when Sentry is not initialized (no DSN set)
+import { captureException } from "./sentry.ts";
 import type {
   OpenAiResponse,
   AnthropicResponse,
@@ -635,6 +636,7 @@ export async function handleToolCall(
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
     console.error("Tool call failed", { tool: name, error: message });
+    await captureException(error);
     return `Tool error: ${message}`;
   }
 }
