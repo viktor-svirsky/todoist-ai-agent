@@ -76,6 +76,7 @@ export function withSentry(handler: Handler): Handler {
 
 export async function captureException(error: unknown): Promise<void> {
   if (!hasDsn()) return;
+  initSentry();
   Sentry.captureException(error);
   await Sentry.flush(2000);
 }

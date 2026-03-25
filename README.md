@@ -164,7 +164,9 @@ todoist-ai-agent/
 │       │   ├── AuthCallback.tsx    # OAuth completion
 │       │   ├── Welcome.tsx         # Post-OAuth onboarding
 │       │   └── Settings.tsx        # User preferences (Basic/Advanced tabs)
-│       └── lib/supabase.ts         # Supabase client
+│       └── lib/
+│           ├── supabase.ts         # Supabase client
+│           └── sentry.ts           # Error tracking
 ├── .env.example                    # Environment template
 ├── deno.json                       # Deno configuration
 └── package.json                    # Root scripts
@@ -220,6 +222,7 @@ Create **`frontend/.env.local`**:
 ```env
 VITE_SUPABASE_URL=http://127.0.0.1:54321
 VITE_SUPABASE_ANON_KEY=<anon key from supabase start output>
+VITE_SENTRY_DSN=your_sentry_dsn     # optional
 ```
 
 ### 4. Run locally

@@ -1,3 +1,4 @@
+import { initSentry, Sentry } from "./lib/sentry";
 import React from "react";
 import ReactDOM from "react-dom/client";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
@@ -23,6 +24,9 @@ class ErrorBoundary extends React.Component<
 
   componentDidCatch(error: Error, info: React.ErrorInfo) {
     console.error("Uncaught error:", error, info);
+    Sentry.captureException(error, {
+      contexts: { react: { componentStack: info.componentStack ?? "" } },
+    });
   }
 
   render() {
@@ -38,6 +42,8 @@ class ErrorBoundary extends React.Component<
     return this.props.children;
   }
 }
+
+initSentry();
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>

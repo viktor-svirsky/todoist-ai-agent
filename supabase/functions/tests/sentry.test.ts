@@ -36,6 +36,13 @@ Deno.test("captureException: no-ops when SENTRY_DSN not set", async () => {
   await captureException(new Error("test error"));
 });
 
+Deno.test("captureException: safe to call multiple times without DSN", async () => {
+  await captureException(new Error("first"));
+  await captureException(new Error("second"));
+  await captureException("string error");
+  await captureException(null);
+});
+
 Deno.test("getTracesSampleRate: returns 0.1 for production", () => {
   assertEquals(getTracesSampleRate("production"), 0.1);
 });

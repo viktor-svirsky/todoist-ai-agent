@@ -2,6 +2,7 @@ import { createServiceClient, createUserClient } from "../_shared/supabase.ts";
 import { validateSettings, isPrivateHostname } from "../_shared/validation.ts";
 import { encryptIfPresent } from "../_shared/crypto.ts";
 import { isAnthropicUrl } from "../_shared/ai.ts";
+import { captureException } from "../_shared/sentry.ts";
 import {
   getSettingsRateLimitConfig,
   checkRateLimitByUuid,
@@ -193,6 +194,7 @@ export async function settingsHandler(req: Request): Promise<Response> {
       }
       const message = err instanceof Error ? err.message : "Unknown error";
       console.error("API key validation fetch error:", message);
+      await captureException(err);
       return jsonResponse({ valid: false, error: "Could not reach the API — check base URL" }, 200, CORS_HEADERS);
     } finally {
       clearTimeout(timeout);
@@ -261,6 +263,7 @@ export async function settingsHandler(req: Request): Promise<Response> {
 
     if (error) {
       console.error("Failed to update settings:", error);
+      await captureException(error);
       return jsonResponse({ error: "Failed to update settings" }, 500, CORS_HEADERS);
     }
 
@@ -273,6 +276,7 @@ export async function settingsHandler(req: Request): Promise<Response> {
     const { error } = await serviceClient.auth.admin.deleteUser(user.id);
     if (error) {
       console.error("Failed to delete user:", error);
+      await captureException(error);
       return jsonResponse({ error: "Failed to delete account" }, 500, CORS_HEADERS);
     }
 
