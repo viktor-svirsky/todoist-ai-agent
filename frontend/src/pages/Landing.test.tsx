@@ -20,7 +20,6 @@ vi.mock("../lib/supabase", () => ({
 }));
 
 function renderLanding(searchParams = "") {
-  // Set window.location.search before rendering
   Object.defineProperty(window, "location", {
     value: { ...window.location, search: searchParams, href: "" },
     writable: true,
@@ -45,17 +44,17 @@ beforeEach(() => {
 describe("Landing: rendering", () => {
   it("renders heading and connect button", () => {
     renderLanding();
-    expect(screen.getByText("Todoist AI Agent")).toBeInTheDocument();
+    expect(screen.getByText("AI that lives in your Todoist")).toBeInTheDocument();
     expect(
       screen.getAllByText(/Connect Todoist/).length,
     ).toBeGreaterThanOrEqual(1);
   });
 
-  it("renders feature list items", () => {
+  it("renders use case list items", () => {
     renderLanding();
-    const featureList = screen.getByRole("list", { name: "Features" });
-    const items = featureList.querySelectorAll("li");
-    expect(items.length).toBe(6);
+    const useCaseList = screen.getByRole("list", { name: "Use cases" });
+    const items = useCaseList.querySelectorAll("li");
+    expect(items.length).toBe(4);
   });
 
   it("renders GitHub links", () => {
@@ -73,17 +72,28 @@ describe("Landing: rendering", () => {
 describe("Landing: sections", () => {
   it("renders hero section with main heading", () => {
     renderLanding();
-    expect(screen.getByText("Todoist AI Agent")).toBeInTheDocument();
+    expect(screen.getByText("AI that lives in your Todoist")).toBeInTheDocument();
     expect(
-      screen.getByText(/AI assistant that lives inside your Todoist/),
+      screen.getByText(/Stop context-switching/),
     ).toBeInTheDocument();
   });
 
-  it("renders features section with heading", () => {
+  it("renders demo section", () => {
+    renderLanding();
+    expect(screen.getByText("See it in action")).toBeInTheDocument();
+    expect(screen.getByAltText(/Demo showing/)).toBeInTheDocument();
+  });
+
+  it("renders use cases section with heading", () => {
     renderLanding();
     expect(
-      screen.getByText("Everything You Need from an AI for Todoist"),
+      screen.getByText("What Can You Do With It?"),
     ).toBeInTheDocument();
+  });
+
+  it("renders power features section", () => {
+    renderLanding();
+    expect(screen.getByText("For Power Users")).toBeInTheDocument();
   });
 
   it("renders how it works section", () => {
@@ -108,6 +118,20 @@ describe("Landing: sections", () => {
       screen.getByText("Ready to Add AI to Your Todoist?"),
     ).toBeInTheDocument();
   });
+
+  it("renders social proof badge when stats load", async () => {
+    const originalEnv = import.meta.env.VITE_SUPABASE_URL;
+    import.meta.env.VITE_SUPABASE_URL = "http://localhost:54321";
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ users: 55 }),
+    });
+    renderLanding();
+    await vi.waitFor(() =>
+      expect(screen.getByText(/50\+ Todoist users connected/)).toBeInTheDocument(),
+    );
+    import.meta.env.VITE_SUPABASE_URL = originalEnv;
+  });
 });
 
 // ============================================================================
@@ -128,7 +152,6 @@ describe("Landing: session redirect", () => {
   it("does not redirect when no session", async () => {
     mockGetSession.mockResolvedValue({ data: { session: null } });
     renderLanding();
-    // Wait for the getSession promise to resolve
     await vi.waitFor(() => expect(mockGetSession).toHaveBeenCalled());
     expect(mockNavigate).not.toHaveBeenCalled();
   });
@@ -142,20 +165,16 @@ describe("Landing: connect button", () => {
   it("sets oauth_pending in sessionStorage and redirects on click", async () => {
     const user = userEvent.setup();
     renderLanding();
-
     const buttons = screen.getAllByText(/Connect Todoist/);
     await user.click(buttons[0]);
-
     expect(sessionStorage.getItem("oauth_pending")).toBe("true");
   });
 
   it("shows Redirecting... and disables button after click", async () => {
     const user = userEvent.setup();
     renderLanding();
-
     const buttons = screen.getAllByText(/Connect Todoist/);
     await user.click(buttons[0]);
-
     const redirecting = screen.getAllByText("Redirecting...");
     expect(redirecting.length).toBeGreaterThanOrEqual(1);
     expect(redirecting[0].closest("button")).toBeDisabled();
@@ -164,26 +183,18 @@ describe("Landing: connect button", () => {
   it("button has aria-busy while connecting", async () => {
     const user = userEvent.setup();
     renderLanding();
-
     const buttons = screen.getAllByText(/Connect Todoist/);
     await user.click(buttons[0]);
-
     const redirecting = screen.getAllByText("Redirecting...");
-    expect(redirecting[0].closest("button")).toHaveAttribute(
-      "aria-busy",
-      "true",
-    );
+    expect(redirecting[0].closest("button")).toHaveAttribute("aria-busy", "true");
   });
 
   it("both hero and CTA buttons reflect connecting state", async () => {
     const user = userEvent.setup();
     renderLanding();
-
     const buttons = screen.getAllByText(/Connect Todoist/);
     expect(buttons.length).toBe(2);
-
     await user.click(buttons[0]);
-
     const redirecting = screen.getAllByText("Redirecting...");
     expect(redirecting.length).toBe(2);
     redirecting.forEach((el) => {
@@ -226,16 +237,16 @@ describe("Landing: accessibility", () => {
     expect(main).toHaveAttribute("aria-labelledby", "landing-heading");
   });
 
-  it("feature list has aria-label", () => {
+  it("use cases list has aria-label", () => {
     renderLanding();
     expect(
-      screen.getByRole("list", { name: "Features" }),
+      screen.getByRole("list", { name: "Use cases" }),
     ).toBeInTheDocument();
   });
 
   it("emoji icons are hidden from screen readers", () => {
     renderLanding();
-    const emojis = screen.getAllByText(/💬|🔍|🧠|🔑|🖼️|⚡/);
+    const emojis = screen.getAllByText(/🎯|🔍|💡|📎|🧠|🔑|⚡/);
     emojis.forEach((el) => {
       expect(el).toHaveAttribute("aria-hidden", "true");
     });

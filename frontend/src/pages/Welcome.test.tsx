@@ -50,30 +50,30 @@ describe("Welcome: rendering", () => {
     await waitForReady();
   });
 
-  it("renders 'Here's How to Use It' section", async () => {
+  it("renders 'Try your first @ai command' section", async () => {
     renderWelcome();
     await waitForReady();
-    expect(screen.getByText("Here's How to Use It")).toBeInTheDocument();
+    expect(screen.getByText("Try your first @ai command")).toBeInTheDocument();
   });
 
-  it("renders 'Go to Settings' button", async () => {
+  it("renders copyable example commands", async () => {
+    renderWelcome();
+    await waitForReady();
+    expect(screen.getByText("@ai break this task into smaller steps")).toBeInTheDocument();
+    expect(screen.getByText("@ai what should I do first?")).toBeInTheDocument();
+    expect(screen.getByText("@ai help me plan this project")).toBeInTheDocument();
+  });
+
+  it("renders 'Open Todoist and Try It Now' link", async () => {
+    renderWelcome();
+    await waitForReady();
+    expect(screen.getByText(/Open Todoist and Try It Now/)).toBeInTheDocument();
+  });
+
+  it("renders 'Go to Settings' button in customize section", async () => {
     renderWelcome();
     await waitForReady();
     expect(screen.getByText("Go to Settings")).toBeInTheDocument();
-  });
-
-  it("renders 'Open Todoist' link", async () => {
-    renderWelcome();
-    await waitForReady();
-    expect(screen.getByText("Open Todoist")).toBeInTheDocument();
-  });
-
-  it("renders three how-to steps", async () => {
-    renderWelcome();
-    await waitForReady();
-    const stepsList = screen.getByRole("list", { name: "Getting started steps" });
-    const items = stepsList.querySelectorAll("li");
-    expect(items.length).toBe(3);
   });
 
   it("renders footer links", async () => {
@@ -120,7 +120,6 @@ describe("Welcome: navigation", () => {
     const user = userEvent.setup();
     renderWelcome();
     await waitForReady();
-
     await user.click(screen.getByText("Go to Settings"));
     expect(mockNavigate).toHaveBeenCalledWith("/settings");
   });
@@ -143,14 +142,5 @@ describe("Welcome: accessibility", () => {
     await waitForReady();
     const checkmark = document.querySelector(".bg-green-100");
     expect(checkmark).toHaveAttribute("aria-hidden", "true");
-  });
-
-  it("step numbers are aria-hidden", async () => {
-    renderWelcome();
-    await waitForReady();
-    const stepNums = screen.getAllByText(/^[123]$/);
-    stepNums.forEach((el) => {
-      expect(el).toHaveAttribute("aria-hidden", "true");
-    });
   });
 });
