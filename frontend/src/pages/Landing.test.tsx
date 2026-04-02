@@ -120,6 +120,8 @@ describe("Landing: sections", () => {
   });
 
   it("renders social proof badge when stats load", async () => {
+    const originalEnv = import.meta.env.VITE_SUPABASE_URL;
+    import.meta.env.VITE_SUPABASE_URL = "http://localhost:54321";
     globalThis.fetch = vi.fn().mockResolvedValue({
       ok: true,
       json: () => Promise.resolve({ users: 55 }),
@@ -128,6 +130,7 @@ describe("Landing: sections", () => {
     await vi.waitFor(() =>
       expect(screen.getByText(/50\+ Todoist users connected/)).toBeInTheDocument(),
     );
+    import.meta.env.VITE_SUPABASE_URL = originalEnv;
   });
 });
 
