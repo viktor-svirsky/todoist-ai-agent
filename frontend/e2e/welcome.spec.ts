@@ -26,25 +26,22 @@ test.describe("Welcome: rendering", () => {
     ).toBeVisible();
   });
 
-  test("shows how-to-use section with 3 steps", async ({ page }) => {
+  test("shows try-it-now section with example commands", async ({ page }) => {
     await setupAuth(page);
     await page.goto("/welcome");
     await expect(
-      page.getByRole("heading", { name: "Here's How to Use It" }),
+      page.getByRole("heading", { name: "Try your first @ai command" }),
     ).toBeVisible();
-    const steps = page.locator('ol[aria-label="Getting started steps"]');
-    await expect(steps).toBeVisible();
-    await expect(steps.locator("li")).toHaveCount(3);
+    await expect(page.getByText("@ai break this task into smaller steps")).toBeVisible();
+    await expect(page.getByText("@ai what should I do first?")).toBeVisible();
+    await expect(page.getByText("@ai help me plan this project")).toBeVisible();
   });
 
-  test("shows step titles", async ({ page }) => {
+  test("shows copy buttons for example commands", async ({ page }) => {
     await setupAuth(page);
     await page.goto("/welcome");
-    await expect(page.getByText("Open Any Task in Todoist")).toBeVisible();
-    await expect(
-      page.getByText("Comment @ai With Your Question"),
-    ).toBeVisible();
-    await expect(page.getByText("Get an Instant AI Response")).toBeVisible();
+    const copyButtons = page.getByRole("button", { name: "Copy" });
+    await expect(copyButtons).toHaveCount(3);
   });
 
   test("shows Go to Settings button", async ({ page }) => {
@@ -58,7 +55,7 @@ test.describe("Welcome: rendering", () => {
   test("shows Open Todoist link with target blank", async ({ page }) => {
     await setupAuth(page);
     await page.goto("/welcome");
-    const link = page.getByRole("link", { name: "Open Todoist" });
+    const link = page.getByRole("link", { name: /Open Todoist/ });
     await expect(link).toBeVisible();
     await expect(link).toHaveAttribute("target", "_blank");
   });
@@ -101,16 +98,5 @@ test.describe("Welcome: accessibility", () => {
       "aria-labelledby",
       "welcome-heading",
     );
-  });
-
-  test("step numbers are decorative (aria-hidden)", async ({ page }) => {
-    await setupAuth(page);
-    await page.goto("/welcome");
-    const steps = page.locator('ol[aria-label="Getting started steps"] li');
-    await expect(steps).toHaveCount(3);
-    for (let i = 0; i < 3; i++) {
-      const badge = steps.nth(i).locator("span[aria-hidden='true']");
-      await expect(badge).toBeVisible();
-    }
   });
 });
