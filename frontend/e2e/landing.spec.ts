@@ -5,21 +5,20 @@ test.describe("Landing page", () => {
   test("renders heading and subtext", async ({ page }) => {
     await page.goto("/");
     await expect(page.locator("h1#landing-heading")).toHaveText(
-      "Todoist AI Agent",
+      "AI that lives in your Todoist",
     );
     await expect(
-      page.getByText("An AI assistant that lives inside your Todoist"),
+      page.getByText(/Stop context-switching/),
     ).toBeVisible();
   });
 
-  test("renders features list with 6 items", async ({ page }) => {
+  test("renders use cases list with 4 items", async ({ page }) => {
     await page.goto("/");
-    const features = page.locator('ul[aria-label="Features"]');
-    await expect(features).toBeVisible();
-    await expect(features.locator("li")).toHaveCount(6);
-    await expect(page.getByText("Natural Conversations")).toBeVisible();
-    await expect(page.getByText("Built-in Web Search")).toBeVisible();
-    await expect(page.getByText("Bring Your Own Key")).toBeVisible();
+    const useCases = page.locator('ul[aria-label="Use cases"]');
+    await expect(useCases).toBeVisible();
+    await expect(useCases.locator("li")).toHaveCount(4);
+    await expect(page.getByText("Break Down Complex Tasks")).toBeVisible();
+    await expect(page.getByText("Research Without Leaving Todoist")).toBeVisible();
   });
 
   test("renders Connect Todoist buttons", async ({ page }) => {
