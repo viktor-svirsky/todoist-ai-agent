@@ -402,3 +402,6 @@ verify_jwt = false
 
 [functions.health]
 verify_jwt = false
+
+[functions.stats]
+verify_jwt = false
