@@ -304,6 +304,7 @@ async function runAiForTask(
         Deno.env.get("DEFAULT_BRAVE_KEY") ||
         undefined,
       fallbackModel,
+      isCustomUrl: !!user.custom_ai_base_url,
     };
 
     const apiMessages = buildMessages(
