@@ -525,9 +525,8 @@ export async function executePrompt(
   const anthropic = isAnthropicUrl(config.baseUrl);
   const runMessages = [...messages];
 
-  // Build tools list: fetch_url is always available, web_search varies by provider
-  // Skip client-side tools for proxy endpoints that handle search server-side
-  // (detected by non-Anthropic URL without user-provided custom URL)
+  // Build tools list: skipped for default proxy (handles search/fetch server-side),
+  // otherwise fetch_url is always available and web_search varies by provider
   const isProxyWithBuiltinSearch = !anthropic && config.isCustomUrl === false;
   const tools: Record<string, unknown>[] = [];
   if (isProxyWithBuiltinSearch) {
