@@ -34,6 +34,7 @@ export interface AiConfig {
   timeoutMs: number;
   braveApiKey?: string;
   fallbackModel?: string;
+  isCustomUrl?: boolean;
 }
 
 // Provider-specific messages accumulate in this array during the tool loop.
@@ -524,9 +525,13 @@ export async function executePrompt(
   const anthropic = isAnthropicUrl(config.baseUrl);
   const runMessages = [...messages];
 
-  // Build tools list: fetch_url is always available, web_search varies by provider
+  // Build tools list: skipped for default proxy (handles search/fetch server-side),
+  // otherwise fetch_url is always available and web_search varies by provider
+  const isProxyWithBuiltinSearch = !anthropic && config.isCustomUrl === false;
   const tools: Record<string, unknown>[] = [];
-  if (anthropic) {
+  if (isProxyWithBuiltinSearch) {
+    // Proxy handles web search natively — don't provide client-side tools
+  } else if (anthropic) {
     tools.push(ANTHROPIC_FETCH_TOOL);
     if (config.braveApiKey) {
       tools.push(ANTHROPIC_SEARCH_TOOL);
@@ -552,6 +557,8 @@ export async function executePrompt(
   const ctx: FetchContext = { endpoint, headers, timeoutMs: config.timeoutMs };
   let activeModel = config.model;
   let hasFallenBack = false;
+  // Track content returned alongside tool calls (some proxies include partial content)
+  let lastToolRoundContent: string | null = null;
 
   for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
     const body = buildBody(activeModel, runMessages, DEFAULT_MAX_TOKENS, tools);
@@ -562,7 +569,16 @@ export async function executePrompt(
     const data = await parseAiResponse(result.res);
     const content = extractContent(data);
     if (content !== undefined) {
-      return content ? formatLinksForTodoist(content) : "(no response)";
+      if (content) return formatLinksForTodoist(content);
+      // Empty content — use fallback from earlier tool round if available
+      if (lastToolRoundContent) return formatLinksForTodoist(lastToolRoundContent);
+      return "(no response)";
+    }
+
+    // Capture any content returned alongside tool calls (proxies may include it)
+    if (!anthropic) {
+      const sideContent = data.choices?.[0]?.message?.content?.trim();
+      if (sideContent) lastToolRoundContent = sideContent;
     }
 
     // Has tool calls — process them in parallel
@@ -598,7 +614,9 @@ export async function executePrompt(
 
   const data = await parseAiResponse(finalResult.res);
   const content = anthropic ? anthropicExtractContent(data) : openaiExtractContent(data);
-  return content ? formatLinksForTodoist(content) : "(no response)";
+  // Fall back to content captured during tool rounds if final response is empty
+  const finalContent = content || lastToolRoundContent;
+  return finalContent ? formatLinksForTodoist(finalContent) : "(no response)";
 }
 
 export async function handleToolCall(

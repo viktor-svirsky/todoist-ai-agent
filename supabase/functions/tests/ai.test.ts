@@ -1498,3 +1498,123 @@ Deno.test("executePrompt (OpenAI): document_attachment converted to text placeho
     globalThis.fetch = originalFetch;
   }
 });
+
+// ---------------------------------------------------------------------------
+// Proxy tool skipping (isCustomUrl)
+// ---------------------------------------------------------------------------
+
+Deno.test("executePrompt: skips client-side tools for default proxy (isCustomUrl=false)", async () => {
+  let capturedBody: Record<string, unknown> = {};
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = ((_input: unknown, init?: RequestInit) => {
+    capturedBody = JSON.parse((init?.body as string) || "{}");
+    return Promise.resolve(new Response(JSON.stringify({
+      choices: [{ message: { content: "ok" } }],
+    }), { status: 200, headers: { "Content-Type": "application/json" } }));
+  }) as typeof fetch;
+  try {
+    // isCustomUrl=false (default proxy) — no tools should be sent
+    await executePrompt([{ role: "system", content: "test" }], { ...BASE_CONFIG, braveApiKey: "key", isCustomUrl: false });
+    const tools = capturedBody.tools as Record<string, unknown>[] | undefined;
+    assertEquals(tools === undefined || tools.length === 0, true);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+Deno.test("executePrompt: includes tools for custom URL (isCustomUrl=true)", async () => {
+  let capturedBody: Record<string, unknown> = {};
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = ((_input: unknown, init?: RequestInit) => {
+    capturedBody = JSON.parse((init?.body as string) || "{}");
+    return Promise.resolve(new Response(JSON.stringify({
+      choices: [{ message: { content: "ok" } }],
+    }), { status: 200, headers: { "Content-Type": "application/json" } }));
+  }) as typeof fetch;
+  try {
+    // isCustomUrl=true — tools should be sent
+    await executePrompt([{ role: "system", content: "test" }], { ...BASE_CONFIG, braveApiKey: "key", isCustomUrl: true });
+    const tools = capturedBody.tools as Record<string, unknown>[];
+    assertEquals(Array.isArray(tools), true);
+    const toolNames = tools.map((t) => (t.function as Record<string, unknown>).name);
+    assertEquals(toolNames.includes("fetch_url"), true);
+    assertEquals(toolNames.includes("web_search"), true);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+Deno.test("executePrompt: includes tools when isCustomUrl is undefined (backwards compat, non-Anthropic)", async () => {
+  let capturedBody: Record<string, unknown> = {};
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = ((_input: unknown, init?: RequestInit) => {
+    capturedBody = JSON.parse((init?.body as string) || "{}");
+    return Promise.resolve(new Response(JSON.stringify({
+      choices: [{ message: { content: "ok" } }],
+    }), { status: 200, headers: { "Content-Type": "application/json" } }));
+  }) as typeof fetch;
+  try {
+    // isCustomUrl omitted — should include tools (backwards compat)
+    // Only isCustomUrl===false explicitly skips tools
+    await executePrompt([{ role: "system", content: "test" }], BASE_CONFIG);
+    const tools = capturedBody.tools as Record<string, unknown>[];
+    assertEquals(Array.isArray(tools), true);
+    assert(tools.length > 0);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Fallback content from tool-call rounds
+// ---------------------------------------------------------------------------
+
+Deno.test("executePrompt: uses fallback content from tool-call round when final response is empty", async () => {
+  const originalFetch = globalThis.fetch;
+  let callIndex = 0;
+  const responses = [
+    // Round 0: model returns content AND tool calls (proxy behavior)
+    {
+      status: 200,
+      body: {
+        choices: [{
+          message: {
+            content: "Let me search for that information.",
+            tool_calls: [{
+              id: "call_1",
+              type: "function",
+              function: { name: "web_search", arguments: '{"query":"test"}' },
+            }],
+          },
+        }],
+      },
+    },
+    // Brave search result
+    { status: 200, body: { web: { results: [{ title: "R", url: "https://r.com", description: "d" }] } } },
+    // Round 1: model returns final answer (empty content)
+    {
+      status: 200,
+      body: { choices: [{ message: { content: "" } }] },
+    },
+  ];
+  globalThis.fetch = ((_input: unknown, _init?: RequestInit) => {
+    if (callIndex >= responses.length) {
+      return Promise.resolve(new Response(JSON.stringify(
+        { choices: [{ message: { content: "" } }] }
+      ), { status: 200, headers: { "Content-Type": "application/json" } }));
+    }
+    const response = responses[callIndex++];
+    return Promise.resolve(new Response(JSON.stringify(response.body), {
+      status: response.status,
+      headers: { "Content-Type": "application/json" },
+    }));
+  }) as typeof fetch;
+  try {
+    const config = { ...BASE_CONFIG, braveApiKey: "brave-test-key", isCustomUrl: true };
+    const result = await executePrompt([{ role: "system", content: "test" }], config);
+    // Should fall back to the content from round 0 instead of "(no response)"
+    assertEquals(result, "Let me search for that information.");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
