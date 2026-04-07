@@ -1597,7 +1597,7 @@ Deno.test("executePrompt: uses fallback content from tool-call round when final 
       body: { choices: [{ message: { content: "" } }] },
     },
   ];
-  globalThis.fetch = ((input: unknown, _init?: RequestInit) => {
+  globalThis.fetch = ((_input: unknown, _init?: RequestInit) => {
     if (callIndex >= responses.length) {
       return Promise.resolve(new Response(JSON.stringify(
         { choices: [{ message: { content: "" } }] }
