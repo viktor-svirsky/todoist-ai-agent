@@ -1,6 +1,6 @@
 {
   "name": "todoist-ai-agent",
-  "version": "1.4.1",
+  "version": "1.4.2",
   "private": true,
   "description": "Multi-tenant AI agent for Todoist",
   "scripts": {

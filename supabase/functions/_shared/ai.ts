@@ -569,7 +569,10 @@ export async function executePrompt(
     const data = await parseAiResponse(result.res);
     const content = extractContent(data);
     if (content !== undefined) {
-      return content ? formatLinksForTodoist(content) : "(no response)";
+      if (content) return formatLinksForTodoist(content);
+      // Empty content — use fallback from earlier tool round if available
+      if (lastToolRoundContent) return formatLinksForTodoist(lastToolRoundContent);
+      return "(no response)";
     }
 
     // Capture any content returned alongside tool calls (proxies may include it)
