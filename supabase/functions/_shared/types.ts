@@ -62,6 +62,7 @@ export interface UserConfig {
   custom_brave_key: string | null;
   max_messages: number | null;
   custom_prompt: string | null;
+  control_task_id: string | null;
 }
 
 // ---------------------------------------------------------------------------

@@ -343,6 +343,16 @@ async function runAiForTask(
 // Event handlers
 // ---------------------------------------------------------------------------
 
+/**
+ * Returns true when this task is allowed to trigger the agent for this user.
+ * If the user has a control_task_id set, only that task qualifies. Otherwise
+ * all tasks are allowed (legacy behavior, preserved for backwards compat).
+ */
+function isAllowedTask(user: UserConfig, taskId: string): boolean {
+  if (!user.control_task_id) return true;
+  return user.control_task_id === taskId;
+}
+
 async function handleNoteEvent(event: TodoistWebhookEvent, user: UserConfig, requestId: string): Promise<void> {
   const { event_data } = event;
   const taskId = "item_id" in event_data ? event_data.item_id : undefined;
@@ -357,6 +367,10 @@ async function handleNoteEvent(event: TodoistWebhookEvent, user: UserConfig, req
   if (content.startsWith(AI_INDICATOR) || content.startsWith(ERROR_PREFIX)) {
     return;
   }
+
+  // Control-task filter: when the user has a dedicated control task, ignore
+  // comments posted elsewhere so the agent only responds in that task.
+  if (!isAllowedTask(user, taskId)) return;
 
   // Check trigger word
   const triggerWord = user.trigger_word || "@ai";
@@ -380,6 +394,8 @@ async function handleItemEvent(event: TodoistWebhookEvent, user: UserConfig, req
     console.warn("Missing task id in item event", { requestId });
     return;
   }
+
+  if (!isAllowedTask(user, taskId)) return;
 
   // Check trigger in content, description, or labels
   const triggerWord = user.trigger_word || "@ai";
@@ -488,7 +504,7 @@ export async function webhookHandler(req: Request): Promise<Response> {
   const supabase = createServiceClient();
   const { data: user, error: userErr } = await supabase
     .from("users_config")
-    .select("id, todoist_token, todoist_user_id, trigger_word, custom_ai_base_url, custom_ai_api_key, custom_ai_model, custom_brave_key, max_messages, custom_prompt")
+    .select("id, todoist_token, todoist_user_id, trigger_word, custom_ai_base_url, custom_ai_api_key, custom_ai_model, custom_brave_key, max_messages, custom_prompt, control_task_id")
     .eq("todoist_user_id", userId)
     .maybeSingle();
 

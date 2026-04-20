@@ -150,7 +150,7 @@ function mockFetch(
   return () => { globalThis.fetch = original; };
 }
 
-function mockUserConfig() {
+function mockUserConfig(overrides: Record<string, unknown> = {}) {
   return {
     id: "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
     todoist_token: ENCRYPTED_MOCK_TOKEN,
@@ -162,6 +162,8 @@ function mockUserConfig() {
     custom_brave_key: null,
     max_messages: 20,
     custom_prompt: null,
+    control_task_id: null,
+    ...overrides,
   };
 }
 
@@ -479,6 +481,131 @@ t("webhookHandler: calls increment_ai_requests RPC for note:added with trigger w
     // Wait for background processing
     await new Promise((r) => setTimeout(r, 100));
     assertEquals(rpcCalled, true, "increment_ai_requests RPC should be called");
+  } finally {
+    restore();
+  }
+});
+
+// ============================================================================
+// Control-task routing
+// ============================================================================
+
+/** Build a mock fetch that tracks whether the AI endpoint was hit. */
+function mockFlowTrackingAi(userConfig: Record<string, unknown>): {
+  restore: () => void;
+  state: { aiHit: boolean };
+} {
+  Deno.env.set("DEFAULT_AI_BASE_URL", "https://api.openai.com/v1");
+  Deno.env.set("DEFAULT_AI_API_KEY", "test-key");
+  Deno.env.set("DEFAULT_AI_MODEL", "gpt-4o-mini");
+  const state = { aiHit: false };
+  const restore = mockFetch((url, init) => {
+    if (url.includes("/rest/v1/users_config") && init?.method !== "POST" && !url.includes("rpc")) {
+      return new Response(JSON.stringify(userConfig), {
+        status: 200, headers: { "Content-Type": "application/json" },
+      });
+    }
+    if (url.includes("/rest/v1/rpc/try_claim_event")) {
+      return new Response("true", { status: 200, headers: { "Content-Type": "application/json" } });
+    }
+    if (url.includes("/rest/v1/rpc/check_rate_limit")) {
+      return new Response(JSON.stringify({ allowed: true, blocked: false, retry_after: 0 }), {
+        status: 200, headers: { "Content-Type": "application/json" },
+      });
+    }
+    if (url.includes("/rest/v1/rpc/increment_ai_requests")) {
+      return new Response("null", { status: 200, headers: { "Content-Type": "application/json" } });
+    }
+    const host = new URL(url).hostname;
+    if (host === "api.todoist.com") {
+      if (url.includes("/comments") && init?.method === "POST") {
+        return new Response(JSON.stringify({ id: "progress-1" }), {
+          status: 200, headers: { "Content-Type": "application/json" },
+        });
+      }
+      if (url.includes("/comments")) {
+        return new Response(JSON.stringify([]), {
+          status: 200, headers: { "Content-Type": "application/json" },
+        });
+      }
+      if (url.includes("/tasks/")) {
+        return new Response(JSON.stringify({ content: "Test task", description: "" }), {
+          status: 200, headers: { "Content-Type": "application/json" },
+        });
+      }
+    }
+    if (host === "api.openai.com") {
+      state.aiHit = true;
+      return new Response(JSON.stringify({
+        choices: [{ message: { content: "AI response", role: "assistant" } }],
+      }), { status: 200, headers: { "Content-Type": "application/json" } });
+    }
+    return new Response("{}", { status: 200, headers: { "Content-Type": "application/json" } });
+  });
+  return { restore, state };
+}
+
+t("control-task: when control_task_id set and matches note item_id, AI runs", async () => {
+  const payload = JSON.stringify(makePayload({
+    event_data: { id: "comment-1", content: "@ai hello", item_id: "task-control" },
+  }));
+  const { restore, state } = mockFlowTrackingAi(
+    mockUserConfig({ control_task_id: "task-control" }),
+  );
+  try {
+    const res = await handler(await signedRequest(payload));
+    assertEquals(res.status, 200);
+    await new Promise((r) => setTimeout(r, 100));
+    assertEquals(state.aiHit, true, "AI should run on the control task");
+  } finally {
+    restore();
+  }
+});
+
+t("control-task: when control_task_id set but note is in a different task, AI does not run", async () => {
+  const payload = JSON.stringify(makePayload({
+    event_data: { id: "comment-1", content: "@ai hello", item_id: "some-other-task" },
+  }));
+  const { restore, state } = mockFlowTrackingAi(
+    mockUserConfig({ control_task_id: "task-control" }),
+  );
+  try {
+    const res = await handler(await signedRequest(payload));
+    assertEquals(res.status, 200);
+    await new Promise((r) => setTimeout(r, 100));
+    assertEquals(state.aiHit, false, "AI must not run outside the control task");
+  } finally {
+    restore();
+  }
+});
+
+t("control-task: when control_task_id is null, legacy behavior (any task triggers AI)", async () => {
+  const payload = JSON.stringify(makePayload({
+    event_data: { id: "comment-1", content: "@ai hello", item_id: "random-task" },
+  }));
+  const { restore, state } = mockFlowTrackingAi(mockUserConfig());
+  try {
+    const res = await handler(await signedRequest(payload));
+    assertEquals(res.status, 200);
+    await new Promise((r) => setTimeout(r, 100));
+    assertEquals(state.aiHit, true, "legacy users without control_task_id should still trigger AI");
+  } finally {
+    restore();
+  }
+});
+
+t("control-task: item:added in non-control task is ignored", async () => {
+  const payload = JSON.stringify(makeItemPayload({
+    event_data: { id: "task-other", content: "@ai do a thing", description: "", labels: [] },
+  }));
+  const { restore, state } = mockFlowTrackingAi(
+    mockUserConfig({ control_task_id: "task-control" }),
+  );
+  try {
+    const res = await handler(await signedRequest(payload));
+    assertEquals(res.status, 200);
+    await new Promise((r) => setTimeout(r, 100));
+    assertEquals(state.aiHit, false);
   } finally {
     restore();
   }
