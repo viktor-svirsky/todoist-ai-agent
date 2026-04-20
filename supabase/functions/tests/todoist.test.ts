@@ -283,3 +283,222 @@ Deno.test("TodoistClient.downloadFile: throws on HTTP error", async () => {
     restore();
   }
 });
+
+// ---------------------------------------------------------------------------
+// Task CRUD
+// ---------------------------------------------------------------------------
+
+Deno.test("TodoistClient.listTasks: passes filter params as query string", async () => {
+  const { restore, calls } = capturingFetch({
+    status: 200,
+    body: { results: [{ id: "t1", content: "Task 1" }] },
+  });
+  try {
+    const client = new TodoistClient("token");
+    const tasks = await client.listTasks({
+      project_id: "p1",
+      label: "urgent",
+      filter: "today",
+    });
+    assertEquals(tasks.length, 1);
+    assertStringIncludes(calls[0].url, "project_id=p1");
+    assertStringIncludes(calls[0].url, "label=urgent");
+    assertStringIncludes(calls[0].url, "filter=today");
+  } finally {
+    restore();
+  }
+});
+
+Deno.test("TodoistClient.listTasks: returns empty array when no results", async () => {
+  const restore = mockFetch({ status: 200, body: {} });
+  try {
+    const client = new TodoistClient("token");
+    const tasks = await client.listTasks();
+    assertEquals(tasks, []);
+  } finally {
+    restore();
+  }
+});
+
+Deno.test("TodoistClient.createTask: posts input as JSON body", async () => {
+  const { restore, calls } = capturingFetch({
+    status: 200,
+    body: { id: "new-1", content: "Buy milk" },
+  });
+  try {
+    const client = new TodoistClient("token");
+    const task = await client.createTask({
+      content: "Buy milk",
+      priority: 3,
+      due_string: "tomorrow",
+    });
+    assertEquals(task.id, "new-1");
+    const body = JSON.parse(calls[0].init.body as string);
+    assertEquals(body.content, "Buy milk");
+    assertEquals(body.priority, 3);
+    assertEquals(body.due_string, "tomorrow");
+  } finally {
+    restore();
+  }
+});
+
+Deno.test("TodoistClient.updateTask: sends partial update as JSON", async () => {
+  const { restore, calls } = capturingFetch({
+    status: 200,
+    body: { id: "t1", content: "Updated" },
+  });
+  try {
+    const client = new TodoistClient("token");
+    await client.updateTask("t1", { content: "Updated", priority: 1 });
+    assertStringIncludes(calls[0].url, "/tasks/t1");
+    const body = JSON.parse(calls[0].init.body as string);
+    assertEquals(body.content, "Updated");
+    assertEquals(body.priority, 1);
+  } finally {
+    restore();
+  }
+});
+
+Deno.test("TodoistClient.completeTask: POSTs to /close endpoint", async () => {
+  const { restore, calls } = capturingFetch({ status: 200, body: {} });
+  try {
+    const client = new TodoistClient("token");
+    await client.completeTask("t1");
+    assertStringIncludes(calls[0].url, "/tasks/t1/close");
+    assertEquals(calls[0].init.method, "POST");
+  } finally {
+    restore();
+  }
+});
+
+Deno.test("TodoistClient.uncompleteTask: POSTs to /reopen endpoint", async () => {
+  const { restore, calls } = capturingFetch({ status: 200, body: {} });
+  try {
+    const client = new TodoistClient("token");
+    await client.uncompleteTask("t1");
+    assertStringIncludes(calls[0].url, "/tasks/t1/reopen");
+  } finally {
+    restore();
+  }
+});
+
+Deno.test("TodoistClient.deleteTask: sends DELETE request", async () => {
+  const { restore, calls } = capturingFetch({ status: 200, body: {} });
+  try {
+    const client = new TodoistClient("token");
+    await client.deleteTask("t1");
+    assertStringIncludes(calls[0].url, "/tasks/t1");
+    assertEquals(calls[0].init.method, "DELETE");
+  } finally {
+    restore();
+  }
+});
+
+Deno.test("TodoistClient.moveTask: delegates to updateTask with target", async () => {
+  const { restore, calls } = capturingFetch({ status: 200, body: { id: "t1" } });
+  try {
+    const client = new TodoistClient("token");
+    await client.moveTask("t1", { project_id: "p2" });
+    const body = JSON.parse(calls[0].init.body as string);
+    assertEquals(body.project_id, "p2");
+  } finally {
+    restore();
+  }
+});
+
+Deno.test("TodoistClient.listProjects: returns results array", async () => {
+  const restore = mockFetch({
+    status: 200,
+    body: { results: [{ id: "p1", name: "Work", is_inbox_project: false }] },
+  });
+  try {
+    const client = new TodoistClient("token");
+    const projects = await client.listProjects();
+    assertEquals(projects.length, 1);
+    assertEquals(projects[0].name, "Work");
+  } finally {
+    restore();
+  }
+});
+
+Deno.test("TodoistClient.createProject: posts name as JSON body", async () => {
+  const { restore, calls } = capturingFetch({
+    status: 200,
+    body: { id: "p-new", name: "New Project" },
+  });
+  try {
+    const client = new TodoistClient("token");
+    const project = await client.createProject({ name: "New Project" });
+    assertEquals(project.name, "New Project");
+    const body = JSON.parse(calls[0].init.body as string);
+    assertEquals(body.name, "New Project");
+  } finally {
+    restore();
+  }
+});
+
+Deno.test("TodoistClient.listLabels: returns results array", async () => {
+  const restore = mockFetch({
+    status: 200,
+    body: { results: [{ id: "l1", name: "urgent" }] },
+  });
+  try {
+    const client = new TodoistClient("token");
+    const labels = await client.listLabels();
+    assertEquals(labels.length, 1);
+    assertEquals(labels[0].name, "urgent");
+  } finally {
+    restore();
+  }
+});
+
+Deno.test("TodoistClient.createLabel: posts name as JSON body", async () => {
+  const { restore, calls } = capturingFetch({
+    status: 200,
+    body: { id: "l-new", name: "new-label" },
+  });
+  try {
+    const client = new TodoistClient("token");
+    await client.createLabel({ name: "new-label" });
+    const body = JSON.parse(calls[0].init.body as string);
+    assertEquals(body.name, "new-label");
+  } finally {
+    restore();
+  }
+});
+
+Deno.test("TodoistClient.getInboxProjectId: returns inbox project id", async () => {
+  const restore = mockFetch({
+    status: 200,
+    body: {
+      results: [
+        { id: "p1", name: "Work", is_inbox_project: false },
+        { id: "p-inbox", name: "Inbox", is_inbox_project: true },
+      ],
+    },
+  });
+  try {
+    const client = new TodoistClient("token");
+    const id = await client.getInboxProjectId();
+    assertEquals(id, "p-inbox");
+  } finally {
+    restore();
+  }
+});
+
+Deno.test("TodoistClient.getInboxProjectId: throws when inbox not found", async () => {
+  const restore = mockFetch({
+    status: 200,
+    body: { results: [{ id: "p1", name: "Work", is_inbox_project: false }] },
+  });
+  try {
+    const client = new TodoistClient("token");
+    await assertRejects(
+      () => client.getInboxProjectId(),
+      Error,
+      "Inbox project not found",
+    );
+  } finally {
+    restore();
+  }
+});

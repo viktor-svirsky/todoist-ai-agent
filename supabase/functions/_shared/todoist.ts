@@ -6,6 +6,47 @@ import {
 } from "./constants.ts";
 import { fetchWithRetry } from "./retry.ts";
 
+export interface TodoistTask {
+  id: string;
+  content: string;
+  description?: string;
+  project_id?: string;
+  section_id?: string | null;
+  parent_id?: string | null;
+  labels?: string[];
+  priority?: number;
+  due?: { date: string; string?: string; datetime?: string | null } | null;
+  is_completed?: boolean;
+  url?: string;
+}
+
+export interface TodoistTaskInput {
+  content: string;
+  description?: string;
+  project_id?: string;
+  section_id?: string;
+  parent_id?: string;
+  labels?: string[];
+  priority?: number;
+  due_string?: string;
+  due_date?: string;
+  due_datetime?: string;
+}
+
+export interface TodoistProject {
+  id: string;
+  name: string;
+  color?: string;
+  parent_id?: string | null;
+  is_inbox_project?: boolean;
+}
+
+export interface TodoistLabel {
+  id: string;
+  name: string;
+  color?: string;
+}
+
 export class TodoistClient {
   constructor(private token: string) {}
 
@@ -68,6 +109,148 @@ export class TodoistClient {
     );
     if (!res.ok)
       throw new Error(`Todoist updateComment failed: ${res.status}`);
+  }
+
+  // --- Task CRUD ---
+
+  async listTasks(
+    params: {
+      project_id?: string;
+      section_id?: string;
+      label?: string;
+      filter?: string;
+      ids?: string[];
+    } = {},
+  ): Promise<TodoistTask[]> {
+    const qs = new URLSearchParams();
+    if (params.project_id) qs.set("project_id", params.project_id);
+    if (params.section_id) qs.set("section_id", params.section_id);
+    if (params.label) qs.set("label", params.label);
+    if (params.filter) qs.set("filter", params.filter);
+    if (params.ids?.length) qs.set("ids", params.ids.join(","));
+    const url = `${TODOIST_API_URL}/tasks${qs.toString() ? `?${qs}` : ""}`;
+    const res = await fetchWithRetry(url, { headers: this.headers() });
+    if (!res.ok) throw new Error(`Todoist listTasks failed: ${res.status}`);
+    const data = await res.json();
+    if (Array.isArray(data?.results)) return data.results;
+    if (Array.isArray(data)) return data;
+    return [];
+  }
+
+  async createTask(input: TodoistTaskInput): Promise<TodoistTask> {
+    const res = await fetchWithRetry(`${TODOIST_API_URL}/tasks`, {
+      method: "POST",
+      headers: { ...this.headers(), "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    });
+    if (!res.ok) throw new Error(`Todoist createTask failed: ${res.status}`);
+    return res.json();
+  }
+
+  async updateTask(
+    taskId: string,
+    input: Partial<TodoistTaskInput>,
+  ): Promise<TodoistTask> {
+    const res = await fetchWithRetry(`${TODOIST_API_URL}/tasks/${taskId}`, {
+      method: "POST",
+      headers: { ...this.headers(), "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    });
+    if (!res.ok) throw new Error(`Todoist updateTask failed: ${res.status}`);
+    return res.json();
+  }
+
+  async completeTask(taskId: string): Promise<void> {
+    const res = await fetchWithRetry(
+      `${TODOIST_API_URL}/tasks/${taskId}/close`,
+      { method: "POST", headers: this.headers() },
+    );
+    if (!res.ok) throw new Error(`Todoist completeTask failed: ${res.status}`);
+  }
+
+  async uncompleteTask(taskId: string): Promise<void> {
+    const res = await fetchWithRetry(
+      `${TODOIST_API_URL}/tasks/${taskId}/reopen`,
+      { method: "POST", headers: this.headers() },
+    );
+    if (!res.ok) throw new Error(`Todoist uncompleteTask failed: ${res.status}`);
+  }
+
+  async deleteTask(taskId: string): Promise<void> {
+    const res = await fetchWithRetry(`${TODOIST_API_URL}/tasks/${taskId}`, {
+      method: "DELETE",
+      headers: this.headers(),
+    });
+    if (!res.ok) throw new Error(`Todoist deleteTask failed: ${res.status}`);
+  }
+
+  async moveTask(
+    taskId: string,
+    target: { project_id?: string; section_id?: string; parent_id?: string },
+  ): Promise<TodoistTask> {
+    return this.updateTask(taskId, target);
+  }
+
+  // --- Projects ---
+
+  async listProjects(): Promise<TodoistProject[]> {
+    const res = await fetchWithRetry(`${TODOIST_API_URL}/projects`, {
+      headers: this.headers(),
+    });
+    if (!res.ok) throw new Error(`Todoist listProjects failed: ${res.status}`);
+    const data = await res.json();
+    if (Array.isArray(data?.results)) return data.results;
+    if (Array.isArray(data)) return data;
+    return [];
+  }
+
+  async createProject(input: {
+    name: string;
+    parent_id?: string;
+    color?: string;
+  }): Promise<TodoistProject> {
+    const res = await fetchWithRetry(`${TODOIST_API_URL}/projects`, {
+      method: "POST",
+      headers: { ...this.headers(), "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    });
+    if (!res.ok) throw new Error(`Todoist createProject failed: ${res.status}`);
+    return res.json();
+  }
+
+  // --- Labels ---
+
+  async listLabels(): Promise<TodoistLabel[]> {
+    const res = await fetchWithRetry(`${TODOIST_API_URL}/labels`, {
+      headers: this.headers(),
+    });
+    if (!res.ok) throw new Error(`Todoist listLabels failed: ${res.status}`);
+    const data = await res.json();
+    if (Array.isArray(data?.results)) return data.results;
+    if (Array.isArray(data)) return data;
+    return [];
+  }
+
+  async createLabel(input: {
+    name: string;
+    color?: string;
+  }): Promise<TodoistLabel> {
+    const res = await fetchWithRetry(`${TODOIST_API_URL}/labels`, {
+      method: "POST",
+      headers: { ...this.headers(), "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    });
+    if (!res.ok) throw new Error(`Todoist createLabel failed: ${res.status}`);
+    return res.json();
+  }
+
+  // --- Inbox helper (for auto-creating control task) ---
+
+  async getInboxProjectId(): Promise<string> {
+    const projects = await this.listProjects();
+    const inbox = projects.find((p) => p.is_inbox_project);
+    if (!inbox) throw new Error("Inbox project not found");
+    return inbox.id;
   }
 
   private isTrustedDomain(url: string): boolean {
