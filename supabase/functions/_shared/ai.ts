@@ -1,14 +1,30 @@
 import { braveSearch } from "./search.ts";
 import { fetchUrl } from "./fetch-url.ts";
-import { MAX_TOOL_ROUNDS, DEFAULT_MAX_TOKENS, MAX_AI_RESPONSE_BYTES, FALLBACK_STATUS_CODES, MAX_TEXT_FILE_CHARS } from "./constants.ts";
+import {
+  MAX_TOOL_ROUNDS,
+  MAX_AGENTIC_TOOL_ROUNDS,
+  DEFAULT_MAX_TOKENS,
+  MAX_AI_RESPONSE_BYTES,
+  FALLBACK_STATUS_CODES,
+  MAX_TEXT_FILE_CHARS,
+} from "./constants.ts";
 import * as Sentry from "@sentry/deno"; // startSpan is a no-op when Sentry is not initialized (no DSN set)
 import { captureException } from "./sentry.ts";
+import {
+  handleTodoistTool,
+  isTodoistToolName,
+  toAnthropicTools,
+  toOpenAiTools,
+} from "./tools.ts";
+import type { TodoistClient } from "./todoist.ts";
 import type {
   OpenAiResponse,
   AnthropicResponse,
   AnthropicContentBlock,
   ExtractedToolCall,
 } from "./types.ts";
+
+export { AGENTIC_SYSTEM_PROMPT } from "./tools.ts";
 
 interface Message {
   role: "user" | "assistant";
@@ -35,6 +51,10 @@ export interface AiConfig {
   braveApiKey?: string;
   fallbackModel?: string;
   isCustomUrl?: boolean;
+  // When provided, enables agentic mode: Todoist CRUD tools are exposed to the
+  // AI, the tool-round cap is raised to MAX_AGENTIC_TOOL_ROUNDS, and callers
+  // should pass AGENTIC_SYSTEM_PROMPT via buildMessages' systemPromptOverride.
+  todoistClient?: TodoistClient;
 }
 
 // Provider-specific messages accumulate in this array during the tool loop.
@@ -181,13 +201,14 @@ export function buildMessages(
   customPrompt?: string | null,
   documents?: DocumentAttachment[],
   modelName?: string,
+  systemPromptOverride?: string,
 ): ApiMessage[] {
   const taskContext = [
     `Current task: "${taskContent}"`,
     taskDescription ? `Task description: "${taskDescription}"` : "",
   ].filter(Boolean).join("\n");
 
-  const systemParts = [SYSTEM_PROMPT];
+  const systemParts = [systemPromptOverride || SYSTEM_PROMPT];
   if (modelName) {
     systemParts.push(`You are powered by ${modelName}.`);
   }
@@ -524,6 +545,8 @@ export async function executePrompt(
 ): Promise<string> {
   const anthropic = isAnthropicUrl(config.baseUrl);
   const runMessages = [...messages];
+  const agentic = !!config.todoistClient;
+  const maxRounds = agentic ? MAX_AGENTIC_TOOL_ROUNDS : MAX_TOOL_ROUNDS;
 
   // Build tools list: skipped for default proxy (handles search/fetch server-side),
   // otherwise fetch_url is always available and web_search varies by provider
@@ -544,6 +567,11 @@ export async function executePrompt(
     if (config.braveApiKey) tools.push(OPENAI_SEARCH_TOOL);
   }
 
+  if (agentic) {
+    const todoistTools = anthropic ? toAnthropicTools() : toOpenAiTools();
+    for (const t of todoistTools) tools.push(t);
+  }
+
   const headers = anthropic ? anthropicHeaders(config.apiKey) : openaiHeaders(config.apiKey);
   const endpoint = anthropic
     ? `${config.baseUrl}/messages`
@@ -560,7 +588,7 @@ export async function executePrompt(
   // Track content returned alongside tool calls (some proxies include partial content)
   let lastToolRoundContent: string | null = null;
 
-  for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
+  for (let round = 0; round < maxRounds; round++) {
     const body = buildBody(activeModel, runMessages, DEFAULT_MAX_TOKENS, tools);
     const result = await fetchWithFallback(ctx, body, { activeModel, hasFallenBack, fallbackModel: config.fallbackModel }, round);
     activeModel = result.activeModel;
@@ -588,7 +616,7 @@ export async function executePrompt(
     const toolResults = await Promise.all(
       toolCalls.map(async (tc) => ({
         id: tc.id,
-        result: await handleToolCall(tc.name, tc.arguments, config.braveApiKey),
+        result: await handleToolCall(tc.name, tc.arguments, config.braveApiKey, config.todoistClient),
       }))
     );
     if (anthropic) {
@@ -622,10 +650,17 @@ export async function executePrompt(
 export async function handleToolCall(
   name: string,
   argsJson: string,
-  braveApiKey?: string
+  braveApiKey?: string,
+  todoistClient?: TodoistClient,
 ): Promise<string> {
   // Some proxies prefix tool names (e.g. "proxy_web_search") — normalize
   const toolName = name.replace(/^proxy_/, "");
+
+  // Todoist tools are only available in agentic mode (caller supplied a client).
+  if (todoistClient && isTodoistToolName(toolName)) {
+    return handleTodoistTool(toolName, argsJson, todoistClient);
+  }
+
   try {
     if (toolName === "web_search") {
       if (!braveApiKey) return "Error: web search is not configured.";
