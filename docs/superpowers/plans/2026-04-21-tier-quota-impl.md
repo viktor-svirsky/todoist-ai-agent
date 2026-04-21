@@ -1168,11 +1168,11 @@ git commit -m "feat(webhook): wire tier quota claim + refund into runAiForTask"
 
 The existing `webhook.test.ts` already contains a full mocking harness (HMAC signing, fetch interception, RPC interception). Reuse it — do not create a parallel test file.
 
-- [ ] **Step 1: Locate the existing mock harness**
+- [x] **Step 1: Locate the existing mock harness**
 
 Open `supabase/functions/tests/webhook.test.ts`. Find where it intercepts `/rest/v1/rpc/increment_ai_requests` (grep for `increment_ai_requests` in that file — it appears around line 107).
 
-- [ ] **Step 2: Add quota-claim interception logic**
+- [x] **Step 2: Add quota-claim interception logic**
 
 Where the test file currently intercepts `/rest/v1/rpc/increment_ai_requests`, **extend** the interception to include:
 
@@ -1197,7 +1197,7 @@ if (url.includes("/rest/v1/rpc/refund_ai_quota")) {
 
 (Place this block immediately above the existing `increment_ai_requests` interception — match surrounding style.)
 
-- [ ] **Step 3: Extract a reusable trigger-event helper**
+- [x] **Step 3: Extract a reusable trigger-event helper**
 
 Inside `webhook.test.ts`, find the oldest test that constructs a valid HMAC-signed `note:added` POST with a trigger-word comment. That construction (HMAC signing, body shape) is the helper we need. Extract it into a top-level function:
 
@@ -1228,7 +1228,7 @@ async function callHandlerWithValidNoteAddedTriggerEvent(opts: {
 
 If the existing file does not already have an HMAC helper, grep for `computeWebhookHmac` / `signBody` / `hmac` in the file; name the helper match what already exists. Do not invent a new signing implementation — reuse the one the file already uses.
 
-- [ ] **Step 4: Add test cases at the end of the file**
+- [x] **Step 4: Add test cases at the end of the file**
 
 Append to `supabase/functions/tests/webhook.test.ts`:
 
@@ -1345,7 +1345,7 @@ t("webhookHandler: quota RPC error → fail-closed, no AI, no upsell, 200", asyn
 
 `callHandlerWithValidNoteAddedTriggerEvent` is a helper to extract from the existing test file's body — the existing tests already build a valid HMAC'd POST; factor it into a helper if needed (follow the pattern that's already there; do not duplicate signing logic).
 
-- [ ] **Step 5: Run the full webhook test file**
+- [x] **Step 5: Run the full webhook test file**
 
 Run:
 ```bash
@@ -1353,7 +1353,7 @@ deno test supabase/functions/tests/webhook.test.ts --no-check --allow-env --allo
 ```
 Expected: all tests (existing + 4 new) pass.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add supabase/functions/tests/webhook.test.ts

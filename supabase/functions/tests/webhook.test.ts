@@ -66,6 +66,20 @@ async function signedRequest(
   });
 }
 
+async function callHandlerWithValidNoteAddedTriggerEvent(
+  opts: { content?: string; itemId?: string } = {},
+): Promise<Response> {
+  const payload = JSON.stringify(makePayload({
+    event_data: {
+      id: "comment-quota",
+      content: opts.content ?? "@ai do the thing",
+      item_id: opts.itemId ?? "task-1",
+    },
+  }));
+  const req = await signedRequest(payload);
+  return await handler(req);
+}
+
 function makeItemPayload(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
     event_name: "item:added",
@@ -103,6 +117,20 @@ function mockFullFlow(options: {
         status: 200,
         headers: { "Content-Type": "application/json" },
       });
+    }
+    if (url.includes("/rest/v1/rpc/claim_ai_quota")) {
+      const defaultResponse = {
+        allowed: true, blocked: false, tier: "free",
+        used: 0, limit: 5, next_slot_at: null,
+        should_notify: false, event_id: 1,
+      };
+      const resp = (globalThis as { __mockClaim?: unknown }).__mockClaim ?? defaultResponse;
+      return new Response(JSON.stringify(resp), { status: 200, headers: { "Content-Type": "application/json" } });
+    }
+    if (url.includes("/rest/v1/rpc/refund_ai_quota")) {
+      (globalThis as { __refundCalls?: number }).__refundCalls =
+        ((globalThis as { __refundCalls?: number }).__refundCalls ?? 0) + 1;
+      return new Response("null", { status: 200, headers: { "Content-Type": "application/json" } });
     }
     if (url.includes("/rest/v1/rpc/increment_ai_requests")) {
       options.onRpc?.();
@@ -437,6 +465,20 @@ t("webhookHandler: calls increment_ai_requests RPC for note:added with trigger w
         headers: { "Content-Type": "application/json" },
       });
     }
+    if (url.includes("/rest/v1/rpc/claim_ai_quota")) {
+      const defaultResponse = {
+        allowed: true, blocked: false, tier: "free",
+        used: 0, limit: 5, next_slot_at: null,
+        should_notify: false, event_id: 1,
+      };
+      const resp = (globalThis as { __mockClaim?: unknown }).__mockClaim ?? defaultResponse;
+      return new Response(JSON.stringify(resp), { status: 200, headers: { "Content-Type": "application/json" } });
+    }
+    if (url.includes("/rest/v1/rpc/refund_ai_quota")) {
+      (globalThis as { __refundCalls?: number }).__refundCalls =
+        ((globalThis as { __refundCalls?: number }).__refundCalls ?? 0) + 1;
+      return new Response("null", { status: 200, headers: { "Content-Type": "application/json" } });
+    }
     if (url.includes("/rest/v1/rpc/increment_ai_requests")) {
       rpcCalled = true;
       return new Response("null", { status: 200, headers: { "Content-Type": "application/json" } });
@@ -512,6 +554,20 @@ function mockFlowTrackingAi(userConfig: Record<string, unknown>): {
       return new Response(JSON.stringify({ allowed: true, blocked: false, retry_after: 0 }), {
         status: 200, headers: { "Content-Type": "application/json" },
       });
+    }
+    if (url.includes("/rest/v1/rpc/claim_ai_quota")) {
+      const defaultResponse = {
+        allowed: true, blocked: false, tier: "free",
+        used: 0, limit: 5, next_slot_at: null,
+        should_notify: false, event_id: 1,
+      };
+      const resp = (globalThis as { __mockClaim?: unknown }).__mockClaim ?? defaultResponse;
+      return new Response(JSON.stringify(resp), { status: 200, headers: { "Content-Type": "application/json" } });
+    }
+    if (url.includes("/rest/v1/rpc/refund_ai_quota")) {
+      (globalThis as { __refundCalls?: number }).__refundCalls =
+        ((globalThis as { __refundCalls?: number }).__refundCalls ?? 0) + 1;
+      return new Response("null", { status: 200, headers: { "Content-Type": "application/json" } });
     }
     if (url.includes("/rest/v1/rpc/increment_ai_requests")) {
       return new Response("null", { status: 200, headers: { "Content-Type": "application/json" } });
@@ -637,6 +693,20 @@ t("webhookHandler: posts error comment to Todoist when AI API fails", async () =
         headers: { "Content-Type": "application/json" },
       });
     }
+    if (url.includes("/rest/v1/rpc/claim_ai_quota")) {
+      const defaultResponse = {
+        allowed: true, blocked: false, tier: "free",
+        used: 0, limit: 5, next_slot_at: null,
+        should_notify: false, event_id: 1,
+      };
+      const resp = (globalThis as { __mockClaim?: unknown }).__mockClaim ?? defaultResponse;
+      return new Response(JSON.stringify(resp), { status: 200, headers: { "Content-Type": "application/json" } });
+    }
+    if (url.includes("/rest/v1/rpc/refund_ai_quota")) {
+      (globalThis as { __refundCalls?: number }).__refundCalls =
+        ((globalThis as { __refundCalls?: number }).__refundCalls ?? 0) + 1;
+      return new Response("null", { status: 200, headers: { "Content-Type": "application/json" } });
+    }
     if (url.includes("/rest/v1/rpc/increment_ai_requests")) {
       return new Response("null", { status: 200, headers: { "Content-Type": "application/json" } });
     }
@@ -708,6 +778,20 @@ t("webhookHandler: does NOT call increment_ai_requests for non-trigger comments"
         status: 200,
         headers: { "Content-Type": "application/json" },
       });
+    }
+    if (url.includes("/rest/v1/rpc/claim_ai_quota")) {
+      const defaultResponse = {
+        allowed: true, blocked: false, tier: "free",
+        used: 0, limit: 5, next_slot_at: null,
+        should_notify: false, event_id: 1,
+      };
+      const resp = (globalThis as { __mockClaim?: unknown }).__mockClaim ?? defaultResponse;
+      return new Response(JSON.stringify(resp), { status: 200, headers: { "Content-Type": "application/json" } });
+    }
+    if (url.includes("/rest/v1/rpc/refund_ai_quota")) {
+      (globalThis as { __refundCalls?: number }).__refundCalls =
+        ((globalThis as { __refundCalls?: number }).__refundCalls ?? 0) + 1;
+      return new Response("null", { status: 200, headers: { "Content-Type": "application/json" } });
     }
     if (url.includes("/rest/v1/rpc/increment_ai_requests")) {
       rpcCalled = true;
@@ -915,6 +999,20 @@ function mockFullFlowWithImages(options: {
       return new Response(JSON.stringify({ allowed: true, blocked: false, retry_after: 0 }), {
         status: 200, headers: { "Content-Type": "application/json" },
       });
+    }
+    if (url.includes("/rest/v1/rpc/claim_ai_quota")) {
+      const defaultResponse = {
+        allowed: true, blocked: false, tier: "free",
+        used: 0, limit: 5, next_slot_at: null,
+        should_notify: false, event_id: 1,
+      };
+      const resp = (globalThis as { __mockClaim?: unknown }).__mockClaim ?? defaultResponse;
+      return new Response(JSON.stringify(resp), { status: 200, headers: { "Content-Type": "application/json" } });
+    }
+    if (url.includes("/rest/v1/rpc/refund_ai_quota")) {
+      (globalThis as { __refundCalls?: number }).__refundCalls =
+        ((globalThis as { __refundCalls?: number }).__refundCalls ?? 0) + 1;
+      return new Response("null", { status: 200, headers: { "Content-Type": "application/json" } });
     }
     if (url.includes("/rest/v1/rpc/increment_ai_requests")) {
       return new Response("null", { status: 200, headers: { "Content-Type": "application/json" } });
@@ -1840,6 +1938,20 @@ function mockFullFlowWithToolCalls(options: {
         status: 200, headers: { "Content-Type": "application/json" },
       });
     }
+    if (url.includes("/rest/v1/rpc/claim_ai_quota")) {
+      const defaultResponse = {
+        allowed: true, blocked: false, tier: "free",
+        used: 0, limit: 5, next_slot_at: null,
+        should_notify: false, event_id: 1,
+      };
+      const resp = (globalThis as { __mockClaim?: unknown }).__mockClaim ?? defaultResponse;
+      return new Response(JSON.stringify(resp), { status: 200, headers: { "Content-Type": "application/json" } });
+    }
+    if (url.includes("/rest/v1/rpc/refund_ai_quota")) {
+      (globalThis as { __refundCalls?: number }).__refundCalls =
+        ((globalThis as { __refundCalls?: number }).__refundCalls ?? 0) + 1;
+      return new Response("null", { status: 200, headers: { "Content-Type": "application/json" } });
+    }
     if (url.includes("/rest/v1/rpc/increment_ai_requests")) {
       return new Response("null", { status: 200, headers: { "Content-Type": "application/json" } });
     }
@@ -2235,5 +2347,186 @@ t("web_search: AI calls web_search tool and gets results", async () => {
     assert(toolContent.includes("Sunny"), "Tool result should contain search description");
   } finally {
     restore();
+  }
+});
+
+// ============================================================================
+// AI quota integration (claim / refund / fail-closed)
+// ============================================================================
+
+function mockQuotaFlow(options: {
+  onAi?: () => void;
+  onUpsell?: () => void;
+  onAnyComment?: () => void;
+  aiStatus?: number;
+} = {}): () => void {
+  Deno.env.set("DEFAULT_AI_BASE_URL", "https://api.openai.com/v1");
+  Deno.env.set("DEFAULT_AI_API_KEY", "test-key");
+  Deno.env.set("DEFAULT_AI_MODEL", "gpt-4o-mini");
+
+  return mockFetch((url, init) => {
+    if (url.includes("/rest/v1/users_config") && init?.method !== "POST" && !url.includes("rpc")) {
+      return new Response(JSON.stringify(mockUserConfig()), {
+        status: 200, headers: { "Content-Type": "application/json" },
+      });
+    }
+    if (url.includes("/rest/v1/rpc/try_claim_event")) {
+      return new Response("true", { status: 200, headers: { "Content-Type": "application/json" } });
+    }
+    if (url.includes("/rest/v1/rpc/check_rate_limit")) {
+      return new Response(JSON.stringify({ allowed: true, blocked: false, retry_after: 0 }), {
+        status: 200, headers: { "Content-Type": "application/json" },
+      });
+    }
+    if (url.includes("/rest/v1/rpc/claim_ai_quota")) {
+      const defaultResponse = {
+        allowed: true, blocked: false, tier: "free",
+        used: 0, limit: 5, next_slot_at: null,
+        should_notify: false, event_id: 1,
+      };
+      const resp = (globalThis as { __mockClaim?: unknown }).__mockClaim ?? defaultResponse;
+      return new Response(JSON.stringify(resp), { status: 200, headers: { "Content-Type": "application/json" } });
+    }
+    if (url.includes("/rest/v1/rpc/refund_ai_quota")) {
+      (globalThis as { __refundCalls?: number }).__refundCalls =
+        ((globalThis as { __refundCalls?: number }).__refundCalls ?? 0) + 1;
+      return new Response("null", { status: 200, headers: { "Content-Type": "application/json" } });
+    }
+    if (url.includes("/rest/v1/rpc/increment_ai_requests")) {
+      return new Response("null", { status: 200, headers: { "Content-Type": "application/json" } });
+    }
+    const host = new URL(url).hostname;
+    if (host === "api.todoist.com") {
+      if (url.includes("/comments") && init?.method === "POST") {
+        options.onAnyComment?.();
+        const body = init?.body ? JSON.parse(String(init.body)) : {};
+        const content = String(body.content ?? "");
+        if (content.includes("You've used") || content.includes("limit") || content.includes("Upgrade")) {
+          options.onUpsell?.();
+        }
+        return new Response(JSON.stringify({ id: "c1" }), {
+          status: 200, headers: { "Content-Type": "application/json" },
+        });
+      }
+      if (url.includes("/comments")) {
+        return new Response(JSON.stringify({ results: [] }), {
+          status: 200, headers: { "Content-Type": "application/json" },
+        });
+      }
+      if (url.includes("/tasks/")) {
+        return new Response(JSON.stringify({ content: "Test task", description: "" }), {
+          status: 200, headers: { "Content-Type": "application/json" },
+        });
+      }
+    }
+    if (host === "api.openai.com" || host === "api.anthropic.com") {
+      options.onAi?.();
+      return new Response(
+        JSON.stringify({ choices: [{ message: { content: "AI response", role: "assistant" } }] }),
+        { status: options.aiStatus ?? 200, headers: { "Content-Type": "application/json" } },
+      );
+    }
+    return new Response("{}", { status: 200, headers: { "Content-Type": "application/json" } });
+  });
+}
+
+t("webhookHandler: Free user denied past quota → no AI call, upsell posted once", async () => {
+  (globalThis as { __mockClaim?: unknown }).__mockClaim = {
+    allowed: false, blocked: false, tier: "free",
+    used: 5, limit: 5, next_slot_at: new Date(Date.now() + 14 * 3600_000).toISOString(),
+    should_notify: true, event_id: 10,
+  };
+  let aiCalled = false;
+  let upsellCount = 0;
+  const restore = mockQuotaFlow({
+    onAi: () => { aiCalled = true; },
+    onUpsell: () => { upsellCount++; },
+  });
+
+  try {
+    const resp = await callHandlerWithValidNoteAddedTriggerEvent();
+    assertEquals(resp.status, 200);
+    await new Promise((r) => setTimeout(r, 100));
+    assertEquals(aiCalled, false, "AI must not be called when quota denied");
+    assertEquals(upsellCount, 1, "upsell must be posted exactly once when should_notify");
+  } finally {
+    restore();
+    delete (globalThis as { __mockClaim?: unknown }).__mockClaim;
+  }
+});
+
+t("webhookHandler: quota denied + should_notify=false → no upsell", async () => {
+  (globalThis as { __mockClaim?: unknown }).__mockClaim = {
+    allowed: false, blocked: false, tier: "free",
+    used: 5, limit: 5, next_slot_at: null,
+    should_notify: false, event_id: 11,
+  };
+  let anyComment = false;
+  let aiCalled = false;
+  const restore = mockQuotaFlow({
+    onAi: () => { aiCalled = true; },
+    onAnyComment: () => { anyComment = true; },
+  });
+
+  try {
+    const resp = await callHandlerWithValidNoteAddedTriggerEvent();
+    assertEquals(resp.status, 200);
+    await new Promise((r) => setTimeout(r, 100));
+    assertEquals(aiCalled, false);
+    assertEquals(anyComment, false, "no comment must be posted when should_notify=false");
+  } finally {
+    restore();
+    delete (globalThis as { __mockClaim?: unknown }).__mockClaim;
+  }
+});
+
+t("webhookHandler: claim allowed + AI call fails → refund invoked once", async () => {
+  (globalThis as { __mockClaim?: unknown }).__mockClaim = {
+    allowed: true, blocked: false, tier: "free",
+    used: 2, limit: 5, next_slot_at: null,
+    should_notify: false, event_id: 42,
+  };
+  (globalThis as { __refundCalls?: number }).__refundCalls = 0;
+
+  const restore = mockQuotaFlow({ aiStatus: 500 });
+
+  try {
+    const resp = await callHandlerWithValidNoteAddedTriggerEvent();
+    assertEquals(resp.status, 200);
+    await new Promise((r) => setTimeout(r, 200));
+    assertEquals(
+      (globalThis as { __refundCalls?: number }).__refundCalls,
+      1,
+      "refund must be called exactly once when AI fails pre-reply",
+    );
+  } finally {
+    restore();
+    delete (globalThis as { __mockClaim?: unknown }).__mockClaim;
+    (globalThis as { __refundCalls?: number }).__refundCalls = 0;
+  }
+});
+
+t("webhookHandler: quota RPC error → fail-closed, no AI, no upsell, 200", async () => {
+  (globalThis as { __mockClaim?: unknown }).__mockClaim = {
+    allowed: false, blocked: false, tier: null,
+    used: 0, limit: 0, next_slot_at: null,
+    should_notify: false, event_id: null, error: "rpc_failed",
+  };
+  let aiCalled = false;
+  let anyComment = false;
+  const restore = mockQuotaFlow({
+    onAi: () => { aiCalled = true; },
+    onAnyComment: () => { anyComment = true; },
+  });
+
+  try {
+    const resp = await callHandlerWithValidNoteAddedTriggerEvent();
+    assertEquals(resp.status, 200);
+    await new Promise((r) => setTimeout(r, 100));
+    assertEquals(aiCalled, false);
+    assertEquals(anyComment, false, "no comment must be posted when quota RPC fails");
+  } finally {
+    restore();
+    delete (globalThis as { __mockClaim?: unknown }).__mockClaim;
   }
 });
