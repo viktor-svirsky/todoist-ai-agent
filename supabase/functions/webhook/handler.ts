@@ -20,6 +20,9 @@ import { captureException } from "../_shared/sentry.ts";
 import { uint8ToBase64, verifyHmac, decrypt, decryptIfPresent } from "../_shared/crypto.ts";
 import { sanitizeImageMediaType, sanitizeDocumentMediaType, isPrivateHostname, extractMarkdownImageUrls, guessMediaType, isTextFile } from "../_shared/validation.ts";
 import type { TodoistComment, TodoistWebhookEvent, UserConfig } from "../_shared/types.ts";
+import { claimAiQuota, refundAiQuota } from "../_shared/ai-quota.ts";
+import { formatUpsellComment } from "../_shared/tier.ts";
+import type { AiQuotaResult } from "../_shared/tier.ts";
 
 // ---------------------------------------------------------------------------
 // Shared AI processing
@@ -42,8 +45,28 @@ async function runAiForTask(
   requestId: string,
   prefetchedComments?: TodoistComment[],
 ): Promise<void> {
+  const supabase = createServiceClient();
+  const quota = await claimAiQuota(supabase, user.id, taskId);
+
+  if (quota.error) {
+    return;
+  }
+  if (quota.blocked) {
+    return;
+  }
+  if (!quota.allowed) {
+    if (quota.should_notify) {
+      await postUpsellComment(user, taskId, quota).catch(async (e) => {
+        console.error("Upsell comment post failed", { requestId, error: e });
+        await captureException(e);
+      });
+    }
+    return;
+  }
+
   const todoist = new TodoistClient(user.todoist_token);
   let progressCommentId: string | undefined;
+  let replyPosted = false;
 
   try {
     const [progressId, task, comments] = await Promise.all([
@@ -318,12 +341,15 @@ async function runAiForTask(
     );
     const response = await executePrompt(apiMessages, aiConfig);
 
-    // Increment AI request counter only after successful processing (#99)
-    const supabase = createServiceClient();
-    await supabase.rpc("increment_ai_requests", { p_todoist_user_id: todoistUserId });
-
     await todoist.updateComment(progressCommentId, response);
+    replyPosted = true;
+
+    // Increment AI request counter only after successful processing (#99)
+    await supabase.rpc("increment_ai_requests", { p_todoist_user_id: todoistUserId });
   } catch (error) {
+    if (!replyPosted && quota.event_id !== null) {
+      await refundAiQuota(supabase, quota.event_id);
+    }
     console.error("AI processing failed", { requestId, taskId, error: error instanceof Error ? error.message : String(error) });
     if (progressCommentId) {
       try {
@@ -337,6 +363,20 @@ async function runAiForTask(
     }
     await captureException(error);
   }
+}
+
+async function postUpsellComment(
+  user: UserConfig,
+  taskId: string,
+  quota: AiQuotaResult,
+): Promise<void> {
+  const frontend = Deno.env.get("FRONTEND_URL");
+  const settingsUrl = frontend
+    ? `${frontend.replace(/\/$/, "")}/settings`
+    : "https://todoist-ai-agent.example/settings";
+  const body = formatUpsellComment(quota, settingsUrl);
+  const todoist = new TodoistClient(user.todoist_token);
+  await todoist.postComment(taskId, body);
 }
 
 // ---------------------------------------------------------------------------

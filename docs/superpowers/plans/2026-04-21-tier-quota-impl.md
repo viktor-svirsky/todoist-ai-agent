@@ -1001,7 +1001,7 @@ git commit -m "feat(shared): add ai-quota RPC wrappers with fail-closed semantic
 **Files:**
 - Modify: `supabase/functions/webhook/handler.ts` (around the top of `runAiForTask`, lines 38–48)
 
-- [ ] **Step 1: Add imports at the top of the file**
+- [x] **Step 1: Add imports at the top of the file**
 
 At the top of `supabase/functions/webhook/handler.ts`, after existing `_shared` imports, add:
 
@@ -1010,7 +1010,7 @@ import { claimAiQuota, refundAiQuota } from "../_shared/ai-quota.ts";
 import { formatUpsellComment } from "../_shared/tier.ts";
 ```
 
-- [ ] **Step 2: Modify `runAiForTask` to claim first and refund on failure**
+- [x] **Step 2: Modify `runAiForTask` to claim first and refund on failure**
 
 Replace the body of `runAiForTask` so the new structure looks exactly like this:
 
@@ -1121,7 +1121,7 @@ Important preservation notes:
 - The existing `increment_ai_requests` call moves **inside** the try block, **after** `replyPosted = true`. Its semantics (counts only successful deliveries) are preserved.
 - Sanitization-on-response, image handling, tool-loop etc. are untouched.
 
-- [ ] **Step 3: Add `postUpsellComment` helper at the bottom of the file**
+- [x] **Step 3: Add `postUpsellComment` helper at the bottom of the file**
 
 Before the final closing `export async function webhookHandler`, add:
 
@@ -1142,17 +1142,17 @@ async function postUpsellComment(
 
 If `TodoistClient` does not expose `postComment` with this exact signature, use whatever the existing client method is (check `_shared/todoist.ts` — it likely exists as `postComment(taskId, text)` or similar; adjust the call to match).
 
-- [ ] **Step 4: Type-check**
+- [x] **Step 4: Type-check**
 
 Run: `deno check supabase/functions/webhook/handler.ts`
 Expected: no type errors.
 
-- [ ] **Step 5: Lint**
+- [x] **Step 5: Lint**
 
 Run: `deno lint supabase/functions/webhook/handler.ts supabase/functions/_shared/ai-quota.ts supabase/functions/_shared/tier.ts`
 Expected: no issues.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add supabase/functions/webhook/handler.ts
