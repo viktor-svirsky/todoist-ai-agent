@@ -1422,7 +1422,7 @@ git commit -m "feat(settings): add GET /tier subroute returning flat quota statu
 **Files:**
 - Create: `supabase/functions/tests/settings-tier.test.ts`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```ts
 // supabase/functions/tests/settings-tier.test.ts
@@ -1504,13 +1504,13 @@ t("GET /tier: returns 401 without auth header", async () => {
 });
 ```
 
-- [ ] **Step 2: Run test to verify it fails, then passes after adjusting the handler import path / default export**
+- [x] **Step 2: Run test to verify it fails, then passes after adjusting the handler import path / default export**
 
 Run: `deno test supabase/functions/tests/settings-tier.test.ts --no-check --allow-env --allow-read --allow-net`
 Adjust the test's `mod.default(req)` call to match whatever the handler module exports (look at `settings/handler.ts`'s current default export or `settingsHandler` named export).
 Expected: PASS once aligned.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add supabase/functions/tests/settings-tier.test.ts
