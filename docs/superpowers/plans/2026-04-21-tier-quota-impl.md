@@ -1525,7 +1525,7 @@ git commit -m "test(settings): add GET /tier contract tests (flat shape, no writ
 - Create: `frontend/src/hooks/useTier.ts`
 - Create: `frontend/src/hooks/useTier.test.ts`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```ts
 // frontend/src/hooks/useTier.test.ts
@@ -1569,12 +1569,12 @@ describe("useTier", () => {
 });
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `cd frontend && npm test -- useTier`
 Expected: FAIL — module not found.
 
-- [ ] **Step 3: Write the implementation**
+- [x] **Step 3: Write the implementation**
 
 ```ts
 // frontend/src/hooks/useTier.ts
@@ -1640,12 +1640,12 @@ export function useTier(): UseTierState {
 
 If `frontend/src/supabase.ts` does not exist at that path, use the same import the existing Settings page uses (grep `supabase` under `frontend/src/` to find the client location).
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `cd frontend && npm test -- useTier`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add frontend/src/hooks/useTier.ts frontend/src/hooks/useTier.test.ts
