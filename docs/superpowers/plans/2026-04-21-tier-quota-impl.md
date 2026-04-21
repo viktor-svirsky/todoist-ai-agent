@@ -629,7 +629,7 @@ git commit -m "test(db): add SQL function tests for claim/refund/status RPCs"
 **Files:**
 - Modify: `supabase/functions/_shared/constants.ts`
 
-- [ ] **Step 1: Append quota constants**
+- [x] **Step 1: Append quota constants**
 
 Open `supabase/functions/_shared/constants.ts` and add to the end:
 
@@ -645,7 +645,7 @@ export const AI_QUOTA_WINDOW_SECONDS = 24 * 60 * 60;
 export const AI_QUOTA_FREE_MAX_FALLBACK = 5;
 ```
 
-- [ ] **Step 2: Commit**
+- [x] **Step 2: Commit**
 
 ```bash
 git add supabase/functions/_shared/constants.ts

@@ -52,3 +52,13 @@ export const MAX_AI_RESPONSE_BYTES = 10 * 1024 * 1024; // 10 MB
 export const FETCH_URL_TIMEOUT_MS = 15_000; // 15 seconds
 export const MAX_FETCH_BYTES = 2 * 1024 * 1024; // 2 MB
 export const MAX_FETCH_CONTENT_CHARS = 50_000; // 50k characters
+
+// ---------------------------------------------------------------------------
+// AI quota (monetization sub-project A)
+// ---------------------------------------------------------------------------
+
+/** Rolling-window size in seconds for AI quota (kept in sync with DB function). */
+export const AI_QUOTA_WINDOW_SECONDS = 24 * 60 * 60;
+
+/** Fallback Free-tier cap used by TS side only — DB is canonical. */
+export const AI_QUOTA_FREE_MAX_FALLBACK = 5;
