@@ -1932,7 +1932,7 @@ git commit -am "chore(webhook): confirm increment_ai_requests still fires only o
 - Create: `docs/ops/tier-quota-runbook.md`
 - Modify: `README.md`
 
-- [ ] **Step 1: Create the runbook**
+- [x] **Step 1: Create the runbook**
 
 ```markdown
 # Tier Quota Runbook
@@ -1995,7 +1995,7 @@ LIMIT 20;
 - Spike in `ai_quota_denied` structured logs but zero conversion interest — upsell copy / frontend CTA likely broken.
 ```
 
-- [ ] **Step 2: Update README**
+- [x] **Step 2: Update README**
 
 In `README.md`, add a "Tiers" subsection under the existing configuration section:
 
@@ -2009,7 +2009,7 @@ In `README.md`, add a "Tiers" subsection under the existing configuration sectio
 See `docs/superpowers/specs/2026-04-21-tier-quota-design.md` for the full design.
 ```
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add docs/ops/tier-quota-runbook.md README.md

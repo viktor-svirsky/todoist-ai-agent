@@ -74,6 +74,14 @@ sequenceDiagram
 | **Error tracking** | Optional Sentry integration for monitoring |
 | **Accessible UI** | ARIA labels, focus management, keyboard navigation, screen reader support |
 
+## Tiers
+
+- **Free** — 5 AI messages per rolling 24 hours.
+- **Pro** — Unlimited. Granted manually via SQL (see `docs/ops/tier-quota-runbook.md`) until Stripe lands.
+- **BYOK** — Unlimited; any account with a non-empty custom AI key.
+
+See `docs/superpowers/specs/2026-04-21-tier-quota-design.md` for the full design.
+
 ## Architecture
 
 ```mermaid
