@@ -616,6 +616,30 @@ t("settingsHandler: PUT updates settings successfully", async () => {
   }
 });
 
+t("settingsHandler: PUT coerces whitespace-only custom_ai_api_key to null (prevent bogus BYOK)", async () => {
+  let capturedBody: Record<string, unknown> | null = null;
+  const restore = mockFetch(authedMock((url, init) => {
+    if (url.includes("/rest/v1/users_config") && init?.method === "PATCH") {
+      capturedBody = JSON.parse(init?.body as string ?? "{}");
+      return new Response("{}", { status: 200, headers: { "Content-Type": "application/json" } });
+    }
+    return null;
+  }));
+  try {
+    const req = new Request("http://localhost/settings", {
+      method: "PUT",
+      headers: { Authorization: "Bearer valid-jwt", "Content-Type": "application/json" },
+      body: JSON.stringify({ custom_ai_api_key: "   " }),
+    });
+    const res = await handler(req);
+    assertEquals(res.status, 200);
+    assertEquals(capturedBody?.custom_ai_api_key, null,
+      "whitespace-only API key must be stored as NULL so BYOK tier is not granted");
+  } finally {
+    restore();
+  }
+});
+
 t("settingsHandler: PUT normalizes trailing slashes on base URL", async () => {
   let capturedBody: Record<string, unknown> | null = null;
   const restore = mockFetch(authedMock((url, init) => {

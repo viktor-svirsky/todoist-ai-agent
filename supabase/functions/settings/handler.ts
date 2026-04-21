@@ -241,9 +241,16 @@ export async function settingsHandler(req: Request): Promise<Response> {
     const updates: Record<string, unknown> = {};
     for (const field of allowedFields) {
       if (body[field] !== undefined) {
-        // Set empty strings to null for optional text fields
+        // Set empty / whitespace-only strings to null for optional text fields.
+        // Whitespace-only custom_ai_api_key would otherwise encrypt to a non-empty
+        // ciphertext and wrongly derive the BYOK tier server-side.
         if (field !== "trigger_word" && field !== "max_messages") {
-          updates[field] = body[field] || null;
+          const raw = body[field];
+          if (typeof raw === "string" && raw.trim().length === 0) {
+            updates[field] = null;
+          } else {
+            updates[field] = raw || null;
+          }
         } else {
           updates[field] = body[field];
         }

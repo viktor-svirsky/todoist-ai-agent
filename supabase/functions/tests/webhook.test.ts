@@ -2506,6 +2506,38 @@ t("webhookHandler: claim allowed + AI call fails → refund invoked once", async
   }
 });
 
+t("webhookHandler: quota blocked=true → no AI, no comment, no refund", async () => {
+  (globalThis as { __mockClaim?: unknown }).__mockClaim = {
+    allowed: false, blocked: true, tier: null,
+    used: 0, limit: 0, next_slot_at: null,
+    should_notify: false, event_id: null,
+  };
+  (globalThis as { __refundCalls?: number }).__refundCalls = 0;
+  let aiCalled = false;
+  let anyComment = false;
+  const restore = mockQuotaFlow({
+    onAi: () => { aiCalled = true; },
+    onAnyComment: () => { anyComment = true; },
+  });
+
+  try {
+    const resp = await callHandlerWithValidNoteAddedTriggerEvent();
+    assertEquals(resp.status, 200);
+    await new Promise((r) => setTimeout(r, 100));
+    assertEquals(aiCalled, false, "AI must not run for blocked users");
+    assertEquals(anyComment, false, "no comment (upsell or progress) when blocked");
+    assertEquals(
+      (globalThis as { __refundCalls?: number }).__refundCalls,
+      0,
+      "no refund attempted when blocked (no event_id to refund)",
+    );
+  } finally {
+    restore();
+    delete (globalThis as { __mockClaim?: unknown }).__mockClaim;
+    (globalThis as { __refundCalls?: number }).__refundCalls = 0;
+  }
+});
+
 t("webhookHandler: quota RPC error → fail-closed, no AI, no upsell, 200", async () => {
   (globalThis as { __mockClaim?: unknown }).__mockClaim = {
     allowed: false, blocked: false, tier: null,

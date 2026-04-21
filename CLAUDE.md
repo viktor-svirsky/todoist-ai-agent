@@ -27,9 +27,12 @@ Todoist AI Agent — a multi-tenant SaaS that adds AI-powered conversations to T
 - `ai.ts` — Dual-provider AI client (Anthropic native + OpenAI-compatible). Auto-detects provider by URL. Handles tool call loop.
 - `crypto.ts` — AES-256-GCM encryption/decryption, HMAC verification for webhook signatures, OAuth state signing/verification.
 - `messages.ts` — Converts Todoist comments to AI conversation messages.
-- `todoist.ts` — Todoist REST API client (comments, tasks, projects, file downloads).
+- `todoist.ts` — Todoist REST API client (comments, tasks, projects, labels, file downloads).
 - `rate-limit.ts` — Per-user rate limiting with account blocking via PostgreSQL function.
 - `supabase.ts` — Two client factories: `createServiceClient` (admin) and `createUserClient` (RLS-scoped).
+- `tier.ts` — Tier types (`free`/`pro`/`byok`) and `formatUpsellComment()`. Tier is derived server-side in SQL; this module is presentation-only.
+- `ai-quota.ts` — Fail-closed wrappers for the `claim_ai_quota`, `refund_ai_quota`, and `get_ai_quota_status` RPCs. On RPC error callers get `allowed:false`, no AI runs.
+- `tools.ts` — AI tool definitions exposing Todoist CRUD operations to the model (agentic mode).
 
 ### Edge Functions
 
@@ -38,9 +41,20 @@ Todoist AI Agent — a multi-tenant SaaS that adds AI-powered conversations to T
 | `webhook` | No | Receives Todoist webhooks, triggers AI responses |
 | `auth-start` | No | Initiates Todoist OAuth with HMAC-signed CSRF state |
 | `auth-callback` | No | Handles Todoist OAuth token exchange, verifies CSRF state |
-| `settings` | No* | CRUD for user preferences (validates auth header manually) |
+| `settings` | No* | CRUD for user preferences (validates auth header manually). Also serves read-only `GET /settings/tier` returning flat `{ tier, used, limit, next_slot_at, pro_until }` for the Plan card. |
 
 *Settings validates the Authorization header via Supabase user client, not Edge Function JWT verification.
+
+### AI Quota (tier gating)
+
+Per-user rolling-24h AI message budget is enforced in Postgres. Tier derivation lives in SQL (BYOK > Pro > Free) — the backend never sets `tier` from application code.
+
+- `ai_request_events` — append-only per-attempt log (service-role RLS deny-all). Feeds the rolling window.
+- `claim_ai_quota(user_id, task_id)` — atomic tier derivation + quota check + event insert. Sets `counted=true` on allowed requests, `counted=false` on denied. Dedupes upsell via `users_config.ai_quota_denied_notified_at`.
+- `refund_ai_quota(event_id)` — flips `counted=false`; idempotent.
+- `get_ai_quota_status(user_id)` — read-only; does NOT insert an event. Used by `GET /settings/tier`.
+- Webhook flow: claim before AI work; on any exception before the reply is posted (`replyPosted=false`), call `refund_ai_quota(event_id)`. Fail-closed on RPC error.
+- Free-tier cap tunable via GUC `app.ai_quota_free_max` (default 5; invalid falls back to 5). See `docs/ops/tier-quota-runbook.md`.
 
 ## Commands
 
