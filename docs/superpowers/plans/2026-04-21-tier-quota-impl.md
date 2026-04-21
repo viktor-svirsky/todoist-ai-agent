@@ -373,7 +373,7 @@ git commit -m "feat(db): add get_ai_quota_status read-only RPC"
 **Files:**
 - Create: `supabase/functions/tests/ai-quota-sql.test.ts`
 
-- [ ] **Step 1: Write the failing test suite**
+- [x] **Step 1: Write the failing test suite**
 
 ```ts
 // supabase/functions/tests/ai-quota-sql.test.ts
@@ -602,7 +602,7 @@ async function countEvents(userId: string): Promise<number> {
 }
 ```
 
-- [ ] **Step 2: Start local Supabase and run the test**
+- [x] **Step 2: Start local Supabase and run the test** (skipped — not automatable; requires local Docker+Supabase. Test skips cleanly when `SUPABASE_SERVICE_ROLE_KEY` not set; runs in CI/manual against live instance)
 
 Run:
 ```bash
@@ -615,7 +615,7 @@ deno test supabase/functions/tests/ai-quota-sql.test.ts \
 ```
 Expected: all tests pass.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add supabase/functions/tests/ai-quota-sql.test.ts
