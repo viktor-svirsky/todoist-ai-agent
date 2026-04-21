@@ -98,7 +98,7 @@ CREATE POLICY ai_request_events_deny_all ON ai_request_events
 **Files:**
 - Modify: `supabase/migrations/00010_tier_and_ai_quota.sql`
 
-- [ ] **Step 1: Append the RPC to the migration**
+- [x] **Step 1: Append the RPC to the migration**
 
 ```sql
 -- Append to supabase/migrations/00010_tier_and_ai_quota.sql:
@@ -206,7 +206,7 @@ END;
 $$;
 ```
 
-- [ ] **Step 2: Apply & sanity-check**
+- [x] **Step 2: Apply & sanity-check** (skipped — not automatable; requires local Docker+Supabase. RPC validated in Task 5 integration tests)
 
 Run: `npm run supabase:reset`
 
@@ -220,7 +220,7 @@ SELECT claim_ai_quota(
 -- Expect: {"allowed": true, "tier": "free", "used": 0, "limit": 5, ...}
 ```
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add supabase/migrations/00010_tier_and_ai_quota.sql

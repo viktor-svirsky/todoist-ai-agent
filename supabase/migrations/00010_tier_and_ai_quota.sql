@@ -36,3 +36,107 @@ ALTER TABLE ai_request_events ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY ai_request_events_deny_all ON ai_request_events
   FOR ALL USING (false) WITH CHECK (false);
+
+-- Atomically claim a quota slot for a user + derive tier.
+-- Returns jsonb with: allowed, blocked, tier, used, limit, next_slot_at, should_notify, event_id.
+CREATE OR REPLACE FUNCTION claim_ai_quota(
+  p_user_id uuid,
+  p_task_id text
+) RETURNS jsonb
+LANGUAGE plpgsql
+AS $$
+DECLARE
+  v_row        users_config%ROWTYPE;
+  v_tier       text;
+  v_limit      int;
+  v_used       int;
+  v_allowed    boolean;
+  v_oldest     timestamptz;
+  v_next_slot  timestamptz;
+  v_notify     boolean := false;
+  v_free_max   int;
+  v_window     interval := interval '24 hours';
+  v_event_id   bigint;
+BEGIN
+  SELECT * INTO v_row FROM users_config WHERE id = p_user_id FOR UPDATE;
+  IF NOT FOUND THEN
+    RETURN jsonb_build_object(
+      'allowed', false, 'blocked', false, 'tier', NULL,
+      'used', 0, 'limit', 0, 'next_slot_at', NULL,
+      'should_notify', false, 'event_id', NULL, 'error', 'no_user'
+    );
+  END IF;
+
+  IF v_row.is_disabled THEN
+    RETURN jsonb_build_object(
+      'allowed', false, 'blocked', true, 'tier', NULL,
+      'used', 0, 'limit', 0, 'next_slot_at', NULL,
+      'should_notify', false, 'event_id', NULL
+    );
+  END IF;
+
+  v_tier := CASE
+    WHEN v_row.custom_ai_api_key IS NOT NULL
+         AND length(trim(v_row.custom_ai_api_key)) > 0 THEN 'byok'
+    WHEN v_row.pro_until IS NOT NULL AND v_row.pro_until > now() THEN 'pro'
+    ELSE 'free'
+  END;
+
+  BEGIN
+    v_free_max := current_setting('app.ai_quota_free_max')::int;
+    IF v_free_max IS NULL OR v_free_max <= 0 THEN
+      v_free_max := 5;
+    END IF;
+  EXCEPTION WHEN OTHERS THEN
+    v_free_max := 5;
+  END;
+
+  v_limit := CASE v_tier WHEN 'free' THEN v_free_max ELSE -1 END;
+
+  IF v_limit > 0 THEN
+    SELECT COUNT(*), MIN(event_time)
+    INTO v_used, v_oldest
+    FROM ai_request_events
+    WHERE user_id = p_user_id
+      AND counted = true
+      AND event_time > now() - v_window;
+
+    v_allowed   := v_used < v_limit;
+    v_next_slot := CASE
+      WHEN v_oldest IS NOT NULL THEN v_oldest + v_window
+      ELSE now() + v_window
+    END;
+  ELSE
+    v_used      := NULL;
+    v_allowed   := true;
+    v_next_slot := NULL;
+  END IF;
+
+  INSERT INTO ai_request_events (
+    user_id, todoist_user_id, task_id, tier, counted
+  ) VALUES (
+    p_user_id, v_row.todoist_user_id, p_task_id, v_tier, v_allowed
+  ) RETURNING id INTO v_event_id;
+
+  IF NOT v_allowed THEN
+    UPDATE users_config
+    SET ai_quota_denied_notified_at = now()
+    WHERE id = p_user_id
+      AND (ai_quota_denied_notified_at IS NULL
+           OR ai_quota_denied_notified_at < now() - v_window)
+    RETURNING true INTO v_notify;
+    v_notify := COALESCE(v_notify, false);
+  END IF;
+
+  RETURN jsonb_build_object(
+    'allowed',       v_allowed,
+    'blocked',       false,
+    'tier',          v_tier,
+    'used',          v_used,
+    'limit',         v_limit,
+    'next_slot_at',  v_next_slot,
+    'should_notify', v_notify,
+    'event_id',      v_event_id
+  );
+END;
+$$;
