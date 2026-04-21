@@ -1900,22 +1900,24 @@ git commit -m "feat(frontend): mount PlanCard on Settings page"
 **Files:**
 - No file changes expected. This task is a verification step.
 
-- [ ] **Step 1: Grep for all call sites**
+- [x] **Step 1: Grep for all call sites**
 
 Run: `grep -rn 'increment_ai_requests' supabase/ frontend/ docs/`
 
-- [ ] **Step 2: Verify the semantics still match spec §5.4**
+Findings: only source call site is `supabase/functions/webhook/handler.ts:348`. Definition in `supabase/migrations/00005_ai_request_tracking.sql`. Tests in `supabase/functions/tests/webhook.test.ts` intercept the RPC for assertions. No frontend references.
 
-Confirm:
-- The RPC call in `supabase/functions/webhook/handler.ts` happens **only** on the success path, after `replyPosted = true` (see Task 9).
-- `ai_request_events` inserts come from `claim_ai_quota`, never from `increment_ai_requests`.
-- Existing tests in `webhook.test.ts` still assert `increment_ai_requests` fires on success and does NOT fire on non-trigger comments — both behaviors still hold.
+- [x] **Step 2: Verify the semantics still match spec §5.4**
 
-- [ ] **Step 3: Record findings**
+Confirmed:
+- `handler.ts:348` call is inside the try block, immediately after `replyPosted = true` (line 345). Success path only.
+- `increment_ai_requests` only updates `users_config.total_ai_requests` + `last_ai_request_at`; it does not insert into `ai_request_events`. All `ai_request_events` inserts come from `claim_ai_quota`.
+- `webhook.test.ts` still asserts `rpcCalled === true` on the trigger-word success path (line 525) and `rpcCalled === false` for non-trigger comments (line 807).
 
-Append a short note to the runbook (Task 18). No code change.
+- [x] **Step 3: Record findings**
 
-- [ ] **Step 4: Commit (only if any cleanup emerged)**
+Findings recorded inline above; to be carried into the runbook during Task 17. No code change.
+
+- [x] **Step 4: Commit (only if any cleanup emerged)**
 
 If no changes, skip the commit. Otherwise:
 ```bash
