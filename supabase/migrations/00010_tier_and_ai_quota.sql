@@ -146,3 +146,70 @@ RETURNS void LANGUAGE sql AS $$
   UPDATE ai_request_events SET counted = false
   WHERE id = p_event_id AND counted = true;
 $$;
+
+-- Read-only: current tier + rolling-window usage. Does not insert events.
+CREATE OR REPLACE FUNCTION get_ai_quota_status(p_user_id uuid)
+RETURNS jsonb
+LANGUAGE plpgsql
+STABLE
+AS $$
+DECLARE
+  v_row        users_config%ROWTYPE;
+  v_tier       text;
+  v_limit      int;
+  v_used       int;
+  v_oldest     timestamptz;
+  v_next_slot  timestamptz;
+  v_free_max   int;
+  v_window     interval := interval '24 hours';
+BEGIN
+  SELECT * INTO v_row FROM users_config WHERE id = p_user_id;
+  IF NOT FOUND THEN
+    RETURN jsonb_build_object(
+      'tier', NULL, 'used', 0, 'limit', 0,
+      'next_slot_at', NULL, 'pro_until', NULL
+    );
+  END IF;
+
+  v_tier := CASE
+    WHEN v_row.custom_ai_api_key IS NOT NULL
+         AND length(trim(v_row.custom_ai_api_key)) > 0 THEN 'byok'
+    WHEN v_row.pro_until IS NOT NULL AND v_row.pro_until > now() THEN 'pro'
+    ELSE 'free'
+  END;
+
+  BEGIN
+    v_free_max := current_setting('app.ai_quota_free_max')::int;
+    IF v_free_max IS NULL OR v_free_max <= 0 THEN
+      v_free_max := 5;
+    END IF;
+  EXCEPTION WHEN OTHERS THEN
+    v_free_max := 5;
+  END;
+
+  v_limit := CASE v_tier WHEN 'free' THEN v_free_max ELSE -1 END;
+
+  IF v_limit > 0 THEN
+    SELECT COUNT(*), MIN(event_time) INTO v_used, v_oldest
+    FROM ai_request_events
+    WHERE user_id = p_user_id
+      AND counted = true
+      AND event_time > now() - v_window;
+    v_next_slot := CASE
+      WHEN v_oldest IS NOT NULL THEN v_oldest + v_window
+      ELSE NULL
+    END;
+  ELSE
+    v_used      := NULL;
+    v_next_slot := NULL;
+  END IF;
+
+  RETURN jsonb_build_object(
+    'tier',         v_tier,
+    'used',         v_used,
+    'limit',        v_limit,
+    'next_slot_at', v_next_slot,
+    'pro_until',    CASE WHEN v_tier = 'pro' THEN v_row.pro_until ELSE NULL END
+  );
+END;
+$$;

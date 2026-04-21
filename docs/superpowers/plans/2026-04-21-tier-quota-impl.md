@@ -276,7 +276,7 @@ git commit -m "feat(db): add refund_ai_quota RPC (idempotent quota reversal)"
 **Files:**
 - Modify: `supabase/migrations/00010_tier_and_ai_quota.sql`
 
-- [ ] **Step 1: Append the read-only RPC**
+- [x] **Step 1: Append the read-only RPC**
 
 ```sql
 -- Append to supabase/migrations/00010_tier_and_ai_quota.sql:
@@ -348,7 +348,7 @@ END;
 $$;
 ```
 
-- [ ] **Step 2: Apply & sanity-check no-inserts behaviour**
+- [x] **Step 2: Apply & sanity-check no-inserts behaviour** (skipped — not automatable; requires local Docker+Supabase. RPC validated in Task 5 integration tests)
 
 Run: `npm run supabase:reset`
 
@@ -359,7 +359,7 @@ SELECT get_ai_quota_status((SELECT id FROM users_config LIMIT 1));
 SELECT count(*) FROM ai_request_events;  -- must be UNCHANGED
 ```
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add supabase/migrations/00010_tier_and_ai_quota.sql
