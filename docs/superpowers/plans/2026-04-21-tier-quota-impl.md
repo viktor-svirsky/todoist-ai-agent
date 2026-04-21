@@ -791,7 +791,7 @@ git commit -m "feat(shared): add tier types and upsell-comment formatter"
 - Create: `supabase/functions/_shared/ai-quota.ts`
 - Create: `supabase/functions/tests/ai-quota.test.ts`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```ts
 // supabase/functions/tests/ai-quota.test.ts
@@ -883,12 +883,12 @@ t("getAiQuotaStatus: fail-closed returns null tier on error", async () => {
 });
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `deno test supabase/functions/tests/ai-quota.test.ts --no-check --allow-env --allow-read`
 Expected: FAIL — module not found.
 
-- [ ] **Step 3: Write the implementation**
+- [x] **Step 3: Write the implementation**
 
 ```ts
 // supabase/functions/_shared/ai-quota.ts
@@ -982,12 +982,12 @@ function emptyStatus(): AiQuotaStatus {
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `deno test supabase/functions/tests/ai-quota.test.ts --no-check --allow-env --allow-read`
 Expected: PASS, all 6 tests.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add supabase/functions/_shared/ai-quota.ts supabase/functions/tests/ai-quota.test.ts
