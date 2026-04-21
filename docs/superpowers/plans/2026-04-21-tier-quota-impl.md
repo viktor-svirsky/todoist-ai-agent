@@ -1860,7 +1860,7 @@ git commit -m "feat(frontend): add PlanCard showing tier badge, counter, disable
 **Files:**
 - Modify: `frontend/src/pages/Settings.tsx`
 
-- [ ] **Step 1: Add the import**
+- [x] **Step 1: Add the import**
 
 In `frontend/src/pages/Settings.tsx`, add:
 
@@ -1868,11 +1868,11 @@ In `frontend/src/pages/Settings.tsx`, add:
 import { PlanCard } from "../components/PlanCard";
 ```
 
-- [ ] **Step 2: Render `<PlanCard />` near the top of the Settings layout**
+- [x] **Step 2: Render `<PlanCard />` near the top of the Settings layout**
 
 Place it immediately below the page heading (before any existing sections). Maintain existing Tailwind spacing classes.
 
-- [ ] **Step 3: Run frontend tests + type-check + build**
+- [x] **Step 3: Run frontend tests + type-check + build**
 
 Run:
 ```bash
@@ -1882,11 +1882,11 @@ cd frontend && npm test
 ```
 Expected: tests pass, type-check clean, build succeeds.
 
-- [ ] **Step 4: Visual smoke-test (record outcome, do not block on it)**
+- [x] **Step 4: Visual smoke-test (record outcome, do not block on it)** (skipped - not automatable; dev stack unavailable)
 
 Run: `npm run frontend:dev` (separately), then open the Settings page and confirm the Plan card renders with the current user's tier. If dev stack is unavailable in this environment, note the limitation in the commit body.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add frontend/src/pages/Settings.tsx

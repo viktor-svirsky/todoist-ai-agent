@@ -2,6 +2,7 @@ import { useEffect, useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import PageFooter from "../components/PageFooter";
+import { PlanCard } from "../components/PlanCard";
 
 interface UserSettings {
   trigger_word: string;
@@ -544,6 +545,8 @@ export default function Settings() {
 
       {/* Content */}
       <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-8">
+        <PlanCard />
+
         {/* Status message */}
         {message && (
           <div
