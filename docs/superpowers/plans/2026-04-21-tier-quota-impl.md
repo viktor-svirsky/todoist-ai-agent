@@ -660,7 +660,7 @@ git commit -m "feat(shared): add AI quota constants"
 - Create: `supabase/functions/_shared/tier.ts`
 - Create: `supabase/functions/tests/tier.test.ts`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```ts
 // supabase/functions/tests/tier.test.ts
@@ -708,12 +708,12 @@ t("formatUpsellComment: omits next-slot line when null", () => {
 });
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `deno test supabase/functions/tests/tier.test.ts --no-check --allow-env --allow-read`
 Expected: FAIL — module not found.
 
-- [ ] **Step 3: Write the implementation**
+- [x] **Step 3: Write the implementation**
 
 ```ts
 // supabase/functions/_shared/tier.ts
@@ -771,12 +771,12 @@ export function humanizeRelative(iso: string, now: Date = new Date()): string {
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `deno test supabase/functions/tests/tier.test.ts --no-check --allow-env --allow-read`
 Expected: PASS, all 3 tests.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add supabase/functions/_shared/tier.ts supabase/functions/tests/tier.test.ts
