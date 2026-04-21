@@ -72,6 +72,24 @@ export async function settingsHandler(req: Request): Promise<Response> {
     return rateLimitResponse(rlResult.retry_after, CORS_HEADERS);
   }
 
+  // ── GET /tier: Return flat quota status (no event row inserted) ──
+  if (req.method === "GET" && new URL(req.url).pathname.endsWith("/tier")) {
+    const { data, error } = await serviceClient.rpc("get_ai_quota_status", {
+      p_user_id: user.id,
+    });
+    if (error || !data) {
+      console.error("get_ai_quota_status failed", { userId: user.id, error });
+      await captureException(error ?? new Error("get_ai_quota_status no data"));
+      return jsonResponse(
+        { tier: null, used: 0, limit: 0, next_slot_at: null, pro_until: null },
+        200,
+        CORS_HEADERS,
+      );
+    }
+    const parsed = typeof data === "string" ? JSON.parse(data) : data;
+    return jsonResponse(parsed as Record<string, unknown>, 200, CORS_HEADERS);
+  }
+
   // ── GET: Return user settings ──────────────────────────────────────
   if (req.method === "GET") {
     // Fetch non-sensitive fields via user client (respects RLS)

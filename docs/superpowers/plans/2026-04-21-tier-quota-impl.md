@@ -1367,12 +1367,12 @@ git commit -m "test(webhook): add quota denial / refund / fail-closed cases"
 **Files:**
 - Modify: `supabase/functions/settings/handler.ts`
 
-- [ ] **Step 1: Inspect current Settings handler routing**
+- [x] **Step 1: Inspect current Settings handler routing**
 
 Run: `grep -n "method ===" supabase/functions/settings/handler.ts | head -10`
 Identify the switch/if that branches on HTTP method + path.
 
-- [ ] **Step 2: Add the `GET /tier` branch**
+- [x] **Step 2: Add the `GET /tier` branch**
 
 Near the top of the handler function, add an early branch (before the existing GET /settings handling). The exact placement: after the Authorization header is validated and `userId` resolved, but before any settings-specific logic runs.
 
@@ -1403,12 +1403,12 @@ if (req.method === "GET" && new URL(req.url).pathname.endsWith("/tier")) {
 
 Preserve the existing Authorization / rate-limit checks — the `GET /tier` branch runs **after** them.
 
-- [ ] **Step 3: Type-check**
+- [x] **Step 3: Type-check**
 
 Run: `deno check supabase/functions/settings/handler.ts`
 Expected: no errors.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add supabase/functions/settings/handler.ts
