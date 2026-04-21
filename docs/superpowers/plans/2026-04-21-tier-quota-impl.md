@@ -234,7 +234,7 @@ git commit -m "feat(db): add claim_ai_quota RPC (tier-gated rolling-24h quota)"
 **Files:**
 - Modify: `supabase/migrations/00010_tier_and_ai_quota.sql`
 
-- [ ] **Step 1: Append the RPC**
+- [x] **Step 1: Append the RPC**
 
 ```sql
 -- Append to supabase/migrations/00010_tier_and_ai_quota.sql:
@@ -246,7 +246,7 @@ RETURNS void LANGUAGE sql AS $$
 $$;
 ```
 
-- [ ] **Step 2: Apply & sanity-check**
+- [x] **Step 2: Apply & sanity-check** (skipped — not automatable; requires local Docker+Supabase. RPC validated in Task 5 integration tests)
 
 Run: `npm run supabase:reset`
 
@@ -262,7 +262,7 @@ SELECT counted FROM ai_request_events ORDER BY id DESC LIMIT 1;
 -- Expect: false
 ```
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add supabase/migrations/00010_tier_and_ai_quota.sql

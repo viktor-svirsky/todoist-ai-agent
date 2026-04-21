@@ -140,3 +140,9 @@ BEGIN
   );
 END;
 $$;
+
+CREATE OR REPLACE FUNCTION refund_ai_quota(p_event_id bigint)
+RETURNS void LANGUAGE sql AS $$
+  UPDATE ai_request_events SET counted = false
+  WHERE id = p_event_id AND counted = true;
+$$;
