@@ -1660,7 +1660,7 @@ git commit -m "feat(frontend): add useTier hook against GET /tier"
 - Create: `frontend/src/components/PlanCard.tsx`
 - Create: `frontend/src/components/PlanCard.test.tsx`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```tsx
 // frontend/src/components/PlanCard.test.tsx
@@ -1739,12 +1739,12 @@ describe("PlanCard", () => {
 });
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `cd frontend && npm test -- PlanCard`
 Expected: FAIL — module not found.
 
-- [ ] **Step 3: Write the component**
+- [x] **Step 3: Write the component**
 
 ```tsx
 // frontend/src/components/PlanCard.tsx
@@ -1841,12 +1841,12 @@ export function PlanCard() {
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `cd frontend && npm test -- PlanCard`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add frontend/src/components/PlanCard.tsx frontend/src/components/PlanCard.test.tsx
