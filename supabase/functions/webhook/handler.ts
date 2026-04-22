@@ -20,6 +20,10 @@ import { captureException } from "../_shared/sentry.ts";
 import { uint8ToBase64, verifyHmac, decrypt, decryptIfPresent } from "../_shared/crypto.ts";
 import { sanitizeImageMediaType, sanitizeDocumentMediaType, isPrivateHostname, extractMarkdownImageUrls, guessMediaType, isTextFile } from "../_shared/validation.ts";
 import type { TodoistComment, TodoistWebhookEvent, UserConfig } from "../_shared/types.ts";
+import { claimAiQuota, refundAiQuota } from "../_shared/ai-quota.ts";
+import { formatUpsellComment } from "../_shared/tier.ts";
+import type { AiQuotaResult } from "../_shared/tier.ts";
+import { resolveFeatureGates, logFeatureGateEvent } from "../_shared/feature-gates.ts";
 
 // ---------------------------------------------------------------------------
 // Shared AI processing
@@ -42,8 +46,28 @@ async function runAiForTask(
   requestId: string,
   prefetchedComments?: TodoistComment[],
 ): Promise<void> {
+  const supabase = createServiceClient();
+  const quota = await claimAiQuota(supabase, user.id, taskId);
+
+  if (quota.error) {
+    return;
+  }
+  if (quota.blocked) {
+    return;
+  }
+  if (!quota.allowed) {
+    if (quota.should_notify) {
+      await postUpsellComment(user, taskId, quota).catch(async (e) => {
+        console.error("Upsell comment post failed", { requestId, error: e });
+        await captureException(e);
+      });
+    }
+    return;
+  }
+
   const todoist = new TodoistClient(user.todoist_token);
   let progressCommentId: string | undefined;
+  let replyPosted = false;
 
   try {
     const [progressId, task, comments] = await Promise.all([
@@ -273,13 +297,35 @@ async function runAiForTask(
       }
     }
 
+    const gates = resolveFeatureGates(quota.tier);
+
+    // G3: custom prompt — drop silently on Free
+    const effectiveCustomPrompt = gates.customPrompt ? user.custom_prompt : null;
+    if (!gates.customPrompt && user.custom_prompt) {
+      void logFeatureGateEvent(supabase, user.id, gates.tier, "custom_prompt", "silently_ignored");
+    }
+
+    // G4: model override — only BYOK honors user.custom_ai_model
+    const effectiveCustomModel = gates.modelOverride ? user.custom_ai_model : null;
+    if (!gates.modelOverride && user.custom_ai_model) {
+      void logFeatureGateEvent(supabase, user.id, gates.tier, "model_override", "silently_ignored");
+    }
+
+    // G1/G2: telemetry — ai.ts enforces suppression via toolMode/webSearch flags
+    if (!gates.webSearch) {
+      void logFeatureGateEvent(supabase, user.id, gates.tier, "web_search", "filtered");
+    }
+    if (gates.todoistTools === "read_only") {
+      void logFeatureGateEvent(supabase, user.id, gates.tier, "todoist_tools", "filtered");
+    }
+
     const resolvedBaseUrl = (
       user.custom_ai_base_url ||
       Deno.env.get("DEFAULT_AI_BASE_URL") ||
       "https://api.anthropic.com/v1"
     ).trim().replace(/\/$/, "");
     const resolvedModel = normalizeModel(
-      user.custom_ai_model ||
+      effectiveCustomModel ||
       Deno.env.get("DEFAULT_AI_MODEL") ||
       DEFAULT_AI_MODEL
     );
@@ -305,6 +351,8 @@ async function runAiForTask(
         undefined,
       fallbackModel,
       isCustomUrl: !!user.custom_ai_base_url,
+      toolMode: gates.todoistTools,
+      webSearch: gates.webSearch,
     };
 
     const apiMessages = buildMessages(
@@ -312,18 +360,39 @@ async function runAiForTask(
       task.description,
       messages,
       images.length > 0 ? images : undefined,
-      user.custom_prompt,
+      effectiveCustomPrompt,
       documents.length > 0 ? documents : undefined,
       resolvedModel,
     );
     const response = await executePrompt(apiMessages, aiConfig);
 
-    // Increment AI request counter only after successful processing (#99)
-    const supabase = createServiceClient();
-    await supabase.rpc("increment_ai_requests", { p_todoist_user_id: todoistUserId });
-
     await todoist.updateComment(progressCommentId, response);
+    replyPosted = true;
+
+    // Increment AI request counter only after successful processing (#99)
+    const { error: incErr } = await supabase.rpc("increment_ai_requests", {
+      p_todoist_user_id: todoistUserId,
+    });
+    if (incErr) {
+      console.error("increment_ai_requests failed", { requestId, taskId, error: incErr });
+      await captureException(new Error(`increment_ai_requests: ${incErr.message ?? incErr}`));
+    }
   } catch (error) {
+    if (!replyPosted && quota.event_id !== null) {
+      try {
+        await refundAiQuota(supabase, quota.event_id);
+      } catch (refundErr) {
+        // Must not swallow — this is billing-sensitive code. Surface to
+        // Sentry and continue so the user still gets an error comment.
+        console.error("refund_ai_quota failed inside catch", {
+          requestId,
+          taskId,
+          eventId: quota.event_id,
+          error: refundErr,
+        });
+        await captureException(refundErr);
+      }
+    }
     console.error("AI processing failed", { requestId, taskId, error: error instanceof Error ? error.message : String(error) });
     if (progressCommentId) {
       try {
@@ -339,9 +408,33 @@ async function runAiForTask(
   }
 }
 
+async function postUpsellComment(
+  user: UserConfig,
+  taskId: string,
+  quota: AiQuotaResult,
+): Promise<void> {
+  const frontend = Deno.env.get("FRONTEND_URL");
+  const pricingUrl = frontend
+    ? `${frontend.replace(/\/$/, "")}/pricing`
+    : "https://todoist-ai-agent.example/pricing";
+  const body = formatUpsellComment(quota, pricingUrl);
+  const todoist = new TodoistClient(user.todoist_token);
+  await todoist.postComment(taskId, body);
+}
+
 // ---------------------------------------------------------------------------
 // Event handlers
 // ---------------------------------------------------------------------------
+
+/**
+ * Returns true when this task is allowed to trigger the agent for this user.
+ * If the user has a control_task_id set, only that task qualifies. Otherwise
+ * all tasks are allowed (legacy behavior, preserved for backwards compat).
+ */
+function isAllowedTask(user: UserConfig, taskId: string): boolean {
+  if (!user.control_task_id) return true;
+  return user.control_task_id === taskId;
+}
 
 async function handleNoteEvent(event: TodoistWebhookEvent, user: UserConfig, requestId: string): Promise<void> {
   const { event_data } = event;
@@ -357,6 +450,10 @@ async function handleNoteEvent(event: TodoistWebhookEvent, user: UserConfig, req
   if (content.startsWith(AI_INDICATOR) || content.startsWith(ERROR_PREFIX)) {
     return;
   }
+
+  // Control-task filter: when the user has a dedicated control task, ignore
+  // comments posted elsewhere so the agent only responds in that task.
+  if (!isAllowedTask(user, taskId)) return;
 
   // Check trigger word
   const triggerWord = user.trigger_word || "@ai";
@@ -380,6 +477,8 @@ async function handleItemEvent(event: TodoistWebhookEvent, user: UserConfig, req
     console.warn("Missing task id in item event", { requestId });
     return;
   }
+
+  if (!isAllowedTask(user, taskId)) return;
 
   // Check trigger in content, description, or labels
   const triggerWord = user.trigger_word || "@ai";
@@ -488,7 +587,7 @@ export async function webhookHandler(req: Request): Promise<Response> {
   const supabase = createServiceClient();
   const { data: user, error: userErr } = await supabase
     .from("users_config")
-    .select("id, todoist_token, todoist_user_id, trigger_word, custom_ai_base_url, custom_ai_api_key, custom_ai_model, custom_brave_key, max_messages, custom_prompt")
+    .select("id, todoist_token, todoist_user_id, trigger_word, custom_ai_base_url, custom_ai_api_key, custom_ai_model, custom_brave_key, max_messages, custom_prompt, control_task_id")
     .eq("todoist_user_id", userId)
     .maybeSingle();
 

@@ -2,7 +2,8 @@
   "imports": {
     "@std/assert": "jsr:@std/assert@^1.0.19",
     "@sentry/deno": "npm:@sentry/deno@^10.41.0",
-    "@supabase/supabase-js": "https://esm.sh/@supabase/supabase-js@2"
+    "@supabase/supabase-js": "https://esm.sh/@supabase/supabase-js@2",
+    "stripe": "npm:stripe@^19.1.0"
   },
   "lint": {
     "rules": {

@@ -6,6 +6,10 @@ import Landing from "./pages/Landing";
 import Welcome from "./pages/Welcome";
 import Settings from "./pages/Settings";
 import AuthCallback from "./pages/AuthCallback";
+import BillingReturn from "./pages/BillingReturn";
+import Pricing from "./pages/Pricing";
+import PricingSuccess from "./pages/PricingSuccess";
+import PricingCanceled from "./pages/PricingCanceled";
 import NotFound from "./pages/NotFound";
 import "./index.css";
 
@@ -54,6 +58,10 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
           <Route path="/welcome" element={<Welcome />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="/auth/callback" element={<AuthCallback />} />
+          <Route path="/billing/return" element={<BillingReturn />} />
+          <Route path="/pricing" element={<Pricing />} />
+          <Route path="/pricing/success" element={<PricingSuccess />} />
+          <Route path="/pricing/canceled" element={<PricingCanceled />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>

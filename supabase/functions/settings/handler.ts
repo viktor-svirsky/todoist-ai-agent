@@ -3,6 +3,14 @@ import { validateSettings, isPrivateHostname } from "../_shared/validation.ts";
 import { encryptIfPresent } from "../_shared/crypto.ts";
 import { isAnthropicUrl } from "../_shared/ai.ts";
 import { captureException } from "../_shared/sentry.ts";
+import { getStripe } from "../_shared/stripe.ts";
+import { logFeatureGateEvent } from "../_shared/feature-gates.ts";
+import {
+  getUsageDaily,
+  getUsageSummary,
+  hasToolEventsTable,
+} from "../_shared/usage.ts";
+import { csvLine } from "../_shared/csv.ts";
 import {
   getSettingsRateLimitConfig,
   checkRateLimitByUuid,
@@ -38,6 +46,47 @@ function jsonResponse(
   });
 }
 
+function clampInt(raw: string | null, fallback: number, min: number, max: number): number {
+  const parsed = raw === null ? NaN : parseInt(raw, 10);
+  const v = Number.isFinite(parsed) ? parsed : fallback;
+  return Math.min(Math.max(v, min), max);
+}
+
+async function maybeAutoCancelForByok(
+  admin: ReturnType<typeof createServiceClient>,
+  userId: string,
+): Promise<void> {
+  const { data: row, error } = await admin
+    .from("users_config")
+    .select("pro_until, stripe_subscription_id, stripe_cancel_at_period_end")
+    .eq("id", userId)
+    .single();
+  if (error || !row) return;
+
+  const proActive =
+    typeof row.pro_until === "string" &&
+    row.pro_until > new Date().toISOString();
+  if (!proActive) return;
+  if (!row.stripe_subscription_id) return;
+  if (row.stripe_cancel_at_period_end) return;
+
+  try {
+    await getStripe().subscriptions.update(
+      row.stripe_subscription_id as string,
+      { cancel_at_period_end: true },
+      { idempotencyKey: `byok-cancel:${userId}` },
+    );
+    await admin
+      .from("users_config")
+      .update({ stripe_cancel_at_period_end: true })
+      .eq("id", userId);
+    console.info("byok_auto_cancel_scheduled", { user_id: userId });
+  } catch (err) {
+    console.error("byok_auto_cancel_failed", { user_id: userId, err });
+    await captureException(err);
+  }
+}
+
 export async function settingsHandler(req: Request): Promise<Response> {
   const CORS_HEADERS = getCorsHeaders();
 
@@ -70,6 +119,183 @@ export async function settingsHandler(req: Request): Promise<Response> {
   }
   if (!rlResult.allowed) {
     return rateLimitResponse(rlResult.retry_after, CORS_HEADERS);
+  }
+
+  // ── GET /tier: Return flat quota status (no event row inserted) ──
+  if (req.method === "GET" && new URL(req.url).pathname.endsWith("/tier")) {
+    const { data, error } = await serviceClient.rpc("get_ai_quota_status", {
+      p_user_id: user.id,
+    });
+    if (error || !data) {
+      console.error("get_ai_quota_status failed", { userId: user.id, error });
+      await captureException(error ?? new Error("get_ai_quota_status no data"));
+      return jsonResponse(
+        { tier: null, used: 0, limit: 0, next_slot_at: null, pro_until: null },
+        200,
+        CORS_HEADERS,
+      );
+    }
+    const parsed = typeof data === "string" ? JSON.parse(data) : data;
+    return jsonResponse(parsed as Record<string, unknown>, 200, CORS_HEADERS);
+  }
+
+  // ── GET /usage: Return usage dashboard payload ─────────────────────
+  if (req.method === "GET" && new URL(req.url).pathname.endsWith("/usage")) {
+    const url = new URL(req.url);
+    const tzRaw = url.searchParams.get("tz_offset");
+    if (tzRaw === null || !/^-?\d+$/.test(tzRaw)) {
+      return jsonResponse({ error: "tz_offset_required" }, 400, CORS_HEADERS);
+    }
+    const tzOffset = parseInt(tzRaw, 10);
+    const days7 = clampInt(url.searchParams.get("days_7"), 7, 1, 31);
+    const days30 = clampInt(url.searchParams.get("days_30"), 30, 1, 90);
+
+    const [tierResult, daily, summary, hasTools] = await Promise.all([
+      serviceClient.rpc("get_ai_quota_status", { p_user_id: user.id }),
+      getUsageDaily(supabase, tzOffset, days7),
+      getUsageSummary(supabase, days30),
+      hasToolEventsTable(supabase),
+    ]);
+
+    const tierData = (() => {
+      if (tierResult.error || !tierResult.data) return null;
+      return typeof tierResult.data === "string"
+        ? JSON.parse(tierResult.data)
+        : tierResult.data as Record<string, unknown>;
+    })();
+
+    let tools: unknown = null;
+    if (hasTools) {
+      const { data, error } = await supabase.rpc("get_usage_tools", {
+        p_days: days30,
+      });
+      if (error) {
+        console.error("get_usage_tools RPC failed", { error });
+        await captureException(error);
+        tools = [];
+      } else {
+        tools = data ?? [];
+      }
+    }
+
+    return jsonResponse({
+      live_24h: {
+        used: (tierData?.used as number | null) ?? null,
+        limit: (tierData?.limit as number | null) ?? 0,
+        next_slot_at: (tierData?.next_slot_at as string | null) ?? null,
+      },
+      daily,
+      summary,
+      tools,
+    }, 200, CORS_HEADERS);
+  }
+
+  // ── GET /usage.csv: Stream usage events as CSV ─────────────────────
+  if (req.method === "GET" && new URL(req.url).pathname.endsWith("/usage.csv")) {
+    const url = new URL(req.url);
+    const days = clampInt(url.searchParams.get("days"), 30, 1, 90);
+    const enc = new TextEncoder();
+    const filename = `todoist-ai-usage-${
+      new Date().toISOString().slice(0, 10)
+    }.csv`;
+
+    // Probe the RPC synchronously before opening the response stream.
+    // `controller.error()` after headers flush would deliver a silently
+    // truncated CSV under HTTP 200 — the user sees no signal that the
+    // export failed. Fail up-front so the client surfaces the 500.
+    const PAGE = 1000;
+    const MAX_ROWS = 50_000;
+    type UsageRow = {
+      id: number;
+      event_time: string;
+      tier: string | null;
+      counted: boolean;
+      refunded_at: string | null;
+      task_id: string | null;
+    };
+    const probe = await supabase.rpc("get_usage_csv_page", {
+      p_before: null,
+      p_before_id: null,
+      p_limit: PAGE,
+      p_days: days,
+    });
+    if (probe.error) {
+      console.error("get_usage_csv_page failed (probe)", { error: probe.error });
+      await captureException(probe.error);
+      return jsonResponse(
+        { code: "usage_csv_unavailable", message: "Usage export failed, try again." },
+        500,
+        CORS_HEADERS,
+      );
+    }
+    const firstRows = (probe.data ?? []) as Array<UsageRow>;
+
+    const stream = new ReadableStream({
+      async start(controller) {
+        try {
+          controller.enqueue(
+            enc.encode("event_time,tier,counted,refunded_at,task_id\n"),
+          );
+          let cursor: string | null = null;
+          let cursorId: number | null = null;
+          let total = 0;
+          let rows: Array<UsageRow> = firstRows;
+          while (true) {
+            if (rows.length === 0) break;
+            for (const r of rows) {
+              controller.enqueue(
+                enc.encode(csvLine([
+                  r.event_time,
+                  r.tier,
+                  String(r.counted),
+                  r.refunded_at ?? "",
+                  r.task_id,
+                ])),
+              );
+              total += 1;
+              if (total >= MAX_ROWS) break;
+            }
+            if (total >= MAX_ROWS) {
+              controller.enqueue(
+                enc.encode(`# truncated at ${MAX_ROWS} rows\n`),
+              );
+              break;
+            }
+            const last = rows[rows.length - 1];
+            cursor = last.event_time;
+            cursorId = last.id;
+            if (rows.length < PAGE) break;
+            const next = await supabase.rpc("get_usage_csv_page", {
+              p_before: cursor,
+              p_before_id: cursorId,
+              p_limit: PAGE,
+              p_days: days,
+            });
+            if (next.error) {
+              console.error("get_usage_csv_page failed (mid-stream)", { error: next.error });
+              await captureException(next.error);
+              controller.error(next.error);
+              return;
+            }
+            rows = (next.data ?? []) as Array<UsageRow>;
+          }
+          controller.close();
+        } catch (err) {
+          await captureException(err);
+          controller.error(err);
+        }
+      },
+    });
+
+    return new Response(stream, {
+      status: 200,
+      headers: {
+        ...CORS_HEADERS,
+        "Content-Type": "text/csv; charset=utf-8",
+        "Content-Disposition": `attachment; filename="${filename}"`,
+        "Cache-Control": "no-store",
+      },
+    });
   }
 
   // ── GET: Return user settings ──────────────────────────────────────
@@ -223,9 +449,16 @@ export async function settingsHandler(req: Request): Promise<Response> {
     const updates: Record<string, unknown> = {};
     for (const field of allowedFields) {
       if (body[field] !== undefined) {
-        // Set empty strings to null for optional text fields
+        // Set empty / whitespace-only strings to null for optional text fields.
+        // Whitespace-only custom_ai_api_key would otherwise encrypt to a non-empty
+        // ciphertext and wrongly derive the BYOK tier server-side.
         if (field !== "trigger_word" && field !== "max_messages") {
-          updates[field] = body[field] || null;
+          const raw = body[field];
+          if (typeof raw === "string" && raw.trim().length === 0) {
+            updates[field] = null;
+          } else {
+            updates[field] = raw || null;
+          }
         } else {
           updates[field] = body[field];
         }
@@ -247,6 +480,52 @@ export async function settingsHandler(req: Request): Promise<Response> {
       return jsonResponse({ error: "Validation failed", details: validationErrors }, 400, CORS_HEADERS);
     }
 
+    const byokKeyBeingSet =
+      typeof updates.custom_ai_api_key === "string" &&
+      (updates.custom_ai_api_key as string).trim().length > 0;
+
+    // G4: custom_ai_model requires BYOK or Pro. Reject Free users whose
+    // request doesn't include a BYOK key and who don't already have one.
+    const settingCustomModel =
+      typeof updates.custom_ai_model === "string" &&
+      (updates.custom_ai_model as string).trim().length > 0;
+
+    if (settingCustomModel && !byokKeyBeingSet) {
+      const { data: tierData, error: tierErr } = await serviceClient.rpc("get_user_tier", {
+        p_user_id: user.id,
+      });
+      if (tierErr) {
+        console.error("get_user_tier RPC failed; 503 so client retries", {
+          userId: user.id,
+          error: tierErr,
+        });
+        await captureException(tierErr);
+        return jsonResponse(
+          { code: "tier_unavailable", message: "Tier lookup failed, try again." },
+          503,
+          CORS_HEADERS,
+        );
+      }
+      const tier = (tierData as string | null) ?? null;
+      if (tier === "free" || tier === null) {
+        await logFeatureGateEvent(
+          serviceClient,
+          user.id,
+          tier ?? "free",
+          "model_override",
+          "write_rejected",
+        );
+        return jsonResponse(
+          {
+            code: "model_requires_byok",
+            message: "Custom model requires a custom AI key or Pro plan.",
+          },
+          409,
+          CORS_HEADERS,
+        );
+      }
+    }
+
     // Encrypt sensitive fields before writing
     if ("custom_ai_api_key" in updates) {
       updates.custom_ai_api_key = await encryptIfPresent(updates.custom_ai_api_key as string | null);
@@ -265,6 +544,10 @@ export async function settingsHandler(req: Request): Promise<Response> {
       console.error("Failed to update settings:", error);
       await captureException(error);
       return jsonResponse({ error: "Failed to update settings" }, 500, CORS_HEADERS);
+    }
+
+    if (byokKeyBeingSet) {
+      await maybeAutoCancelForByok(serviceClient, user.id);
     }
 
     return jsonResponse({ ok: true }, 200, CORS_HEADERS);

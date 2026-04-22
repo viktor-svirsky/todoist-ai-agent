@@ -74,6 +74,56 @@ sequenceDiagram
 | **Error tracking** | Optional Sentry integration for monitoring |
 | **Accessible UI** | ARIA labels, focus management, keyboard navigation, screen reader support |
 
+## Tiers
+
+- **Free** — 5 AI messages per rolling 24 hours.
+- **Pro** — Unlimited. $5/mo via Stripe Checkout; cancel/manage card via Stripe Billing Portal.
+- **BYOK** — Unlimited; any account with a non-empty custom AI key. Setting a BYOK key while on Pro auto-schedules subscription cancel at period end.
+
+See `docs/superpowers/specs/2026-04-21-tier-quota-design.md` and `docs/superpowers/specs/2026-04-21-stripe-integration-design.md` for the full design.
+
+Pricing page: `<APP_URL>/pricing` (public). Set `VITE_BILLING_ENABLED=true` once Stripe (sub-project B) is live.
+
+### Gated features
+
+| Feature | Free | Pro | BYOK |
+|---------|------|-----|------|
+| Web search (`web_search` tool) | ❌ | ✅ | ✅ |
+| Todoist tools | Read-only (`list_tasks`, `list_projects`, `list_labels`) | Full CRUD | Full CRUD |
+| Custom system prompt | ❌ (ignored) | ✅ | ✅ |
+| Custom AI model override | ❌ (rejected on write) | ❌ (ignored at runtime) | ✅ |
+
+Enforcement is server-side in `_shared/feature-gates.ts` (runtime) and `settings/handler.ts` (write-time G4). Telemetry lands in `feature_gate_events`. Ops guide: `docs/ops/feature-gating-runbook.md`.
+
+### Settings → Usage tab
+
+Read-only dashboard with live 24h count, 7-day bar chart, 30-day summary, optional tool breakdown, and streamed CSV export (`GET /settings/usage` and `GET /settings/usage.csv`). Spec: `docs/superpowers/specs/2026-04-21-usage-dashboard-design.md`; ops: `docs/ops/tier-quota-runbook.md`.
+
+## Stripe
+
+Required env vars in `supabase/.env.local`:
+
+```env
+STRIPE_SECRET_KEY=sk_test_...
+STRIPE_WEBHOOK_SECRET=whsec_...
+STRIPE_PRICE_ID_PRO_MONTHLY=price_...
+APP_URL=http://localhost:5173
+```
+
+Local dev loop with Stripe CLI:
+
+```bash
+# Forward live test events to your local webhook (prints whsec_... — paste into .env.local)
+stripe listen --forward-to http://127.0.0.1:54321/functions/v1/stripe-webhook
+
+# Drive specific events
+stripe trigger checkout.session.completed
+stripe trigger customer.subscription.deleted
+stripe trigger charge.refunded
+```
+
+Operations, secret rotation, and SQL recipes: `docs/ops/stripe-runbook.md`.
+
 ## Architecture
 
 ```mermaid

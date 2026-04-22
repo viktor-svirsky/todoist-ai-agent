@@ -2,6 +2,34 @@ import { createServiceClient } from "../_shared/supabase.ts";
 import { TODOIST_TOKEN_URL, TODOIST_SYNC_URL, TODOIST_USER_URL } from "../_shared/constants.ts";
 import { captureException } from "../_shared/sentry.ts";
 import { encrypt, verifyOAuthState } from "../_shared/crypto.ts";
+import { TodoistClient } from "../_shared/todoist.ts";
+
+const CONTROL_TASK_CONTENT = "🤖 AI Assistant";
+const CONTROL_TASK_DESCRIPTION =
+  "Chat with your AI agent here. Post a comment with `@ai` followed by what you need — the agent can read your tasks, create new ones, reschedule, and more.";
+
+/**
+ * Creates the dedicated control task in the user's Inbox and returns its id.
+ * Never throws — logs and returns null on failure so OAuth still succeeds.
+ */
+async function createControlTask(accessToken: string): Promise<string | null> {
+  try {
+    const client = new TodoistClient(accessToken);
+    const inboxId = await client.getInboxProjectId();
+    const task = await client.createTask({
+      content: CONTROL_TASK_CONTENT,
+      description: CONTROL_TASK_DESCRIPTION,
+      project_id: inboxId,
+    });
+    return task.id;
+  } catch (error) {
+    console.error("Failed to auto-create control task", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    await captureException(error);
+    return null;
+  }
+}
 
 function getFrontendUrl(): string {
   const url = Deno.env.get("FRONTEND_URL");
@@ -257,11 +285,15 @@ export async function authCallbackHandler(req: Request): Promise<Response> {
         // Continue anyway — webhook can be re-registered later
       }
 
-      // 7. Insert users_config row
+      // 7. Auto-create control task in user's Inbox (best-effort).
+      const controlTaskId = await createControlTask(access_token);
+
+      // 8. Insert users_config row (control_task_id may be null if creation failed).
       const { error: insertError } = await supabase.from("users_config").insert({
         id: userId,
         todoist_token: await encrypt(access_token),
         todoist_user_id: todoistUserId,
+        control_task_id: controlTaskId,
       });
 
       if (insertError) {
@@ -270,7 +302,7 @@ export async function authCallbackHandler(req: Request): Promise<Response> {
       }
     }
 
-    // 8. Generate session and redirect to frontend
+    // 9. Generate session and redirect to frontend
     return await createSessionRedirect(email, corsHeaders);
   } catch (error) {
     console.error("Auth callback error:", error);

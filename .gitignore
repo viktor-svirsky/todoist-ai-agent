@@ -1,4 +1,5 @@
 node_modules/
+.ralphex/
 *.env*
 data/conversations.json
 .worktrees/

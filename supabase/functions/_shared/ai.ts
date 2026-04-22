@@ -1,14 +1,31 @@
 import { braveSearch } from "./search.ts";
 import { fetchUrl } from "./fetch-url.ts";
-import { MAX_TOOL_ROUNDS, DEFAULT_MAX_TOKENS, MAX_AI_RESPONSE_BYTES, FALLBACK_STATUS_CODES, MAX_TEXT_FILE_CHARS } from "./constants.ts";
+import {
+  MAX_TOOL_ROUNDS,
+  MAX_AGENTIC_TOOL_ROUNDS,
+  DEFAULT_MAX_TOKENS,
+  MAX_AI_RESPONSE_BYTES,
+  FALLBACK_STATUS_CODES,
+  MAX_TEXT_FILE_CHARS,
+} from "./constants.ts";
 import * as Sentry from "@sentry/deno"; // startSpan is a no-op when Sentry is not initialized (no DSN set)
 import { captureException } from "./sentry.ts";
+import {
+  handleTodoistTool,
+  isTodoistToolName,
+  toAnthropicTools,
+  toOpenAiTools,
+  type TodoistToolMode,
+} from "./tools.ts";
+import type { TodoistClient } from "./todoist.ts";
 import type {
   OpenAiResponse,
   AnthropicResponse,
   AnthropicContentBlock,
   ExtractedToolCall,
 } from "./types.ts";
+
+export { AGENTIC_SYSTEM_PROMPT } from "./tools.ts";
 
 interface Message {
   role: "user" | "assistant";
@@ -35,6 +52,13 @@ export interface AiConfig {
   braveApiKey?: string;
   fallbackModel?: string;
   isCustomUrl?: boolean;
+  // When provided, enables agentic mode: Todoist CRUD tools are exposed to the
+  // AI, the tool-round cap is raised to MAX_AGENTIC_TOOL_ROUNDS, and callers
+  // should pass AGENTIC_SYSTEM_PROMPT via buildMessages' systemPromptOverride.
+  todoistClient?: TodoistClient;
+  // Feature-gate inputs from resolveFeatureGates(). Default: full + enabled.
+  toolMode?: TodoistToolMode;
+  webSearch?: boolean;
 }
 
 // Provider-specific messages accumulate in this array during the tool loop.
@@ -181,13 +205,14 @@ export function buildMessages(
   customPrompt?: string | null,
   documents?: DocumentAttachment[],
   modelName?: string,
+  systemPromptOverride?: string,
 ): ApiMessage[] {
   const taskContext = [
     `Current task: "${taskContent}"`,
     taskDescription ? `Task description: "${taskDescription}"` : "",
   ].filter(Boolean).join("\n");
 
-  const systemParts = [SYSTEM_PROMPT];
+  const systemParts = [systemPromptOverride || SYSTEM_PROMPT];
   if (modelName) {
     systemParts.push(`You are powered by ${modelName}.`);
   }
@@ -524,27 +549,47 @@ export async function executePrompt(
 ): Promise<string> {
   const anthropic = isAnthropicUrl(config.baseUrl);
   const runMessages = [...messages];
+  const agentic = !!config.todoistClient;
+  const maxRounds = agentic ? MAX_AGENTIC_TOOL_ROUNDS : MAX_TOOL_ROUNDS;
 
   // Build tools list: skipped for default proxy (handles search/fetch server-side),
-  // otherwise fetch_url is always available and web_search varies by provider
-  const isProxyWithBuiltinSearch = !anthropic && config.isCustomUrl === false;
+  // otherwise fetch_url is always available and web_search varies by provider.
+  // G1 gate: when web search is disabled (Free tier), bypass the built-in
+  // search shortcut even on the default proxy — we fall through to the
+  // explicit-tools path with no search tool declared, and attach a header
+  // hint so a search-aware proxy can honor the intent server-side.
+  const isDefaultProxy = !anthropic && config.isCustomUrl === false;
+  const webSearchEnabled = config.webSearch !== false;
+  const isProxyWithBuiltinSearch = isDefaultProxy && webSearchEnabled;
+  const toolMode: TodoistToolMode = config.toolMode ?? "full";
   const tools: Record<string, unknown>[] = [];
   if (isProxyWithBuiltinSearch) {
     // Proxy handles web search natively — don't provide client-side tools
   } else if (anthropic) {
     tools.push(ANTHROPIC_FETCH_TOOL);
-    if (config.braveApiKey) {
-      tools.push(ANTHROPIC_SEARCH_TOOL);
-    } else {
-      // Anthropic built-in web search — server-side, no API key needed
-      tools.push({ type: "web_search_20250305", name: "web_search" });
+    if (webSearchEnabled) {
+      if (config.braveApiKey) {
+        tools.push(ANTHROPIC_SEARCH_TOOL);
+      } else {
+        // Anthropic built-in web search — server-side, no API key needed
+        tools.push({ type: "web_search_20250305", name: "web_search" });
+      }
     }
   } else {
     tools.push(OPENAI_FETCH_TOOL);
-    if (config.braveApiKey) tools.push(OPENAI_SEARCH_TOOL);
+    if (webSearchEnabled && config.braveApiKey) tools.push(OPENAI_SEARCH_TOOL);
+  }
+
+  if (agentic) {
+    const todoistTools = anthropic ? toAnthropicTools(toolMode) : toOpenAiTools(toolMode);
+    for (const t of todoistTools) tools.push(t);
   }
 
   const headers = anthropic ? anthropicHeaders(config.apiKey) : openaiHeaders(config.apiKey);
+  if (isDefaultProxy && !webSearchEnabled) {
+    // Advisory hint for a search-aware proxy; unknown headers are ignored.
+    headers["x-web-search-allowed"] = "false";
+  }
   const endpoint = anthropic
     ? `${config.baseUrl}/messages`
     : `${config.baseUrl}/chat/completions`;
@@ -560,7 +605,7 @@ export async function executePrompt(
   // Track content returned alongside tool calls (some proxies include partial content)
   let lastToolRoundContent: string | null = null;
 
-  for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
+  for (let round = 0; round < maxRounds; round++) {
     const body = buildBody(activeModel, runMessages, DEFAULT_MAX_TOKENS, tools);
     const result = await fetchWithFallback(ctx, body, { activeModel, hasFallenBack, fallbackModel: config.fallbackModel }, round);
     activeModel = result.activeModel;
@@ -588,7 +633,7 @@ export async function executePrompt(
     const toolResults = await Promise.all(
       toolCalls.map(async (tc) => ({
         id: tc.id,
-        result: await handleToolCall(tc.name, tc.arguments, config.braveApiKey),
+        result: await handleToolCall(tc.name, tc.arguments, config.braveApiKey, config.todoistClient, toolMode),
       }))
     );
     if (anthropic) {
@@ -622,10 +667,18 @@ export async function executePrompt(
 export async function handleToolCall(
   name: string,
   argsJson: string,
-  braveApiKey?: string
+  braveApiKey?: string,
+  todoistClient?: TodoistClient,
+  toolMode: TodoistToolMode = "full",
 ): Promise<string> {
   // Some proxies prefix tool names (e.g. "proxy_web_search") — normalize
   const toolName = name.replace(/^proxy_/, "");
+
+  // Todoist tools are only available in agentic mode (caller supplied a client).
+  if (todoistClient && isTodoistToolName(toolName)) {
+    return handleTodoistTool(toolName, argsJson, todoistClient, toolMode);
+  }
+
   try {
     if (toolName === "web_search") {
       if (!braveApiKey) return "Error: web search is not configured.";

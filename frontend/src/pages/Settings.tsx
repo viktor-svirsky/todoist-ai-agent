@@ -2,6 +2,10 @@ import { useEffect, useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import PageFooter from "../components/PageFooter";
+import { PlanCard } from "../components/PlanCard";
+import { UpsellBanner } from "../components/UpsellBanner";
+import { UsageTab } from "../components/UsageTab";
+import { useTier } from "../hooks/useTier";
 
 interface UserSettings {
   trigger_word: string;
@@ -182,10 +186,12 @@ function PasswordInput({
 
 export default function Settings() {
   const navigate = useNavigate();
+  const { data: tierData } = useTier();
   const [settings, setSettings] = useState<UserSettings | null>(null);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [modelFieldError, setModelFieldError] = useState<string | null>(null);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
 
   const [triggerWord, setTriggerWord] = useState("@ai");
@@ -198,11 +204,11 @@ export default function Settings() {
   const [testResult, setTestResult] = useState<{ valid: boolean; error?: string } | null>(null);
   const testAbortRef = useRef<AbortController | null>(null);
 
-  const [activeTab, setActiveTab] = useState<"basic" | "advanced">("basic");
+  const [activeTab, setActiveTab] = useState<"basic" | "advanced" | "usage">("basic");
 
-  function handleTabChange(tab: "basic" | "advanced") {
+  function handleTabChange(tab: "basic" | "advanced" | "usage") {
     setActiveTab(tab);
-    if (tab === "basic") {
+    if (tab !== "advanced") {
       setTestResult(null);
     }
   }
@@ -249,6 +255,7 @@ export default function Settings() {
   async function handleSave() {
     setSaving(true);
     setMessage(null);
+    setModelFieldError(null);
 
     try {
       const { data: { session } } = await supabase.auth.getSession();
@@ -292,6 +299,14 @@ export default function Settings() {
         setMessage(`Too many requests. Please try again in ${retryAfter} seconds.`);
       } else if (res.status === 403) {
         setMessage("Your account has been disabled. Please contact support.");
+      } else if (res.status === 409) {
+        const data = await res.json().catch(() => ({}));
+        if (data.code === "model_requires_byok") {
+          setModelFieldError(data.message || "Custom model requires a custom AI key or Pro plan.");
+          setActiveTab("advanced");
+        } else {
+          setMessage("Failed to save settings.");
+        }
       } else {
         setMessage("Failed to save settings.");
       }
@@ -469,6 +484,9 @@ export default function Settings() {
 
   const inputClasses = "mt-1.5 w-full px-3.5 py-2.5 border border-gray-300 rounded-xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-shadow focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-500";
   const isSuccess = message === "Settings saved.";
+  const tier = tierData?.tier ?? null;
+  const isPaidOrByok = tier === "pro" || tier === "byok";
+  const hasCustomKey = settings.has_custom_ai_key || aiApiKey.trim().length > 0;
 
   return (
     <main role="main" aria-labelledby="settings-heading">
@@ -502,7 +520,14 @@ export default function Settings() {
             onKeyDown={(e) => {
               if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
                 e.preventDefault();
-                const next = activeTab === "basic" ? "advanced" : "basic";
+                const order: ("basic" | "advanced" | "usage")[] = [
+                  "basic",
+                  "advanced",
+                  "usage",
+                ];
+                const idx = order.indexOf(activeTab);
+                const delta = e.key === "ArrowRight" ? 1 : -1;
+                const next = order[(idx + delta + order.length) % order.length];
                 handleTabChange(next);
                 document.getElementById(`${next}-tab`)?.focus();
               }
@@ -538,12 +563,30 @@ export default function Settings() {
             >
               Advanced
             </button>
+            <button
+              role="tab"
+              tabIndex={activeTab === "usage" ? 0 : -1}
+              aria-selected={activeTab === "usage"}
+              aria-controls="usage-panel"
+              id="usage-tab"
+              onClick={() => handleTabChange("usage")}
+              className={`py-3 px-5 text-sm font-medium border-b-2 transition-colors cursor-pointer ${
+                activeTab === "usage"
+                  ? "border-red-500 text-red-600"
+                  : "border-transparent text-gray-500 hover:text-gray-700"
+              }`}
+            >
+              Usage
+            </button>
           </div>
         </div>
       </div>
 
       {/* Content */}
       <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-8">
+        <UpsellBanner />
+        <PlanCard />
+
         {/* Status message */}
         {message && (
           <div
@@ -576,7 +619,20 @@ export default function Settings() {
               </div>
 
               <div>
-                <label htmlFor="custom-prompt" className="block text-sm font-medium text-gray-700">Custom Instructions</label>
+                <div className="flex items-center gap-2">
+                  <label htmlFor="custom-prompt" className="block text-sm font-medium text-gray-700">
+                    Custom Instructions
+                  </label>
+                  {!isPaidOrByok && (
+                    <span
+                      data-testid="custom-prompt-pro-badge"
+                      aria-hidden="true"
+                      className="inline-flex items-center rounded-full bg-violet-100 px-2 py-0.5 text-xs font-medium text-violet-700"
+                    >
+                      Pro
+                    </span>
+                  )}
+                </div>
                 <textarea
                   id="custom-prompt"
                   value={customPrompt}
@@ -645,10 +701,25 @@ export default function Settings() {
                   id="ai-model"
                   type="text"
                   value={aiModel}
-                  onChange={(e) => { setAiModel(e.target.value); setTestResult(null); testAbortRef.current?.abort(); }}
+                  onChange={(e) => { setAiModel(e.target.value); setTestResult(null); setModelFieldError(null); testAbortRef.current?.abort(); }}
                   className={inputClasses}
                   placeholder="gpt-4o-mini"
+                  aria-describedby="ai-model-help"
                 />
+                {!hasCustomKey && !modelFieldError && (
+                  <p id="ai-model-help" className="mt-1 text-xs text-gray-500">
+                    Requires your own AI key
+                  </p>
+                )}
+                {modelFieldError && (
+                  <p
+                    id="ai-model-help"
+                    className="mt-1 text-xs text-red-600"
+                    role="alert"
+                  >
+                    {modelFieldError}
+                  </p>
+                )}
               </div>
 
               <div className="flex items-center gap-2 flex-wrap">
@@ -720,7 +791,16 @@ export default function Settings() {
           </div>
         )}
 
-        {/* Save button — always visible */}
+        {/* Usage tab */}
+        {activeTab === "usage" && (
+          <div id="usage-panel" role="tabpanel" aria-labelledby="usage-tab">
+            <UsageTab />
+          </div>
+        )}
+
+        {/* Save button — hidden on Usage (read-only) */}
+        {activeTab !== "usage" && (
+        <>
         <button
           onClick={handleSave}
           disabled={saving}
@@ -739,6 +819,8 @@ export default function Settings() {
             Disconnect & Delete Account
           </button>
         </div>
+        </>
+        )}
       </div>
 
       <PageFooter />
