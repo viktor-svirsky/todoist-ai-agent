@@ -184,3 +184,21 @@ t("GET /usage.csv: clamps days param to 1..90", async () => {
     restore();
   }
 });
+
+t("GET /usage.csv: probe RPC error → 500 JSON (no truncated 200 CSV)", async () => {
+  const restore = mockFetch({ pageError: { message: "relation missing" } });
+  try {
+    const req = new Request("http://local/settings/usage.csv", {
+      method: "GET",
+      headers: { Authorization: "Bearer fake" },
+    });
+    const resp = await handler(req);
+    assertEquals(resp.status, 500);
+    const ct = resp.headers.get("Content-Type") ?? "";
+    assertStringIncludes(ct, "application/json");
+    const body = await resp.json();
+    assertEquals(body.code, "usage_csv_unavailable");
+  } finally {
+    restore();
+  }
+});

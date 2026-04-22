@@ -33,6 +33,9 @@ export async function stripeWebhookHandler(req: Request): Promise<Response> {
       sig_prefix: sig.slice(0, 16),
       err: (err as Error).message,
     });
+    // Surface signature failures to Sentry — a burst may indicate a
+    // rotated secret outage or a probing attacker.
+    await captureException(err);
     return new Response("Invalid signature", { status: 400 });
   }
 
@@ -44,6 +47,9 @@ export async function stripeWebhookHandler(req: Request): Promise<Response> {
       id: event.id,
       type: event.type,
     });
+    await captureException(
+      new Error(`stripe_webhook_testmode_rejected: ${event.type}`),
+    );
     return new Response("Test-mode event rejected", { status: 400 });
   }
 
@@ -139,11 +145,17 @@ async function dispatch(
   const userId = await resolveUserId(event, sb);
   if (!userId) return { userId: null, write: null };
 
-  const { data: row } = await sb
+  const { data: row, error: rowErr } = await sb
     .from("users_config")
     .select("pro_until")
     .eq("id", userId)
     .single();
+  if (rowErr) {
+    // Billing write is next — never fall back to "no prior Pro" silently or
+    // a refund after this point would miscalculate clamping. Let the outer
+    // dispatch catch turn this into a 500 so Stripe retries.
+    throw rowErr;
+  }
   const existingProUntil = (row?.pro_until as string | null) ?? null;
 
   switch (event.type) {

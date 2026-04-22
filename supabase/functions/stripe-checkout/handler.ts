@@ -56,10 +56,16 @@ export async function stripeCheckoutHandler(req: Request): Promise<Response> {
   const stripe = getStripe();
   let customerId = (row.stripe_customer_id as string | null) ?? null;
   if (!customerId) {
-    const customer = await stripe.customers.create({
-      email,
-      metadata: { user_id: userId },
-    });
+    let customer;
+    try {
+      customer = await stripe.customers.create({
+        email,
+        metadata: { user_id: userId },
+      });
+    } catch (err) {
+      await captureException(err);
+      return json({ error: "stripe_customer_create_failed" }, 502);
+    }
     customerId = customer.id;
     const { error: updateErr } = await admin
       .from("users_config")

@@ -199,6 +199,37 @@ export async function settingsHandler(req: Request): Promise<Response> {
       new Date().toISOString().slice(0, 10)
     }.csv`;
 
+    // Probe the RPC synchronously before opening the response stream.
+    // `controller.error()` after headers flush would deliver a silently
+    // truncated CSV under HTTP 200 — the user sees no signal that the
+    // export failed. Fail up-front so the client surfaces the 500.
+    const PAGE = 1000;
+    const MAX_ROWS = 50_000;
+    type UsageRow = {
+      id: number;
+      event_time: string;
+      tier: string | null;
+      counted: boolean;
+      refunded_at: string | null;
+      task_id: string | null;
+    };
+    const probe = await supabase.rpc("get_usage_csv_page", {
+      p_before: null,
+      p_before_id: null,
+      p_limit: PAGE,
+      p_days: days,
+    });
+    if (probe.error) {
+      console.error("get_usage_csv_page failed (probe)", { error: probe.error });
+      await captureException(probe.error);
+      return jsonResponse(
+        { code: "usage_csv_unavailable", message: "Usage export failed, try again." },
+        500,
+        CORS_HEADERS,
+      );
+    }
+    const firstRows = (probe.data ?? []) as Array<UsageRow>;
+
     const stream = new ReadableStream({
       async start(controller) {
         try {
@@ -207,30 +238,9 @@ export async function settingsHandler(req: Request): Promise<Response> {
           );
           let cursor: string | null = null;
           let cursorId: number | null = null;
-          const PAGE = 1000;
-          const MAX_ROWS = 50_000;
           let total = 0;
+          let rows: Array<UsageRow> = firstRows;
           while (true) {
-            const { data, error } = await supabase.rpc("get_usage_csv_page", {
-              p_before: cursor,
-              p_before_id: cursorId,
-              p_limit: PAGE,
-              p_days: days,
-            });
-            if (error) {
-              console.error("get_usage_csv_page failed", { error });
-              await captureException(error);
-              controller.error(error);
-              return;
-            }
-            const rows = (data ?? []) as Array<{
-              id: number;
-              event_time: string;
-              tier: string | null;
-              counted: boolean;
-              refunded_at: string | null;
-              task_id: string | null;
-            }>;
             if (rows.length === 0) break;
             for (const r of rows) {
               controller.enqueue(
@@ -255,6 +265,19 @@ export async function settingsHandler(req: Request): Promise<Response> {
             cursor = last.event_time;
             cursorId = last.id;
             if (rows.length < PAGE) break;
+            const next = await supabase.rpc("get_usage_csv_page", {
+              p_before: cursor,
+              p_before_id: cursorId,
+              p_limit: PAGE,
+              p_days: days,
+            });
+            if (next.error) {
+              console.error("get_usage_csv_page failed (mid-stream)", { error: next.error });
+              await captureException(next.error);
+              controller.error(next.error);
+              return;
+            }
+            rows = (next.data ?? []) as Array<UsageRow>;
           }
           controller.close();
         } catch (err) {
@@ -468,9 +491,21 @@ export async function settingsHandler(req: Request): Promise<Response> {
       (updates.custom_ai_model as string).trim().length > 0;
 
     if (settingCustomModel && !byokKeyBeingSet) {
-      const { data: tierData } = await serviceClient.rpc("get_user_tier", {
+      const { data: tierData, error: tierErr } = await serviceClient.rpc("get_user_tier", {
         p_user_id: user.id,
       });
+      if (tierErr) {
+        console.error("get_user_tier RPC failed; 503 so client retries", {
+          userId: user.id,
+          error: tierErr,
+        });
+        await captureException(tierErr);
+        return jsonResponse(
+          { code: "tier_unavailable", message: "Tier lookup failed, try again." },
+          503,
+          CORS_HEADERS,
+        );
+      }
       const tier = (tierData as string | null) ?? null;
       if (tier === "free" || tier === null) {
         await logFeatureGateEvent(

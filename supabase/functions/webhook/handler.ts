@@ -370,10 +370,28 @@ async function runAiForTask(
     replyPosted = true;
 
     // Increment AI request counter only after successful processing (#99)
-    await supabase.rpc("increment_ai_requests", { p_todoist_user_id: todoistUserId });
+    const { error: incErr } = await supabase.rpc("increment_ai_requests", {
+      p_todoist_user_id: todoistUserId,
+    });
+    if (incErr) {
+      console.error("increment_ai_requests failed", { requestId, taskId, error: incErr });
+      await captureException(new Error(`increment_ai_requests: ${incErr.message ?? incErr}`));
+    }
   } catch (error) {
     if (!replyPosted && quota.event_id !== null) {
-      await refundAiQuota(supabase, quota.event_id);
+      try {
+        await refundAiQuota(supabase, quota.event_id);
+      } catch (refundErr) {
+        // Must not swallow — this is billing-sensitive code. Surface to
+        // Sentry and continue so the user still gets an error comment.
+        console.error("refund_ai_quota failed inside catch", {
+          requestId,
+          taskId,
+          eventId: quota.event_id,
+          error: refundErr,
+        });
+        await captureException(refundErr);
+      }
     }
     console.error("AI processing failed", { requestId, taskId, error: error instanceof Error ? error.message : String(error) });
     if (progressCommentId) {

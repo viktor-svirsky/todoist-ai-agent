@@ -746,6 +746,40 @@ t("subscription.updated: payload ignored; fresh subscription fetched from Stripe
   }
 });
 
+t("STRIPE_REQUIRE_LIVEMODE=true + livemode:false payload → 400, no dispatch", async () => {
+  __resetStripeForTests();
+  Deno.env.set("STRIPE_REQUIRE_LIVEMODE", "true");
+  const state = freshState();
+  const restore = installFetchMock(state);
+  try {
+    const evt = subUpdatedEvent("evt_testmode_rejected");
+    evt.livemode = false;
+    const res = await stripeWebhookHandler(await signedPost(evt));
+    assertEquals(res.status, 400);
+    // Must NOT have inserted or dispatched.
+    assertEquals(state.stripeEventIds.has("evt_testmode_rejected"), false);
+    assertEquals(state.usersConfigUpdates.length, 0);
+  } finally {
+    Deno.env.delete("STRIPE_REQUIRE_LIVEMODE");
+    restore();
+  }
+});
+
+t("STRIPE_REQUIRE_LIVEMODE unset + livemode:false → processed normally", async () => {
+  __resetStripeForTests();
+  const state = freshState();
+  const restore = installFetchMock(state);
+  try {
+    const evt = subUpdatedEvent("evt_testmode_ok");
+    evt.livemode = false;
+    const res = await stripeWebhookHandler(await signedPost(evt));
+    assertEquals(res.status, 200);
+    assertEquals(state.usersConfigUpdates.length, 1);
+  } finally {
+    restore();
+  }
+});
+
 t("checkout.session.completed: metadata.user_id trusted when present", async () => {
   __resetStripeForTests();
   const state = freshState();

@@ -27,7 +27,8 @@ CREATE POLICY feature_gate_events_deny_all ON feature_gate_events
 
 CREATE OR REPLACE FUNCTION get_user_tier(p_user_id uuid)
 RETURNS text
-LANGUAGE plpgsql STABLE AS $$
+LANGUAGE plpgsql STABLE
+SET search_path = public AS $$
 DECLARE v_row users_config%ROWTYPE;
 BEGIN
   SELECT * INTO v_row FROM users_config WHERE id = p_user_id;
@@ -43,7 +44,19 @@ $$;
 
 CREATE OR REPLACE FUNCTION log_feature_gate_event(
   p_user_id uuid, p_tier text, p_feature text, p_action text
-) RETURNS void LANGUAGE sql AS $$
+) RETURNS void LANGUAGE sql
+SET search_path = public AS $$
   INSERT INTO feature_gate_events (user_id, tier, feature, action)
   VALUES (p_user_id, p_tier, p_feature, p_action);
 $$;
+
+-- Defense in depth: callers today are service-role only. Lock out
+-- authenticated/anon so a future permissive RLS policy on
+-- `feature_gate_events` or `users_config` cannot turn these into
+-- primitives for cross-user writes / tier readback.
+REVOKE EXECUTE ON FUNCTION get_user_tier(uuid) FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION get_user_tier(uuid) FROM anon, authenticated;
+REVOKE EXECUTE ON FUNCTION log_feature_gate_event(uuid, text, text, text)
+  FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION log_feature_gate_event(uuid, text, text, text)
+  FROM anon, authenticated;
