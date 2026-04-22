@@ -941,6 +941,74 @@ describe("Settings: message styling", () => {
 });
 
 // ============================================================================
+// Feature gate UI helpers (Task 10)
+// ============================================================================
+
+describe("Settings: feature gate helpers", () => {
+  it("shows Pro badge near Custom Instructions when tier is not pro/byok", async () => {
+    renderSettings();
+    await waitFor(() =>
+      expect(screen.getByText("Settings")).toBeInTheDocument(),
+    );
+    // useTier's fetch call (same global fetch mock) returns mockSettings
+    // which has no `tier` — so tier is undefined (treated as non-paid).
+    expect(screen.getByTestId("custom-prompt-pro-badge")).toBeInTheDocument();
+  });
+
+  it("shows 'Requires your own AI key' helper under Model field when no key", async () => {
+    const user = userEvent.setup();
+    renderSettings();
+    await waitFor(() =>
+      expect(screen.getByText("Settings")).toBeInTheDocument(),
+    );
+    await switchToAdvanced(user);
+    expect(screen.getByText(/Requires your own AI key/)).toBeInTheDocument();
+  });
+
+  it("hides model helper text when API key is entered locally", async () => {
+    const user = userEvent.setup();
+    renderSettings();
+    await waitFor(() =>
+      expect(screen.getByText("Settings")).toBeInTheDocument(),
+    );
+    await switchToAdvanced(user);
+    await user.type(screen.getByLabelText("AI provider API key"), "sk-test");
+    expect(screen.queryByText(/Requires your own AI key/)).not.toBeInTheDocument();
+  });
+
+  it("renders server 409 message under Model field on save rejection", async () => {
+    const user = userEvent.setup();
+    renderSettings();
+    await waitFor(() =>
+      expect(screen.getByText("Settings")).toBeInTheDocument(),
+    );
+
+    vi.mocked(fetch).mockResolvedValue({
+      ok: false,
+      status: 409,
+      json: () =>
+        Promise.resolve({
+          code: "model_requires_byok",
+          message: "Custom model requires a custom AI key or Pro plan.",
+        }),
+      headers: new Headers(),
+    } as Response);
+
+    await user.click(screen.getByText("Save Settings"));
+    await waitFor(() =>
+      expect(
+        screen.getByText("Custom model requires a custom AI key or Pro plan."),
+      ).toBeInTheDocument(),
+    );
+    // Ensure it's an inline alert, not the top banner
+    expect(
+      screen.getByText("Custom model requires a custom AI key or Pro plan.")
+        .closest("[role='alert']"),
+    ).toBeInTheDocument();
+  });
+});
+
+// ============================================================================
 // Reset AI Settings
 // ============================================================================
 

@@ -26,7 +26,7 @@ export function isUnlimited(limit: number): boolean {
 
 export function formatUpsellComment(
   result: AiQuotaResult,
-  settingsUrl: string,
+  pricingUrl: string,
 ): string {
   const used  = result.used  ?? 0;
   const limit = result.limit;
@@ -36,7 +36,7 @@ export function formatUpsellComment(
   return [
     `You've used ${used}/${limit} AI messages in the last 24 hours (free tier).`,
     slot,
-    `Upgrade to Pro — coming soon. Or add your own AI key in Settings: ${settingsUrl}`,
+    `Upgrade to Pro: ${pricingUrl}`,
   ].filter(Boolean).join(" ");
 }
 

@@ -1,3 +1,18 @@
+/** Read an environment variable, throwing a helpful error if missing or empty. */
+export function requireEnv(key: string): string {
+  const value = Deno.env.get(key);
+  if (value === undefined || value.trim() === "") {
+    throw new Error(`Missing required environment variable: ${key}`);
+  }
+  return value;
+}
+
+export const STRIPE_SECRET_KEY = () => requireEnv("STRIPE_SECRET_KEY");
+export const STRIPE_WEBHOOK_SECRET = () => requireEnv("STRIPE_WEBHOOK_SECRET");
+export const STRIPE_PRICE_ID_PRO_MONTHLY = () =>
+  requireEnv("STRIPE_PRICE_ID_PRO_MONTHLY");
+export const APP_URL = () => requireEnv("APP_URL");
+
 /** Validate that required environment variables are set and non-empty.
  *  Throws immediately with all missing vars listed, rather than failing
  *  at runtime with confusing errors.

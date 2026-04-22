@@ -23,6 +23,7 @@ import type { TodoistComment, TodoistWebhookEvent, UserConfig } from "../_shared
 import { claimAiQuota, refundAiQuota } from "../_shared/ai-quota.ts";
 import { formatUpsellComment } from "../_shared/tier.ts";
 import type { AiQuotaResult } from "../_shared/tier.ts";
+import { resolveFeatureGates, logFeatureGateEvent } from "../_shared/feature-gates.ts";
 
 // ---------------------------------------------------------------------------
 // Shared AI processing
@@ -296,13 +297,35 @@ async function runAiForTask(
       }
     }
 
+    const gates = resolveFeatureGates(quota.tier);
+
+    // G3: custom prompt — drop silently on Free
+    const effectiveCustomPrompt = gates.customPrompt ? user.custom_prompt : null;
+    if (!gates.customPrompt && user.custom_prompt) {
+      void logFeatureGateEvent(supabase, user.id, gates.tier, "custom_prompt", "silently_ignored");
+    }
+
+    // G4: model override — only BYOK honors user.custom_ai_model
+    const effectiveCustomModel = gates.modelOverride ? user.custom_ai_model : null;
+    if (!gates.modelOverride && user.custom_ai_model) {
+      void logFeatureGateEvent(supabase, user.id, gates.tier, "model_override", "silently_ignored");
+    }
+
+    // G1/G2: telemetry — ai.ts enforces suppression via toolMode/webSearch flags
+    if (!gates.webSearch) {
+      void logFeatureGateEvent(supabase, user.id, gates.tier, "web_search", "filtered");
+    }
+    if (gates.todoistTools === "read_only") {
+      void logFeatureGateEvent(supabase, user.id, gates.tier, "todoist_tools", "filtered");
+    }
+
     const resolvedBaseUrl = (
       user.custom_ai_base_url ||
       Deno.env.get("DEFAULT_AI_BASE_URL") ||
       "https://api.anthropic.com/v1"
     ).trim().replace(/\/$/, "");
     const resolvedModel = normalizeModel(
-      user.custom_ai_model ||
+      effectiveCustomModel ||
       Deno.env.get("DEFAULT_AI_MODEL") ||
       DEFAULT_AI_MODEL
     );
@@ -328,6 +351,8 @@ async function runAiForTask(
         undefined,
       fallbackModel,
       isCustomUrl: !!user.custom_ai_base_url,
+      toolMode: gates.todoistTools,
+      webSearch: gates.webSearch,
     };
 
     const apiMessages = buildMessages(
@@ -335,7 +360,7 @@ async function runAiForTask(
       task.description,
       messages,
       images.length > 0 ? images : undefined,
-      user.custom_prompt,
+      effectiveCustomPrompt,
       documents.length > 0 ? documents : undefined,
       resolvedModel,
     );
@@ -371,10 +396,10 @@ async function postUpsellComment(
   quota: AiQuotaResult,
 ): Promise<void> {
   const frontend = Deno.env.get("FRONTEND_URL");
-  const settingsUrl = frontend
-    ? `${frontend.replace(/\/$/, "")}/settings`
-    : "https://todoist-ai-agent.example/settings";
-  const body = formatUpsellComment(quota, settingsUrl);
+  const pricingUrl = frontend
+    ? `${frontend.replace(/\/$/, "")}/pricing`
+    : "https://todoist-ai-agent.example/pricing";
+  const body = formatUpsellComment(quota, pricingUrl);
   const todoist = new TodoistClient(user.todoist_token);
   await todoist.postComment(taskId, body);
 }

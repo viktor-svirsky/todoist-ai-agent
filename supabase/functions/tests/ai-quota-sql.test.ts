@@ -7,9 +7,9 @@ import { assert, assertEquals } from "@std/assert";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "http://127.0.0.1:54321";
 const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 
-if (!SERVICE_ROLE) {
-  console.warn("ai-quota-sql.test.ts: skipping — SUPABASE_SERVICE_ROLE_KEY not set");
-  Deno.exit(0);
+const RUN_SQL = Deno.env.get("RUN_SUPABASE_SQL_TESTS") === "1";
+if (!RUN_SQL) {
+  console.warn("ai-quota-sql.test.ts: skipping — set RUN_SUPABASE_SQL_TESTS=1 with live Supabase to enable");
 }
 
 async function rpc(fn: string, params: Record<string, unknown>) {
@@ -57,6 +57,7 @@ async function cleanup(userId: string) {
 }
 
 function t(name: string, fn: () => Promise<void>) {
+  if (!RUN_SQL) return;
   Deno.test({ name, fn, sanitizeOps: false, sanitizeResources: false });
 }
 

@@ -23,10 +23,11 @@ t("formatUpsellComment: uses counts from RPC, no hard-coded numbers", () => {
     next_slot_at: "2026-04-22T14:02:00Z",
     should_notify: true, event_id: 123,
   };
-  const msg = formatUpsellComment(result, "https://app.example/settings");
+  const msg = formatUpsellComment(result, "https://app.example/pricing");
   assertEquals(msg.includes("5/5"), true);
   assertEquals(msg.includes("last 24 hours"), true);
-  assertEquals(msg.includes("https://app.example/settings"), true);
+  assertEquals(msg.includes("https://app.example/pricing"), true);
+  assertEquals(msg.includes("/settings"), false, "upsell must link to /pricing, not /settings");
   assertEquals(msg.includes("today"), false, "copy must not imply midnight reset");
 });
 
@@ -37,6 +38,6 @@ t("formatUpsellComment: omits next-slot line when null", () => {
     next_slot_at: null,
     should_notify: true, event_id: 1,
   };
-  const msg = formatUpsellComment(result, "https://x.example");
+  const msg = formatUpsellComment(result, "https://x.example/pricing");
   assertEquals(msg.includes("Next message available"), false);
 });

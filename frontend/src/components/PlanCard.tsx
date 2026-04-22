@@ -1,4 +1,15 @@
+import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useTier, type TierData } from "../hooks/useTier";
+import { openBillingPortal, startCheckout } from "../lib/billingApi";
+import { BILLING_ENABLED } from "../lib/pricing-constants";
+
+const FREE_GATE_BULLETS = [
+  "Web search is Pro-only.",
+  "Read-only Todoist tools. Upgrade to let AI create, update, and complete tasks.",
+  "Custom prompts apply on Pro or with your own AI key.",
+  "Custom model selection requires your own AI key.",
+];
 
 function humanizeRelative(iso: string | null): string {
   if (!iso) return "";
@@ -23,6 +34,67 @@ function Badge({ tier }: { tier: TierData["tier"] }) {
     >
       {label}
     </span>
+  );
+}
+
+function UpgradeButton() {
+  const navigate = useNavigate();
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  return (
+    <>
+      <button
+        type="button"
+        disabled={loading}
+        onClick={async () => {
+          if (!BILLING_ENABLED) {
+            navigate("/pricing");
+            return;
+          }
+          setLoading(true);
+          setError(null);
+          try {
+            const { url } = await startCheckout();
+            window.location.assign(url);
+          } catch {
+            setError("Could not start checkout. Please try again.");
+            setLoading(false);
+          }
+        }}
+        className="mt-2 inline-flex items-center rounded-md bg-violet-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-60"
+      >
+        {loading ? "Redirecting…" : "Upgrade to Pro"}
+      </button>
+      {error && <p className="text-xs text-rose-400">{error}</p>}
+    </>
+  );
+}
+
+function ManageBillingButton() {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  return (
+    <>
+      <button
+        type="button"
+        disabled={loading}
+        onClick={async () => {
+          setLoading(true);
+          setError(null);
+          try {
+            const { url } = await openBillingPortal();
+            window.location.assign(url);
+          } catch {
+            setError("Could not open billing portal. Please try again.");
+            setLoading(false);
+          }
+        }}
+        className="mt-2 inline-flex items-center rounded-md bg-slate-700 px-3 py-1.5 text-xs font-medium text-slate-100 hover:bg-slate-600 disabled:cursor-not-allowed disabled:opacity-60"
+      >
+        {loading ? "Redirecting…" : "Manage billing"}
+      </button>
+      {error && <p className="text-xs text-rose-400">{error}</p>}
+    </>
   );
 }
 
@@ -85,14 +157,19 @@ export function PlanCard() {
         </p>
       )}
 
-      <button
-        type="button"
-        disabled
-        title="Pro tier launches in the next sub-project"
-        className="mt-2 inline-flex items-center rounded-md bg-slate-700 px-3 py-1.5 text-xs font-medium text-slate-400 cursor-not-allowed"
-      >
-        Upgrade to Pro — coming soon
-      </button>
+      {data.tier === "free" && (
+        <ul
+          data-testid="free-gate-bullets"
+          className="mt-1 list-disc pl-5 text-xs text-slate-400 space-y-1"
+        >
+          {FREE_GATE_BULLETS.map((b) => (
+            <li key={b}>{b}</li>
+          ))}
+        </ul>
+      )}
+
+      {data.tier === "free" && <UpgradeButton />}
+      {data.tier === "pro" && <ManageBillingButton />}
     </section>
   );
 }

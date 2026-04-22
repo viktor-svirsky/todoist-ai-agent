@@ -1618,3 +1618,104 @@ Deno.test("executePrompt: uses fallback content from tool-call round when final 
     globalThis.fetch = originalFetch;
   }
 });
+
+// ---------------------------------------------------------------------------
+// executePrompt — feature gates (toolMode + webSearch)
+// ---------------------------------------------------------------------------
+
+Deno.test("executePrompt: webSearch=false suppresses OpenAI web_search tool", async () => {
+  let capturedBody: Record<string, unknown> = {};
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = ((_input: unknown, init?: RequestInit) => {
+    capturedBody = JSON.parse((init?.body as string) || "{}");
+    return Promise.resolve(new Response(JSON.stringify({
+      choices: [{ message: { content: "ok" } }],
+    }), { status: 200, headers: { "Content-Type": "application/json" } }));
+  }) as typeof fetch;
+  try {
+    await executePrompt([{ role: "system", content: "test" }], {
+      ...BASE_CONFIG, braveApiKey: "key", webSearch: false,
+    });
+    const tools = capturedBody.tools as Record<string, unknown>[];
+    const toolNames = tools.map((t) => (t.function as Record<string, unknown>).name);
+    assertEquals(toolNames.includes("fetch_url"), true);
+    assertEquals(toolNames.includes("web_search"), false);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+Deno.test("executePrompt (Anthropic): webSearch=false suppresses built-in web_search tool", async () => {
+  let capturedBody: Record<string, unknown> = {};
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = ((_input: unknown, init?: RequestInit) => {
+    capturedBody = JSON.parse((init?.body as string) || "{}");
+    return Promise.resolve(new Response(JSON.stringify({
+      content: [{ type: "text", text: "ok" }],
+    }), { status: 200, headers: { "Content-Type": "application/json" } }));
+  }) as typeof fetch;
+  try {
+    await executePrompt([{ role: "user", content: "test" }], {
+      baseUrl: "https://api.anthropic.com/v1",
+      apiKey: "k", model: "claude", timeoutMs: 5000, webSearch: false,
+    });
+    const tools = capturedBody.tools as Record<string, unknown>[];
+    const toolNames = tools.map((t) => t.name);
+    assertEquals(toolNames.includes("fetch_url"), true);
+    assertEquals(toolNames.includes("web_search"), false);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+Deno.test("executePrompt: toolMode='read_only' restricts Todoist tools to read-only allowlist", async () => {
+  let capturedBody: Record<string, unknown> = {};
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = ((_input: unknown, init?: RequestInit) => {
+    capturedBody = JSON.parse((init?.body as string) || "{}");
+    return Promise.resolve(new Response(JSON.stringify({
+      choices: [{ message: { content: "ok" } }],
+    }), { status: 200, headers: { "Content-Type": "application/json" } }));
+  }) as typeof fetch;
+  try {
+    // deno-lint-ignore no-explicit-any
+    const stubClient: any = {};
+    await executePrompt([{ role: "system", content: "test" }], {
+      ...BASE_CONFIG, todoistClient: stubClient, toolMode: "read_only",
+    });
+    const tools = capturedBody.tools as Record<string, unknown>[];
+    const toolNames = tools.map((t) => (t.function as Record<string, unknown>).name);
+    assertEquals(toolNames.includes("list_tasks"), true);
+    assertEquals(toolNames.includes("list_projects"), true);
+    assertEquals(toolNames.includes("list_labels"), true);
+    assertEquals(toolNames.includes("create_task"), false);
+    assertEquals(toolNames.includes("update_task"), false);
+    assertEquals(toolNames.includes("complete_task"), false);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+Deno.test("executePrompt: toolMode='full' (default) exposes mutating Todoist tools", async () => {
+  let capturedBody: Record<string, unknown> = {};
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = ((_input: unknown, init?: RequestInit) => {
+    capturedBody = JSON.parse((init?.body as string) || "{}");
+    return Promise.resolve(new Response(JSON.stringify({
+      choices: [{ message: { content: "ok" } }],
+    }), { status: 200, headers: { "Content-Type": "application/json" } }));
+  }) as typeof fetch;
+  try {
+    // deno-lint-ignore no-explicit-any
+    const stubClient: any = {};
+    await executePrompt([{ role: "system", content: "test" }], {
+      ...BASE_CONFIG, todoistClient: stubClient,
+    });
+    const tools = capturedBody.tools as Record<string, unknown>[];
+    const toolNames = tools.map((t) => (t.function as Record<string, unknown>).name);
+    assertEquals(toolNames.includes("update_task"), true);
+    assertEquals(toolNames.includes("create_task"), true);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});

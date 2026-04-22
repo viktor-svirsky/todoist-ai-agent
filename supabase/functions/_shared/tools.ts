@@ -23,6 +23,22 @@ interface ToolSpec {
   input_schema: Record<string, unknown>;
 }
 
+export type TodoistToolMode = "full" | "read_only";
+
+const READ_ONLY_TOOL_NAMES = new Set([
+  "list_tasks",
+  "list_projects",
+  "list_labels",
+]);
+
+export function filterTodoistTools(
+  specs: ToolSpec[],
+  mode: TodoistToolMode,
+): ToolSpec[] {
+  if (mode === "full") return specs;
+  return specs.filter((t) => READ_ONLY_TOOL_NAMES.has(t.name));
+}
+
 export const TODOIST_TOOL_SPECS: ToolSpec[] = [
   {
     name: "list_tasks",
@@ -164,8 +180,10 @@ export function isTodoistToolName(name: string): boolean {
 }
 
 /** Convert neutral tool specs to Anthropic-native format. */
-export function toAnthropicTools(): Record<string, unknown>[] {
-  return TODOIST_TOOL_SPECS.map((t) => ({
+export function toAnthropicTools(
+  mode: TodoistToolMode = "full",
+): Record<string, unknown>[] {
+  return filterTodoistTools(TODOIST_TOOL_SPECS, mode).map((t) => ({
     name: t.name,
     description: t.description,
     input_schema: t.input_schema,
@@ -173,8 +191,10 @@ export function toAnthropicTools(): Record<string, unknown>[] {
 }
 
 /** Convert neutral tool specs to OpenAI function-calling format. */
-export function toOpenAiTools(): Record<string, unknown>[] {
-  return TODOIST_TOOL_SPECS.map((t) => ({
+export function toOpenAiTools(
+  mode: TodoistToolMode = "full",
+): Record<string, unknown>[] {
+  return filterTodoistTools(TODOIST_TOOL_SPECS, mode).map((t) => ({
     type: "function",
     function: {
       name: t.name,
@@ -209,8 +229,12 @@ export async function handleTodoistTool(
   rawName: string,
   argsJson: string,
   client: TodoistClient,
+  mode: TodoistToolMode = "full",
 ): Promise<string> {
   const name = rawName.replace(/^proxy_/, "");
+  if (mode === "read_only" && !READ_ONLY_TOOL_NAMES.has(name)) {
+    return `Tool error (${name}): not available on Free tier.`;
+  }
   const args = parseArgs(argsJson);
 
   try {
